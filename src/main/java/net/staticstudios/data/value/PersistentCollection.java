@@ -1,7 +1,5 @@
 package net.staticstudios.data.value;
 
-import net.staticstudios.utils.Pair;
-import net.staticstudios.utils.ThreadUtils;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.DatabaseSupportedType;
 import net.staticstudios.data.UniqueData;
@@ -12,6 +10,8 @@ import net.staticstudios.data.meta.PersistentCollectionMetadata;
 import net.staticstudios.data.meta.PersistentEntryValueMetadata;
 import net.staticstudios.data.shared.CollectionEntry;
 import net.staticstudios.data.shared.SharedCollection;
+import net.staticstudios.utils.Pair;
+import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.Blocking;
 import org.jetbrains.annotations.NotNull;
 
@@ -398,7 +398,7 @@ public class PersistentCollection<V extends CollectionEntry> extends SharedColle
 
     @Blocking
     public void add(Connection connection, V v) {
-        addAllToDataSource(connection, Collections.singletonList(v), true);
+        addAll(connection, Collections.singletonList(v));
     }
 
     @Blocking

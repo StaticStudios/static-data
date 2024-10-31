@@ -1,12 +1,12 @@
 package net.staticstudios.data.shared;
 
-import net.staticstudios.utils.ReflectionUtils;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.DatabaseSupportedType;
 import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.messaging.CollectionEntryUpdate;
 import net.staticstudios.data.messaging.CollectionEntryUpdateMessage;
 import net.staticstudios.data.messaging.handle.PersistentCollectionEntryUpdateMessageHandler;
+import net.staticstudios.utils.ReflectionUtils;
 
 import java.lang.reflect.Field;
 import java.util.*;
@@ -52,6 +52,25 @@ public abstract class CollectionEntry {
         }
 
         collection.updateInDataSource(this);
+        broadcastUpdate(collection);
+    }
+
+    /**
+     * Sync the values of this entry with other servers and the database.
+     *
+     * @param resource   The resource to use when updating the entry
+     * @param collection The collection this entry belongs to
+     */
+    public final <R> void update(R resource, SharedCollection<?, ?, R> collection) {
+        if (dirtyValues.isEmpty()) {
+            return;
+        }
+
+        collection.updateInDataSource(resource, this);
+        broadcastUpdate(collection);
+    }
+
+    private void broadcastUpdate(SharedCollection<?, ?, ?> collection) {
         Map<String, String> oldValues = new HashMap<>();
         Map<String, String> newValues = new HashMap<>();
 
