@@ -1,12 +1,12 @@
 package net.staticstudios.data.shared;
 
-import net.staticstudios.utils.ReflectionUtils;
-import net.staticstudios.utils.ThreadUtils;
 import net.staticstudios.data.Addressable;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.meta.SharedCollectionMetadata;
 import net.staticstudios.data.meta.UniqueDataMetadata;
+import net.staticstudios.utils.ReflectionUtils;
+import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.Field;
@@ -23,7 +23,7 @@ public abstract class SharedCollection<T extends CollectionEntry, M extends Shar
     private final Collection<T> values;
     private final Class<T> type;
     private final Class<? extends SharedCollection> collectionType;
-    private UniqueData uniqueData;
+    private final UniqueData uniqueData;
     private M metadata;
 
     /**
@@ -135,7 +135,10 @@ public abstract class SharedCollection<T extends CollectionEntry, M extends Shar
 
     @Override
     public synchronized boolean add(T t) {
-        addAll(Collections.singletonList(t));
+        List<T> singleton = Collections.singletonList(t);
+
+        addAllInternal(singleton);
+        ThreadUtils.submit(() -> addAllToDataSource(singleton));
 
         return true;
     }
@@ -284,4 +287,10 @@ public abstract class SharedCollection<T extends CollectionEntry, M extends Shar
     abstract public @NotNull Consumer<T> getAddHandler();
 
     abstract public @NotNull Consumer<T> getRemoveHandler();
+
+    abstract public @NotNull Consumer<T> getUpdateHandler();
+
+    public void callUpdateHandler(CollectionEntry entry) {
+        getUpdateHandler().accept((T) entry);
+    }
 }

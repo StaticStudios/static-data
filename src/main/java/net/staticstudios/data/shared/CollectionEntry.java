@@ -102,6 +102,8 @@ public abstract class CollectionEntry {
         for (EntryValue<?> value : dirtyValues) {
             value.markClean();
         }
+
+        collection.callUpdateHandler(this);
     }
 
     public void addDirtyValue(EntryValue<?> value) {

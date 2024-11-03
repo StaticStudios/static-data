@@ -101,6 +101,8 @@ public class PersistentCollectionEntryUpdateMessageHandler implements MessageHan
             value.setSyncedValue(deserialize);
         }
 
+        collection.callUpdateHandler(entryToUpdate);
+
         return null;
     }
 
