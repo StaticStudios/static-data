@@ -29,7 +29,7 @@ public class PersistentCollection<V extends CollectionEntry> extends SharedColle
     private final String linkingColumn;
     private Consumer<V> addHandler;
     private Consumer<V> removeHandler;
-
+    private Consumer<V> updateHandler;
 
     public PersistentCollection(UniqueData uniqueData, Class<V> type, String table, String linkingColumn) {
         super(uniqueData, type, PersistentCollection.class);
@@ -72,6 +72,18 @@ public class PersistentCollection<V extends CollectionEntry> extends SharedColle
      */
     public PersistentCollection<V> onRemove(Consumer<V> removeHandler) {
         this.removeHandler = removeHandler;
+        return this;
+    }
+
+    /**
+     * Set the handler that will be called when an entry is updated in the collection.
+     * Note that this handler is called on every server instance when the update is received.
+     * Also note that the handler is not guaranteed to run on a specific thread.
+     *
+     * @param updateHandler The handler to call
+     */
+    public PersistentCollection<V> onUpdate(Consumer<V> updateHandler) {
+        this.updateHandler = updateHandler;
         return this;
     }
 
@@ -287,6 +299,15 @@ public class PersistentCollection<V extends CollectionEntry> extends SharedColle
             };
         }
         return removeHandler;
+    }
+
+    @Override
+    public @NotNull Consumer<V> getUpdateHandler() {
+        if (updateHandler == null) {
+            return v -> {
+            };
+        }
+        return updateHandler;
     }
 
     @Override
