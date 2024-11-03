@@ -135,7 +135,10 @@ public abstract class SharedCollection<T extends CollectionEntry, M extends Shar
 
     @Override
     public synchronized boolean add(T t) {
-        add(t);
+        List<T> singleton = Collections.singletonList(t);
+
+        addAllInternal(singleton);
+        ThreadUtils.submit(() -> addAllToDataSource(singleton));
 
         return true;
     }
