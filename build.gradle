@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'net.staticstudios'
-version = '1.0.1-SNAPSHOT'
+version = '1.0.1'
 
 repositories {
     mavenCentral()
@@ -47,7 +47,7 @@ java {
 }
 
 javadoc {
-    options.tags = [ "implSpec", "apiNote", "implNote" ]
+    options.tags = ["implSpec", "apiNote", "implNote"]
 }
 
 publishing {
