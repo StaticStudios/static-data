@@ -1,5 +1,8 @@
 name: Publish to private repo
-on: [push]
+on:
+  push:
+    branches:
+      - master
 
 jobs:
   build:
