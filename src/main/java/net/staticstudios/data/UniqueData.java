@@ -1,13 +1,12 @@
 package net.staticstudios.data;
 
-import java.io.Serializable;
 import java.util.Objects;
 import java.util.UUID;
 
 /**
  * Represents a data object that has a unique identifier.
  */
-public abstract class UniqueData implements Serializable {
+public abstract class UniqueData {
     private DataManager dataManager;
     private UUID id;
 
