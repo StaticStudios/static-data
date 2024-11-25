@@ -1,16 +1,18 @@
 package net.staticstudios.data.value;
 
-import net.staticstudios.utils.ReflectionUtils;
-import net.staticstudios.utils.ThreadUtils;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.DatabaseSupportedType;
 import net.staticstudios.data.UniqueData;
+import net.staticstudios.data.UpdatedValue;
 import net.staticstudios.data.messaging.DataValueUpdateMessage;
 import net.staticstudios.data.messaging.handle.DataValueUpdateMessageHandler;
 import net.staticstudios.data.meta.CachedValueMetadata;
 import net.staticstudios.data.meta.SharedValueMetadata;
 import net.staticstudios.data.meta.UniqueDataMetadata;
 import net.staticstudios.data.shared.SharedValue;
+import net.staticstudios.utils.ReflectionUtils;
+import net.staticstudios.utils.ThreadUtils;
+import org.jetbrains.annotations.NotNull;
 import redis.clients.jedis.Jedis;
 
 import java.lang.reflect.Field;
@@ -48,7 +50,8 @@ public class CachedValue<T> implements SharedValue<T> {
      * @return The new CachedValue
      */
     public static <T> CachedValue<T> of(UniqueData parent, Class<T> type, T defaultValue, String key) {
-        return new CachedValue<>(parent, key, type, defaultValue, (oldValue, newValue) -> newValue);
+        return new CachedValue<>(parent, key, type, defaultValue, updated -> {
+        });
     }
 
     /**
@@ -77,7 +80,7 @@ public class CachedValue<T> implements SharedValue<T> {
     public void set(T value) {
         CachedValueMetadata metadata = getMetadata();
         DataManager dataManager = metadata.getDataManager();
-        value = updateHandler.onUpdate(this.value, value);
+        updateHandler.onUpdate(new UpdatedValue<>(this.value, value));
         setInternal(value);
 
 
@@ -95,11 +98,11 @@ public class CachedValue<T> implements SharedValue<T> {
                     jedis.del(dataManager.buildCachedValueKey(key, parent));
                 }
             }
-            UniqueDataMetadata uniqueDataMetadata = dataManager.getUniqueDataMetadata(parent.getClass());
+
             dataManager.getMessenger().broadcastMessageNoPrefix(
-                    dataManager.getChannel(this),
+                    dataManager.getDataChannel(this),
                     DataValueUpdateMessageHandler.class,
-                    new DataValueUpdateMessage(uniqueDataMetadata.getTopLevelTable(), parent.getId(), getAddress(), encoded)
+                    new DataValueUpdateMessage(getDataAddress(), encoded)
             );
         });
     }
@@ -115,7 +118,7 @@ public class CachedValue<T> implements SharedValue<T> {
     public void set(Jedis jedis, T value) {
         CachedValueMetadata metadata = getMetadata();
         DataManager dataManager = metadata.getDataManager();
-        value = updateHandler.onUpdate(this.value, value);
+        updateHandler.onUpdate(new UpdatedValue<>(this.value, value));
         setInternal(value);
 
         Object serialized = dataManager.serialize(value);
@@ -126,12 +129,10 @@ public class CachedValue<T> implements SharedValue<T> {
             jedis.del(dataManager.buildCachedValueKey(key, parent));
         }
 
-
-        UniqueDataMetadata uniqueDataMetadata = dataManager.getUniqueDataMetadata(parent.getClass());
         dataManager.getMessenger().broadcastMessageNoPrefix(
-                dataManager.getChannel(this),
+                dataManager.getDataChannel(this),
                 DataValueUpdateMessageHandler.class,
-                new DataValueUpdateMessage(uniqueDataMetadata.getTopLevelTable(), parent.getId(), getAddress(), encoded)
+                new DataValueUpdateMessage(getDataAddress(), encoded)
         );
     }
 
@@ -183,7 +184,9 @@ public class CachedValue<T> implements SharedValue<T> {
         return defaultValue;
     }
 
-    private CachedValueMetadata getMetadata() {
+
+    @Override
+    public CachedValueMetadata getMetadata() {
         if (metadata == null) {
             UniqueDataMetadata parentMetadata = parent.getDataManager().getUniqueDataMetadata(parent.getClass());
             Set<Field> allCachedValues = ReflectionUtils.getFields(CachedValue.class, parent.getClass());
@@ -204,7 +207,8 @@ public class CachedValue<T> implements SharedValue<T> {
     }
 
     @Override
-    public String getAddress() {
-        return getMetadata().getAddress();
+    @NotNull
+    public String getDataAddress() {
+        return parent.getId() + ".redis." + getMetadata().getTable() + "." + key;
     }
 }

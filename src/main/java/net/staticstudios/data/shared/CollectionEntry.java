@@ -2,7 +2,6 @@ package net.staticstudios.data.shared;
 
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.DatabaseSupportedType;
-import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.messaging.CollectionEntryUpdate;
 import net.staticstudios.data.messaging.CollectionEntryUpdateMessage;
 import net.staticstudios.data.messaging.handle.PersistentCollectionEntryUpdateMessageHandler;
@@ -89,13 +88,11 @@ public abstract class CollectionEntry {
 
         CollectionEntryUpdate update = new CollectionEntryUpdate(oldValues, newValues);
 
-        UniqueData entity = collection.getData();
         dataManager.getMessenger().broadcastMessageNoPrefix(
-                dataManager.getChannel(collection),
+                dataManager.getDataChannel(collection),
                 PersistentCollectionEntryUpdateMessageHandler.class,
                 new CollectionEntryUpdateMessage(
-                        entity.getId(),
-                        collection.getAddress(),
+                        collection.getDataAddress(),
                         update
                 ));
 

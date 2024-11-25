@@ -1,6 +1,5 @@
 package net.staticstudios.data.shared;
 
-import net.staticstudios.data.Addressable;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.meta.SharedCollectionMetadata;
@@ -19,7 +18,7 @@ import java.util.stream.Stream;
  * A collection of data that is shared and synced between multiple services.
  */
 @SuppressWarnings("rawtypes")
-public abstract class SharedCollection<T extends CollectionEntry, M extends SharedCollectionMetadata<?, ?>, R> implements Collection<T>, Addressable {
+public abstract class SharedCollection<T extends CollectionEntry, M extends SharedCollectionMetadata<?, ?>, R> implements Collection<T>, DataWrapper {
     private final Collection<T> values;
     private final Class<T> type;
     private final Class<? extends SharedCollection> collectionType;
@@ -87,12 +86,6 @@ public abstract class SharedCollection<T extends CollectionEntry, M extends Shar
         }
 
         return metadata;
-    }
-
-
-    @Override
-    public String getAddress() {
-        return getMetadata().getAddress();
     }
 
     @Override

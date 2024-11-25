@@ -1,8 +1,5 @@
 package net.staticstudios.data.test;
 
-import com.github.fppt.jedismock.RedisServer;
-import com.zaxxer.hikari.HikariConfig;
-import net.staticstudios.utils.ThreadUtils;
 import net.staticstudios.data.DeletionType;
 import net.staticstudios.data.mocks.MockLocation;
 import net.staticstudios.data.mocks.MockOnlineStatus;
@@ -13,12 +10,19 @@ import net.staticstudios.data.mocks.game.prison.MockPrisonPlayer;
 import net.staticstudios.data.mocks.game.skyblock.MockSkyblockGame;
 import net.staticstudios.data.mocks.game.skyblock.MockSkyblockPlayer;
 import net.staticstudios.data.mocks.service.MockService;
-import org.junit.jupiter.api.*;
-import org.testcontainers.containers.PostgreSQLContainer;
+import net.staticstudios.data.util.DataTest;
+import net.staticstudios.utils.ThreadUtils;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junitpioneer.jupiter.RetryingTest;
 import redis.clients.jedis.Jedis;
 
 import java.io.IOException;
-import java.sql.*;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,36 +30,16 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class UniqueDataTest {
+
+//todo: split this up into multiple test classes
+public class UniqueDataTest extends DataTest {
     static int NUM_INSTANCES = 3;
     static int NUM_USERS = 10;
     static int NUM_HOME_LOCATIONS = 3;
 
-    //I tried using test containers for redis but ran into a lot of issues. This should be good enough for testing.
-    static RedisServer redis;
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(
-            "postgres:16.2"
-    );
-    static Connection connection;
-    static HikariConfig hikariConfig;
     List<MockSkyblockGame> skyblockGameInstances = new ArrayList<>();
     List<UUID> userIds = new ArrayList<>();
 
-    @BeforeAll
-    static void init() throws IOException, SQLException {
-        postgres.start();
-        redis = RedisServer.newRedisServer().start();
-
-        hikariConfig = new HikariConfig();
-        hikariConfig.setDataSourceClassName("org.postgresql.ds.PGSimpleDataSource");
-        hikariConfig.addDataSourceProperty("serverName", postgres.getHost());
-        hikariConfig.addDataSourceProperty("portNumber", postgres.getFirstMappedPort());
-        hikariConfig.addDataSourceProperty("user", postgres.getUsername());
-        hikariConfig.addDataSourceProperty("password", postgres.getPassword());
-        hikariConfig.setLeakDetectionThreshold(10000);
-
-        connection = DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
-    }
 
     @AfterAll
     static void teardown() throws IOException {
@@ -65,8 +49,6 @@ public class UniqueDataTest {
 
     @BeforeEach
     void setup() throws SQLException {
-        ThreadUtils.setProvider(new MockThreadProvider());
-
         try (Statement statement = connection.createStatement()) {
             statement.execute("CREATE SCHEMA IF NOT EXISTS skyblock");
             statement.execute("CREATE SCHEMA IF NOT EXISTS prison");
@@ -160,13 +142,10 @@ public class UniqueDataTest {
             statement.execute("DROP TABLE home_locations");
             statement.execute("DROP TABLE test_data_types");
         }
-
-        MockThreadProvider threadProvider = (MockThreadProvider) ThreadUtils.provider;
-        threadProvider.shutdown();
     }
 
-    @Test
     @DisplayName("Ensure every skyblock game has the same players")
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     void verifyPlayers() {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
 
@@ -180,7 +159,8 @@ public class UniqueDataTest {
         });
     }
 
-    @Test
+
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Update a skyblock player's money")
     void updateMoney() throws InterruptedException {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
@@ -190,7 +170,7 @@ public class UniqueDataTest {
         player.setMoney(5);
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         assertAll("Money is not consistent across skyblock instances", () -> {
                     for (int i = 1; i < NUM_INSTANCES; i++) {
@@ -201,7 +181,8 @@ public class UniqueDataTest {
         );
     }
 
-    @Test
+
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Update a skyblock player's (user's) name")
     void updateName() throws InterruptedException {
         //The name exists on the user, not the player
@@ -212,7 +193,7 @@ public class UniqueDataTest {
         player.setName("Dan");
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         assertAll("Name is not consistent across skyblock instances", () -> {
                     for (int i = 1; i < NUM_INSTANCES; i++) {
@@ -223,7 +204,8 @@ public class UniqueDataTest {
         );
     }
 
-    @Test
+
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Create a skyblock player with default values")
     void createPlayerWithDefaults() throws InterruptedException {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
@@ -234,7 +216,7 @@ public class UniqueDataTest {
         skyblockGame.getPlayerProvider().set(player);
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         assertAll("Name is not consistent across skyblock instances", () -> {
             for (int i = 1; i < NUM_INSTANCES; i++) {
@@ -244,7 +226,8 @@ public class UniqueDataTest {
         });
     }
 
-    @Test
+
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Create a skyblock player with 2 distinct initial home locations, then add another, and ensure that the player has 3 home locations")
     void createPlayerWithDistinctHomeLocations() throws InterruptedException {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
@@ -257,7 +240,7 @@ public class UniqueDataTest {
         skyblockGame.getPlayerProvider().set(player);
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         assertAll("Home locations are not consistent across skyblock instances", () -> {
             for (int i = 1; i < NUM_INSTANCES; i++) {
@@ -271,7 +254,7 @@ public class UniqueDataTest {
         assertEquals(3, player.getHomeLocations().size(), "Player does not have 3 home locations");
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         assertAll("Home locations are not consistent across skyblock instances", () -> {
             for (int i = 1; i < NUM_INSTANCES; i++) {
@@ -281,7 +264,8 @@ public class UniqueDataTest {
         });
     }
 
-    @Test
+
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Create a player with 2 of the same initial home locations, remove one, and ensure that the player has only one home location")
     void createPlayerWithSameHomeLocations() throws InterruptedException {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
@@ -294,7 +278,7 @@ public class UniqueDataTest {
         skyblockGame.getPlayerProvider().set(player);
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         assertAll("Home locations are not consistent across skyblock instances", () -> {
             for (int i = 1; i < NUM_INSTANCES; i++) {
@@ -308,7 +292,7 @@ public class UniqueDataTest {
         assertEquals(1, player.getHomeLocations().size(), "Player does not have only one home location");
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         assertAll("Home locations are not consistent across skyblock instances", () -> {
             for (int i = 1; i < NUM_INSTANCES; i++) {
@@ -318,7 +302,8 @@ public class UniqueDataTest {
         });
     }
 
-    @Test
+
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Update a player's home location")
     void updateHomeLocation() throws InterruptedException {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
@@ -335,7 +320,7 @@ public class UniqueDataTest {
         location.update(player.getHomeLocations());
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         assertAll("Home locations are not consistent across skyblock instances", () -> {
             for (int i = 1; i < NUM_INSTANCES; i++) {
@@ -358,7 +343,7 @@ public class UniqueDataTest {
     }
 
 
-    @Test
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Create a player on skyblock, and verify the player does not exist on prison")
     void createSkyblockPlayerAndVerifyPrisonPlayerNotExist() throws InterruptedException {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
@@ -369,12 +354,13 @@ public class UniqueDataTest {
         skyblockGame.getPlayerProvider().set(player);
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         assertNull(prisonGame.getPlayerProvider().get(playerId), "Player exists on prison");
     }
 
-    @Test
+
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Create a player on skyblock, give it some money, create a player on prison with the same id, and verify the money is equal to skyblock")
     void createSkyblockPlayerAndVerifyPrisonPlayerMoney() throws InterruptedException {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
@@ -385,14 +371,10 @@ public class UniqueDataTest {
         MockSkyblockPlayer skyblockPlayer = new MockSkyblockPlayer(skyblockGame.getDataManager(), playerId, "John");
         skyblockGame.getPlayerProvider().set(skyblockPlayer);
 
-        //Wait for the data to sync
-        Thread.sleep(1000);
-        //todo: we shouldnt have to do the above wait, but it currently throws errors if we dont. this needs to be addressed.
-
         skyblockPlayer.setMoney(5);
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         MockPrisonPlayer prisonPlayer = new MockPrisonPlayer(prisonGame.getDataManager(), playerId, "Dan");
         prisonGame.getPlayerProvider().set(prisonPlayer);
@@ -404,7 +386,8 @@ public class UniqueDataTest {
         assertNotEquals("Dan", prisonPlayer.getName(), "Name should not be overridden when creating a new object that extends the user");
     }
 
-    @Test
+
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Test all DatabaseSupportedTypes")
     void insertAllDatabaseSupportedTypes() throws InterruptedException {
         MockService service = new MockService("service", redis.getHost(), redis.getBindPort(), hikariConfig);
@@ -413,7 +396,7 @@ public class UniqueDataTest {
         MockTestDataObject testDataObject = service.createTestDataObject();
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         MockTestDataObject testDataObject2 = service2.getDataObjectProvider().get(testDataObject.getId());
 
@@ -447,7 +430,7 @@ public class UniqueDataTest {
 
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         assertAll("Updated values are not consistent", () -> {
             assertEquals(testDataObject.getString(), testDataObject2.getString());
@@ -483,7 +466,8 @@ public class UniqueDataTest {
         });
     }
 
-    @Test
+
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Set a player's online status to offline, then back to online")
     void changeOnlineStatus() throws InterruptedException {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
@@ -499,7 +483,7 @@ public class UniqueDataTest {
         player.setOnlineStatus(MockOnlineStatus.ONLINE);
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         assertAll("Online status is not consistent across skyblock instances", () -> {
             for (int i = 1; i < NUM_INSTANCES; i++) {
@@ -516,7 +500,7 @@ public class UniqueDataTest {
         player.setOnlineStatus(MockOnlineStatus.OFFLINE);
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         assertAll("Online status is not consistent across skyblock instances", () -> {
             for (int i = 1; i < NUM_INSTANCES; i++) {
@@ -532,7 +516,7 @@ public class UniqueDataTest {
         player.setOnlineStatus(MockOnlineStatus.ONLINE);
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         MockSkyblockGame newSkyblockGame = new MockSkyblockGame("new-skyblock", redis.getHost(), redis.getBindPort(), hikariConfig);
         MockSkyblockPlayer newPlayer = newSkyblockGame.getPlayerProvider().get(playerId);
@@ -540,7 +524,8 @@ public class UniqueDataTest {
         assertEquals(MockOnlineStatus.ONLINE, newPlayer.getOnlineStatus(), "Online status is not consistent across skyblock instances");
     }
 
-    @Test
+
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Delete a player")
     void deletePlayer() throws InterruptedException {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
@@ -551,7 +536,7 @@ public class UniqueDataTest {
         skyblockGame.getDataManager().delete(player, DeletionType.ALL);
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         assertAll("Player still exists", () -> {
             for (int i = 1; i < NUM_INSTANCES; i++) {
@@ -561,3 +546,4 @@ public class UniqueDataTest {
         });
     }
 }
+//todo: test the update handlers, add handlers, and remove handlers extensively

@@ -1,13 +1,12 @@
 package net.staticstudios.data.shared;
 
-import net.staticstudios.data.Addressable;
 import net.staticstudios.data.meta.SharedValueMetadata;
 import net.staticstudios.data.value.UpdateHandler;
 
 /**
  * A class that represents a value which is shared and synced between multiple servers.
  */
-public interface SharedValue<T> extends Addressable {
+public interface SharedValue<T> extends DataWrapper {
     /**
      * Get the current value
      *
@@ -47,10 +46,12 @@ public interface SharedValue<T> extends Addressable {
     UpdateHandler<T> getUpdateHandler();
 
 
+    SharedValueMetadata<?> getMetadata();
+
     /**
      * Get the metadata class for the collection
      *
      * @return The metadata class
      */
-    public abstract Class<? extends SharedValueMetadata<?>> getMetadataClass();
+    Class<? extends SharedValueMetadata<?>> getMetadataClass();
 }

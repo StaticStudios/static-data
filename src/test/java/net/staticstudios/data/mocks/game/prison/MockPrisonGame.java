@@ -1,8 +1,8 @@
 package net.staticstudios.data.mocks.game.prison;
 
 import com.zaxxer.hikari.HikariConfig;
+import net.staticstudios.data.DataProvider;
 import net.staticstudios.data.mocks.game.MockGame;
-import net.staticstudios.data.mocks.game.MockPlayerProvider;
 
 public class MockPrisonGame extends MockGame<MockPrisonPlayer> {
     private final MockPrisonPlayerProvider playerProvider;
@@ -14,7 +14,7 @@ public class MockPrisonGame extends MockGame<MockPrisonPlayer> {
     }
 
     @Override
-    public MockPlayerProvider<MockPrisonPlayer> getPlayerProvider() {
+    public DataProvider<MockPrisonPlayer> getPlayerProvider() {
         return playerProvider;
     }
 }

@@ -1,5 +1,6 @@
-package net.staticstudios.data.meta;
+package net.staticstudios.data.meta.persistant.collection;
 
+import net.staticstudios.data.meta.SharedEntryValueMetadata;
 import net.staticstudios.data.shared.CollectionEntry;
 import net.staticstudios.data.value.PersistentCollection;
 import net.staticstudios.data.value.PersistentEntryValue;

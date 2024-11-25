@@ -1,6 +1,6 @@
 package net.staticstudios.data.messaging;
 
-import java.util.UUID;
+import org.jetbrains.annotations.NotNull;
 
-public record DataValueUpdateMessage(String parentTopLevelTable, UUID uniqueId, String address, String encodedValue) {
+public record DataValueUpdateMessage(@NotNull String dataAddress, String encodedValue) {
 }
