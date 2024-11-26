@@ -42,11 +42,7 @@ public class MockDiscordUser extends UniqueData {
     }
 
     public int getMessagesSent() {
-        Integer amount = messagesSent.get();
-        if (amount == null) {
-            return -1;
-        }
-        return amount;
+        return messagesSent.get();
     }
 
     public void setMessagesSent(int messagesSent) {

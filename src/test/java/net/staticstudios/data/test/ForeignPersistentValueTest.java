@@ -5,7 +5,10 @@ import net.staticstudios.data.mocks.discord.MockDiscordService;
 import net.staticstudios.data.mocks.discord.MockDiscordUser;
 import net.staticstudios.data.mocks.discord.MockDiscordUserStats;
 import net.staticstudios.data.util.DataTest;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junitpioneer.jupiter.RetryingTest;
 
 import java.io.IOException;
@@ -185,7 +188,7 @@ public class ForeignPersistentValueTest extends DataTest {
         MockDiscordUserStats stats0 = service0.getUserStatsProvider().get(userIds.getFirst());
 
 
-        assertEquals(-1, user0.getMessagesSent());
+        assertEquals(0, user0.getMessagesSent());
         assertNull(stats0.getName());
 
 
@@ -212,7 +215,6 @@ public class ForeignPersistentValueTest extends DataTest {
         assertEquals(user0.getName(), stats0.getName());
     }
 
-    @Disabled("This test is failing, since update handlers arent implemented properly yet")
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Insert data into the linking table, load the data, and ensure all PV & FPV update handler's are called")
     void testUpdateHandlers() {
@@ -271,6 +273,9 @@ public class ForeignPersistentValueTest extends DataTest {
             assertEquals(UpdatedValue.of(initialUserMessagesSent, newMessagesSent), user.getLastMessagesSentUpdate());
             assertEquals(UpdatedValue.of(initialUserMessagesSent, newMessagesSent), stats.getLastMessagesSentUpdate());
         }));
+
+        //todo: test when unlinking objects and when setting it to a completely new object as well
+        //todo: test when switching the foreign object to a different object
     }
 
     //todo: test the update handler on local fpvs, local pvs, remote fpvs, and remote pvs
@@ -278,4 +283,5 @@ public class ForeignPersistentValueTest extends DataTest {
     //todo: test deletions
     //todo: add more tests across different types of instances
     //todo: test to ensure the fpvs are in the lookup table after linked
+    //todo: test the case where there are multiple fpvs on both objects and ensure that they all get set when one is linked
 }

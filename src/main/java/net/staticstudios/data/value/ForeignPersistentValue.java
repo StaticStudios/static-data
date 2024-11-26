@@ -1,7 +1,9 @@
 package net.staticstudios.data.value;
 
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.DataUtils;
 import net.staticstudios.data.UniqueData;
+import net.staticstudios.data.UpdatedValue;
 import net.staticstudios.data.meta.persistant.value.ForeignPersistentValueMetadata;
 import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.ApiStatus;
@@ -190,6 +192,7 @@ public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, Foreig
     }
 
     @ApiStatus.Internal
+    @SuppressWarnings("unchecked")
     public synchronized void setInternalForeignObject(UUID foreignObjectId, Object value) {
         if (foreignObjectId == null) {
             //TODO: stop tracking, update the value
@@ -199,8 +202,10 @@ public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, Foreig
 
         DataManager dataManager = getMetadata().getDataManager();
         dataManager.addDataWrapperToLookupTable(getDataAddress(foreignObjectId), this);
+        T oldValue = get();
         setInternal(value);
         setInternalForeignObjectId(foreignObjectId);
+        this.getUpdateHandler().onUpdate(new UpdatedValue<>((T) DataUtils.getValue(getType(), oldValue), (T) DataUtils.getValue(getType(), value)));
 
 //
 //        Collection<DataWrapper> otherWrappers = dataManager.getDataWrappers(getDataAddress(id));

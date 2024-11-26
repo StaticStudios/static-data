@@ -1,9 +1,6 @@
 package net.staticstudios.data.value;
 
-import net.staticstudios.data.DataManager;
-import net.staticstudios.data.DatabaseSupportedType;
-import net.staticstudios.data.UniqueData;
-import net.staticstudios.data.UpdatedValue;
+import net.staticstudios.data.*;
 import net.staticstudios.data.messaging.DataValueUpdateMessage;
 import net.staticstudios.data.messaging.handle.DataValueUpdateMessageHandler;
 import net.staticstudios.data.meta.SharedValueMetadata;
@@ -44,8 +41,9 @@ public abstract class AbstractPersistentValue<T, M extends SharedValueMetadata<?
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public final T get() {
-        return value;
+        return (T) DataUtils.getValue(dataClass, value);
     }
 
     @Override
@@ -58,7 +56,7 @@ public abstract class AbstractPersistentValue<T, M extends SharedValueMetadata<?
         Collection<DataWrapper> otherWrappers = dataManager.getDataWrappers(getDataAddress(id));
         for (DataWrapper wrapper : otherWrappers) {
             AbstractPersistentValue<T, M> otherPv = (AbstractPersistentValue<T, M>) wrapper;
-            T oldValue = otherPv.value;
+            T oldValue = otherPv.get();
             otherPv.setInternal(value);
             otherPv.getUpdateHandler().onUpdate(new UpdatedValue<>(oldValue, value));
         }
@@ -89,7 +87,7 @@ public abstract class AbstractPersistentValue<T, M extends SharedValueMetadata<?
         Collection<DataWrapper> otherWrappers = dataManager.getDataWrappers(getDataAddress(id));
         for (DataWrapper wrapper : otherWrappers) {
             AbstractPersistentValue<T, M> otherPv = (AbstractPersistentValue<T, M>) wrapper;
-            T oldValue = otherPv.value;
+            T oldValue = otherPv.get();
             otherPv.setInternal(value);
             otherPv.getUpdateHandler().onUpdate(new UpdatedValue<>(oldValue, value));
         }
