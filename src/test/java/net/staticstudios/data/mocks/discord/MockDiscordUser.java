@@ -10,6 +10,9 @@ import org.jetbrains.annotations.Blocking;
 import java.sql.Connection;
 import java.util.UUID;
 
+/**
+ * A mock Discord user only has {@link PersistentValue}s and a {@link ForeignPersistentValue}.
+ */
 @Table("discord.users")
 public class MockDiscordUser extends UniqueData {
     private final PersistentValue<String> name = PersistentValue.of(this, String.class, "name");

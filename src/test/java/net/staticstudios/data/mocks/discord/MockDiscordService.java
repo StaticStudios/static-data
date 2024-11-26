@@ -2,13 +2,17 @@ package net.staticstudios.data.mocks.discord;
 
 import com.zaxxer.hikari.HikariConfig;
 import net.staticstudios.data.mocks.MockInstance;
+import net.staticstudios.data.value.ForeignPersistentValue;
 
-public class MockDiscordBot extends MockInstance {
+/**
+ * This service is used to test {@link ForeignPersistentValue}s
+ */
+public class MockDiscordService extends MockInstance {
     private final MockDiscordUserProvider userProvider;
     private final MockDiscordUserStatsProvider userStatsProvider;
 
 
-    public MockDiscordBot(String serverId, String redisHost, int redisPort, HikariConfig hikariConfig) {
+    public MockDiscordService(String serverId, String redisHost, int redisPort, HikariConfig hikariConfig) {
         super(serverId, redisHost, redisPort, hikariConfig);
 
         userProvider = new MockDiscordUserProvider(getDataManager());

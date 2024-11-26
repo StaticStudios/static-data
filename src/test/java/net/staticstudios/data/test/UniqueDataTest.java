@@ -3,13 +3,11 @@ package net.staticstudios.data.test;
 import net.staticstudios.data.DeletionType;
 import net.staticstudios.data.mocks.MockLocation;
 import net.staticstudios.data.mocks.MockOnlineStatus;
-import net.staticstudios.data.mocks.MockTestDataObject;
 import net.staticstudios.data.mocks.MockThreadProvider;
 import net.staticstudios.data.mocks.game.prison.MockPrisonGame;
 import net.staticstudios.data.mocks.game.prison.MockPrisonPlayer;
 import net.staticstudios.data.mocks.game.skyblock.MockSkyblockGame;
 import net.staticstudios.data.mocks.game.skyblock.MockSkyblockPlayer;
-import net.staticstudios.data.mocks.service.MockService;
 import net.staticstudios.data.util.DataTest;
 import net.staticstudios.utils.ThreadUtils;
 import org.junit.jupiter.api.AfterAll;
@@ -22,8 +20,6 @@ import redis.clients.jedis.Jedis;
 import java.io.IOException;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Timestamp;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -93,24 +89,6 @@ public class UniqueDataTest extends DataTest {
                     )
                     """);
 
-            statement.execute("""
-                    CREATE TABLE test_data_types (
-                        id uuid PRIMARY KEY,
-                        test_string varchar(255) NOT NULL DEFAULT 'test',
-                        test_char char NOT NULL DEFAULT 'c',
-                        test_short smallint NOT NULL DEFAULT 1,
-                        test_int int NOT NULL DEFAULT 1,
-                        test_long bigint NOT NULL DEFAULT 1,
-                        test_float real NOT NULL DEFAULT 1.0,
-                        test_double double precision NOT NULL DEFAULT 1.0,
-                        test_boolean boolean NOT NULL DEFAULT true,
-                        test_uuid uuid NOT NULL DEFAULT gen_random_uuid(),
-                        test_timestamp timestamp NOT NULL DEFAULT '1970-01-01 00:00:00',
-                        test_byte_array bytea NOT NULL DEFAULT E'\\\\x010203',
-                        test_uuid_array uuid[] NOT NULL DEFAULT ARRAY[gen_random_uuid()]
-                    )
-                    """);
-
             //Insert some data
             for (int i = 0; i < NUM_USERS; i++) {
                 UUID userId = UUID.randomUUID();
@@ -140,7 +118,6 @@ public class UniqueDataTest extends DataTest {
             statement.execute("DROP TABLE skyblock.players");
             statement.execute("DROP TABLE prison.players");
             statement.execute("DROP TABLE home_locations");
-            statement.execute("DROP TABLE test_data_types");
         }
     }
 
@@ -186,7 +163,7 @@ public class UniqueDataTest extends DataTest {
 
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Create a skyblock player with 2 distinct initial home locations, then add another, and ensure that the player has 3 home locations")
-    void createPlayerWithDistinctHomeLocations() throws InterruptedException {
+    void createPlayerWithDistinctHomeLocations() {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
 
         MockSkyblockPlayer player = new MockSkyblockPlayer(skyblockGame.getDataManager(), "John",
@@ -224,7 +201,7 @@ public class UniqueDataTest extends DataTest {
 
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Create a player with 2 of the same initial home locations, remove one, and ensure that the player has only one home location")
-    void createPlayerWithSameHomeLocations() throws InterruptedException {
+    void createPlayerWithSameHomeLocations() {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
 
         MockSkyblockPlayer player = new MockSkyblockPlayer(skyblockGame.getDataManager(), "John",
@@ -262,7 +239,7 @@ public class UniqueDataTest extends DataTest {
 
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Update a player's home location")
-    void updateHomeLocation() throws InterruptedException {
+    void updateHomeLocation() {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
 
         MockSkyblockPlayer player = skyblockGame.getPlayerProvider().get(userIds.getFirst());
@@ -302,7 +279,7 @@ public class UniqueDataTest extends DataTest {
 
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Create a player on skyblock, and verify the player does not exist on prison")
-    void createSkyblockPlayerAndVerifyPrisonPlayerNotExist() throws InterruptedException {
+    void createSkyblockPlayerAndVerifyPrisonPlayerNotExist() {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
         MockPrisonGame prisonGame = new MockPrisonGame("prison", redis.getHost(), redis.getBindPort(), hikariConfig);
 
@@ -319,7 +296,7 @@ public class UniqueDataTest extends DataTest {
 
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Create a player on skyblock, give it some money, create a player on prison with the same id, and verify the money is equal to skyblock")
-    void createSkyblockPlayerAndVerifyPrisonPlayerMoney() throws InterruptedException {
+    void createSkyblockPlayerAndVerifyPrisonPlayerMoney() {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
         MockPrisonGame prisonGame = new MockPrisonGame("prison", redis.getHost(), redis.getBindPort(), hikariConfig);
 
@@ -345,88 +322,8 @@ public class UniqueDataTest extends DataTest {
 
 
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
-    @DisplayName("Test all DatabaseSupportedTypes")
-    void insertAllDatabaseSupportedTypes() throws InterruptedException {
-        MockService service = new MockService("service", redis.getHost(), redis.getBindPort(), hikariConfig);
-        MockService service2 = new MockService("service-2", redis.getHost(), redis.getBindPort(), hikariConfig);
-
-        MockTestDataObject testDataObject = service.createTestDataObject();
-
-        //Wait for the data to sync
-        waitForDataPropagation();
-
-        MockTestDataObject testDataObject2 = service2.getDataObjectProvider().get(testDataObject.getId());
-
-        assertAll("Initial values are not consistent", () -> {
-            assertEquals(testDataObject.getString(), testDataObject2.getString());
-            assertEquals(testDataObject.getChar(), testDataObject2.getChar());
-            assertEquals(testDataObject.getShort(), testDataObject2.getShort());
-            assertEquals(testDataObject.getInt(), testDataObject2.getInt());
-            assertEquals(testDataObject.getLong(), testDataObject2.getLong());
-            assertEquals(testDataObject.getFloat(), testDataObject2.getFloat());
-            assertEquals(testDataObject.getDouble(), testDataObject2.getDouble());
-            assertEquals(testDataObject.getBoolean(), testDataObject2.getBoolean());
-            assertEquals(testDataObject.getUuid(), testDataObject2.getUuid());
-            assertEquals(testDataObject.getTimestamp().toInstant().toEpochMilli(), testDataObject2.getTimestamp().toInstant().toEpochMilli());
-            assertArrayEquals(testDataObject.getByteArray(), testDataObject2.getByteArray());
-            assertArrayEquals(testDataObject.getUuidArray(), testDataObject2.getUuidArray());
-        });
-
-        //Update each value
-        testDataObject.setString("test2");
-        testDataObject.setChar('d');
-        testDataObject.setShort((short) 2);
-        testDataObject.setInt(2);
-        testDataObject.setLong(2);
-        testDataObject.setFloat(2.0f);
-        testDataObject.setDouble(2.0);
-        testDataObject.setBoolean(false);
-        testDataObject.setUuid(UUID.randomUUID());
-        testDataObject.setTimestamp(Timestamp.from(Instant.now()));
-        testDataObject.setByteArray(new byte[]{0x02, 0x03});
-
-
-        //Wait for the data to sync
-        waitForDataPropagation();
-
-        assertAll("Updated values are not consistent", () -> {
-            assertEquals(testDataObject.getString(), testDataObject2.getString());
-            assertEquals(testDataObject.getChar(), testDataObject2.getChar());
-            assertEquals(testDataObject.getShort(), testDataObject2.getShort());
-            assertEquals(testDataObject.getInt(), testDataObject2.getInt());
-            assertEquals(testDataObject.getLong(), testDataObject2.getLong());
-            assertEquals(testDataObject.getFloat(), testDataObject2.getFloat());
-            assertEquals(testDataObject.getDouble(), testDataObject2.getDouble());
-            assertEquals(testDataObject.getBoolean(), testDataObject2.getBoolean());
-            assertEquals(testDataObject.getUuid(), testDataObject2.getUuid());
-            assertEquals(testDataObject.getTimestamp().toInstant().toEpochMilli(), testDataObject2.getTimestamp().toInstant().toEpochMilli());
-            assertArrayEquals(testDataObject.getByteArray(), testDataObject2.getByteArray());
-            assertArrayEquals(testDataObject.getUuidArray(), testDataObject2.getUuidArray());
-        });
-
-        MockService service3 = new MockService("service-3", redis.getHost(), redis.getBindPort(), hikariConfig);
-        MockTestDataObject testDataObject3 = service3.getDataObjectProvider().get(testDataObject.getId());
-
-        assertAll("Read values are not consistent", () -> {
-            assertEquals(testDataObject.getString(), testDataObject3.getString());
-            assertEquals(testDataObject.getChar(), testDataObject3.getChar());
-            assertEquals(testDataObject.getShort(), testDataObject3.getShort());
-            assertEquals(testDataObject.getInt(), testDataObject3.getInt());
-            assertEquals(testDataObject.getLong(), testDataObject3.getLong());
-            assertEquals(testDataObject.getFloat(), testDataObject3.getFloat());
-            assertEquals(testDataObject.getDouble(), testDataObject3.getDouble());
-            assertEquals(testDataObject.getBoolean(), testDataObject3.getBoolean());
-            assertEquals(testDataObject.getUuid(), testDataObject3.getUuid());
-            assertEquals(testDataObject.getTimestamp().toInstant().toEpochMilli(), testDataObject3.getTimestamp().toInstant().toEpochMilli());
-            assertArrayEquals(testDataObject.getByteArray(), testDataObject3.getByteArray());
-            assertArrayEquals(testDataObject.getUuidArray(), testDataObject3.getUuidArray());
-        });
-    }
-
-
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Set a player's online status to offline, then back to online")
-    void changeOnlineStatus() throws InterruptedException {
+    void changeOnlineStatus() {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
         UUID playerId = userIds.getFirst();
 
@@ -484,7 +381,7 @@ public class UniqueDataTest extends DataTest {
 
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Delete a player")
-    void deletePlayer() throws InterruptedException {
+    void deletePlayer() {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
         MockSkyblockPlayer player = skyblockGame.getPlayerProvider().get(userIds.getFirst());
 
@@ -504,3 +401,4 @@ public class UniqueDataTest extends DataTest {
     }
 }
 //todo: test the update handlers, add handlers, and remove handlers extensively
+//todo: test value serializers

@@ -9,6 +9,9 @@ import org.jetbrains.annotations.Blocking;
 
 import java.util.UUID;
 
+/**
+ * A mock Discord user stats object only has {@link PersistentValue}s and a {@link ForeignPersistentValue}.
+ */
 @Table("discord.stats")
 public class MockDiscordUserStats extends UniqueData {
     private final PersistentValue<Integer> messagesSent = PersistentValue.withDefault(this, Integer.class, 0, "messages_sent");

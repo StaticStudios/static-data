@@ -1,6 +1,6 @@
 package net.staticstudios.data.test;
 
-import net.staticstudios.data.mocks.discord.MockDiscordBot;
+import net.staticstudios.data.mocks.discord.MockDiscordService;
 import net.staticstudios.data.mocks.discord.MockDiscordUser;
 import net.staticstudios.data.mocks.discord.MockDiscordUserStats;
 import net.staticstudios.data.util.DataTest;
@@ -24,7 +24,7 @@ public class ForeignPersistentValueTest extends DataTest {
     static int NUM_INSTANCES = 3;
     static int NUM_USERS = 10;
 
-    List<MockDiscordBot> discordBots = new ArrayList<>();
+    List<MockDiscordService> discordBots = new ArrayList<>();
     List<UUID> userIds = new ArrayList<>();
 
     @AfterAll
@@ -75,7 +75,7 @@ public class ForeignPersistentValueTest extends DataTest {
         UUID sessionId = UUID.randomUUID();
 
         for (int i = 0; i < NUM_INSTANCES; i++) {
-            discordBots.add(new MockDiscordBot(sessionId + "-discord-bot-" + i, redis.getHost(), redis.getBindPort(), hikariConfig));
+            discordBots.add(new MockDiscordService(sessionId + "-discord-bot-" + i, redis.getHost(), redis.getBindPort(), hikariConfig));
         }
     }
 
@@ -89,8 +89,8 @@ public class ForeignPersistentValueTest extends DataTest {
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Create a new user, create new stats, link the two, and ensure the initial value is correct")
     void insertFPVCheckInitialValue() {
-        MockDiscordBot bot0 = discordBots.getFirst();
-        MockDiscordBot bot1 = discordBots.get(1);
+        MockDiscordService bot0 = discordBots.getFirst();
+        MockDiscordService bot1 = discordBots.get(1);
 
         //Create the user object on bot0
         MockDiscordUser user0 = bot0.getUserProvider().createUser("TestUser");
@@ -113,8 +113,8 @@ public class ForeignPersistentValueTest extends DataTest {
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Update a foreign persistent value and ensure it is consistent across all instances")
     void updateFPV() {
-        MockDiscordBot bot0 = discordBots.getFirst();
-        MockDiscordBot bot1 = discordBots.get(1);
+        MockDiscordService bot0 = discordBots.getFirst();
+        MockDiscordService bot1 = discordBots.get(1);
 
         //Create the user object on bot0
         MockDiscordUser user0 = bot0.getUserProvider().createUser("TestUser");
