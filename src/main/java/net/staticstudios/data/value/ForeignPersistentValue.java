@@ -3,11 +3,14 @@ package net.staticstudios.data.value;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.meta.persistant.value.ForeignPersistentValueMetadata;
+import net.staticstudios.utils.ThreadUtils;
+import org.jetbrains.annotations.Blocking;
 import org.jetbrains.annotations.Nullable;
 
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, ForeignPersistentValueMetadata> {
     private final String foreignTable;
@@ -151,6 +154,23 @@ public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, Foreig
         return foreignLinkingColumn;
     }
 
+    public CompletableFuture<T> setForeignObject(UUID foreignObjectId) {
+        CompletableFuture<T> future = new CompletableFuture<>();
+
+        ThreadUtils.submit(() -> {
+            Connection connection = getMetadata().getDataManager().getConnection();
+            try {
+                setForeignObject(connection, foreignObjectId);
+                future.complete(get());
+            } catch (ForeignReferenceDoesNotExistException | SQLException e) {
+                future.completeExceptionally(e);
+            }
+        });
+
+        return future;
+    }
+
+    @Blocking
     public synchronized void setForeignObject(Connection connection, UUID foreignObjectId) throws SQLException, ForeignReferenceDoesNotExistException {
         DataManager dataManager = getMetadata().getDataManager();
 
