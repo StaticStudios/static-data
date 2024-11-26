@@ -52,16 +52,15 @@ public abstract class AbstractPersistentValue<T, M extends SharedValueMetadata<?
     public void set(T value) {
         M metadata = getMetadata();
         DataManager dataManager = metadata.getDataManager();
-        updateHandler.onUpdate(new UpdatedValue<>(this.value, value));
-        setInternal(value);
 
-        // Update all other local wrappers with the new value
+        // Update all other local wrappers with the new value, including this one
         UUID id = getDataId();
         Collection<DataWrapper> otherWrappers = dataManager.getDataWrappers(getDataAddress(id));
         for (DataWrapper wrapper : otherWrappers) {
             AbstractPersistentValue<T, M> otherPv = (AbstractPersistentValue<T, M>) wrapper;
-            otherPv.getUpdateHandler().onUpdate(new UpdatedValue<>(otherPv.value, value));
+            T oldValue = otherPv.value;
             otherPv.setInternal(value);
+            otherPv.getUpdateHandler().onUpdate(new UpdatedValue<>(oldValue, value));
         }
 
         ThreadUtils.submit(() -> {
@@ -84,16 +83,15 @@ public abstract class AbstractPersistentValue<T, M extends SharedValueMetadata<?
     public void set(Connection connection, T value) {
         M metadata = getMetadata();
         DataManager dataManager = metadata.getDataManager();
-        updateHandler.onUpdate(new UpdatedValue<>(this.value, value));
-        setInternal(value);
 
-        // Update all other local wrappers with the new value
+        // Update all other local wrappers with the new value, including this one
         UUID id = getDataId();
         Collection<DataWrapper> otherWrappers = dataManager.getDataWrappers(getDataAddress(id));
         for (DataWrapper wrapper : otherWrappers) {
             AbstractPersistentValue<T, M> otherPv = (AbstractPersistentValue<T, M>) wrapper;
-            otherPv.getUpdateHandler().onUpdate(new UpdatedValue<>(otherPv.value, value));
+            T oldValue = otherPv.value;
             otherPv.setInternal(value);
+            otherPv.getUpdateHandler().onUpdate(new UpdatedValue<>(oldValue, value));
         }
 
         try {

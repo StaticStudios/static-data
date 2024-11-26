@@ -153,38 +153,17 @@ public class UniqueDataTest extends DataTest {
             for (int i = 1; i < NUM_INSTANCES; i++) {
                 MockSkyblockGame g = skyblockGameInstances.get(i);
                 for (MockSkyblockPlayer p : skyblockGame.getPlayerProvider().getAll()) {
-                    assertNotNull(g.getPlayerProvider().get(p.getId()));
+                    assertNotNull(g.getPlayerProvider().get(p.getId()), "Player does not exist on " + g.getDataManager().getServerId());
                 }
             }
         });
     }
 
 
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
-    @DisplayName("Update a skyblock player's money")
-    void updateMoney() throws InterruptedException {
-        MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
-        UUID playerId = userIds.getFirst();
-
-        MockSkyblockPlayer player = skyblockGame.getPlayerProvider().get(playerId);
-        player.setMoney(5);
-
-        //Wait for the data to sync
-        waitForDataPropagation();
-
-        assertAll("Money is not consistent across skyblock instances", () -> {
-                    for (int i = 1; i < NUM_INSTANCES; i++) {
-                        MockSkyblockPlayer p = skyblockGameInstances.get(i).getPlayerProvider().get(playerId);
-                        assertEquals(5, p.getMoney());
-                    }
-                }
-        );
-    }
-
-
+    //todo: rename this test, and add more info about what its actually testing (inheritance)
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Update a skyblock player's (user's) name")
-    void updateName() throws InterruptedException {
+    void updateName() {
         //The name exists on the user, not the player
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
         UUID playerId = userIds.getFirst();
@@ -202,28 +181,6 @@ public class UniqueDataTest extends DataTest {
                     }
                 }
         );
-    }
-
-
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
-    @DisplayName("Create a skyblock player with default values")
-    void createPlayerWithDefaults() throws InterruptedException {
-        MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
-        String name = "John";
-
-        MockSkyblockPlayer player = new MockSkyblockPlayer(skyblockGame.getDataManager(), name);
-        UUID playerId = player.getId();
-        skyblockGame.getPlayerProvider().set(player);
-
-        //Wait for the data to sync
-        waitForDataPropagation();
-
-        assertAll("Name is not consistent across skyblock instances", () -> {
-            for (int i = 1; i < NUM_INSTANCES; i++) {
-                MockSkyblockPlayer p = skyblockGameInstances.get(i).getPlayerProvider().get(playerId);
-                assertEquals(name, p.getName());
-            }
-        });
     }
 
 

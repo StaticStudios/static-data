@@ -80,8 +80,9 @@ public class CachedValue<T> implements SharedValue<T> {
     public void set(T value) {
         CachedValueMetadata metadata = getMetadata();
         DataManager dataManager = metadata.getDataManager();
-        updateHandler.onUpdate(new UpdatedValue<>(this.value, value));
+        T oldValue = this.value;
         setInternal(value);
+        updateHandler.onUpdate(new UpdatedValue<>(oldValue, value));
 
 
         Object serialized = dataManager.serialize(value);
@@ -118,8 +119,9 @@ public class CachedValue<T> implements SharedValue<T> {
     public void set(Jedis jedis, T value) {
         CachedValueMetadata metadata = getMetadata();
         DataManager dataManager = metadata.getDataManager();
-        updateHandler.onUpdate(new UpdatedValue<>(this.value, value));
+        T oldValue = this.value;
         setInternal(value);
+        updateHandler.onUpdate(new UpdatedValue<>(oldValue, value));
 
         Object serialized = dataManager.serialize(value);
         String encoded = DatabaseSupportedType.encode(serialized);

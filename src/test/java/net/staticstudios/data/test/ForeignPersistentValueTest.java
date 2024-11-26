@@ -20,9 +20,9 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-public class ForeignPersistentValuesTest extends DataTest {
+public class ForeignPersistentValueTest extends DataTest {
     static int NUM_INSTANCES = 3;
-    static int NUM_USERS = 0;
+    static int NUM_USERS = 10;
 
     List<MockDiscordBot> discordBots = new ArrayList<>();
     List<UUID> userIds = new ArrayList<>();
@@ -88,7 +88,7 @@ public class ForeignPersistentValuesTest extends DataTest {
 
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Create a new user, create new stats, link the two, and ensure the initial value is correct")
-    void insertFPVCheckInitialValue() throws InterruptedException {
+    void insertFPVCheckInitialValue() {
         MockDiscordBot bot0 = discordBots.getFirst();
         MockDiscordBot bot1 = discordBots.get(1);
 
@@ -112,7 +112,7 @@ public class ForeignPersistentValuesTest extends DataTest {
 
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Update a foreign persistent value and ensure it is consistent across all instances")
-    void updateFPV() throws InterruptedException {
+    void updateFPV() {
         MockDiscordBot bot0 = discordBots.getFirst();
         MockDiscordBot bot1 = discordBots.get(1);
 

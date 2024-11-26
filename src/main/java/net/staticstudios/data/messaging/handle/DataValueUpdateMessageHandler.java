@@ -34,8 +34,9 @@ public class DataValueUpdateMessageHandler implements MessageHandler<DataValueUp
 
             Object serialized = DatabaseSupportedType.decode(payload.encodedValue());
             Object deserialized = dataManager.deserialize(sharedValueMetadata.getType(), serialized);
-            sharedValue.getUpdateHandler().unsafeHandleUpdate(sharedValue.get(), deserialized);
+            Object oldValue = sharedValue.get();
             sharedValue.setInternal(deserialized);
+            sharedValue.getUpdateHandler().unsafeHandleUpdate(oldValue, deserialized);
         }
 
         return null;
