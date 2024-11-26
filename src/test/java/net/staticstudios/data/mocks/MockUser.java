@@ -1,11 +1,10 @@
-package net.staticstudios.data.mocks.user;
+package net.staticstudios.data.mocks;
 
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.Table;
 import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.value.CachedValue;
 import net.staticstudios.data.value.PersistentValue;
-import net.staticstudios.data.mocks.MockOnlineStatus;
 
 import java.util.UUID;
 

@@ -73,13 +73,13 @@ public class DatabaseSupportedTypeTest extends DataTest {
     @DisplayName("Test all DatabaseSupportedTypes")
     void insertAllDatabaseSupportedTypes() {
         MockNetflixService service0 = netflixServices.getFirst();
-        MockNetflixUser user0 = service0.getUserProviderProvider().createUser();
+        MockNetflixUser user0 = service0.getUserProvider().createUser();
 
         //Wait for the data to sync
         waitForDataPropagation();
 
         assertAll("data creation", netflixServices.stream().map(service -> () -> {
-            MockNetflixUser user = service.getUserProviderProvider().get(user0.getId());
+            MockNetflixUser user = service.getUserProvider().get(user0.getId());
 
             assertEquals(user0.getString(), user.getString());
             assertEquals(user0.getChar(), user.getChar());
@@ -113,7 +113,7 @@ public class DatabaseSupportedTypeTest extends DataTest {
         waitForDataPropagation();
 
         assertAll("data update", netflixServices.stream().map(service -> () -> {
-            MockNetflixUser user = service.getUserProviderProvider().get(user0.getId());
+            MockNetflixUser user = service.getUserProvider().get(user0.getId());
 
             assertEquals(user0.getString(), user.getString());
             assertEquals(user0.getChar(), user.getChar());

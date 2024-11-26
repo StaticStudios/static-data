@@ -16,7 +16,7 @@ public class MockNetflixService extends MockInstance {
         this.userProvider = new MockNetflixUserProvider(getDataManager());
     }
 
-    public MockNetflixUserProvider getUserProviderProvider() {
+    public MockNetflixUserProvider getUserProvider() {
         return userProvider;
     }
 }

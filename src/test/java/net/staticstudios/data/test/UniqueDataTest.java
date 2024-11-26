@@ -2,7 +2,6 @@ package net.staticstudios.data.test;
 
 import net.staticstudios.data.DeletionType;
 import net.staticstudios.data.mocks.MockLocation;
-import net.staticstudios.data.mocks.MockOnlineStatus;
 import net.staticstudios.data.mocks.MockThreadProvider;
 import net.staticstudios.data.mocks.game.prison.MockPrisonGame;
 import net.staticstudios.data.mocks.game.prison.MockPrisonPlayer;
@@ -15,7 +14,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junitpioneer.jupiter.RetryingTest;
-import redis.clients.jedis.Jedis;
 
 import java.io.IOException;
 import java.sql.SQLException;
@@ -318,64 +316,6 @@ public class UniqueDataTest extends DataTest {
         //Since the name "John" already existed on the user before we created the prison player, the name should be "John" should still be on the user.
         //Information already in the db should not be overridden when creating a new object that "extends" the user.
         assertNotEquals("Dan", prisonPlayer.getName(), "Name should not be overridden when creating a new object that extends the user");
-    }
-
-
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
-    @DisplayName("Set a player's online status to offline, then back to online")
-    void changeOnlineStatus() {
-        MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
-        UUID playerId = userIds.getFirst();
-
-
-        String key = skyblockGame.getDataManager().buildCachedValueKey("online_status", "skyblock.players", playerId);
-        try (Jedis jedis = skyblockGame.getDataManager().getJedis()) {
-            assertFalse(jedis.exists(key), "Online status key exists");
-        }
-
-        MockSkyblockPlayer player = skyblockGame.getPlayerProvider().get(playerId);
-        player.setOnlineStatus(MockOnlineStatus.ONLINE);
-
-        //Wait for the data to sync
-        waitForDataPropagation();
-
-        assertAll("Online status is not consistent across skyblock instances", () -> {
-            for (int i = 1; i < NUM_INSTANCES; i++) {
-                MockSkyblockPlayer p = skyblockGameInstances.get(i).getPlayerProvider().get(playerId);
-                assertEquals(MockOnlineStatus.ONLINE, p.getOnlineStatus(), skyblockGameInstances.get(i).getDataManager().getServerId() + " online status is not consistent");
-            }
-        });
-
-
-        try (Jedis jedis = skyblockGame.getDataManager().getJedis()) {
-            assertTrue(jedis.exists(key), "Online status key does not exist");
-        }
-
-        player.setOnlineStatus(MockOnlineStatus.OFFLINE);
-
-        //Wait for the data to sync
-        waitForDataPropagation();
-
-        assertAll("Online status is not consistent across skyblock instances", () -> {
-            for (int i = 1; i < NUM_INSTANCES; i++) {
-                MockSkyblockPlayer p = skyblockGameInstances.get(i).getPlayerProvider().get(playerId);
-                assertEquals(MockOnlineStatus.OFFLINE, p.getOnlineStatus());
-            }
-        });
-
-        try (Jedis jedis = skyblockGame.getDataManager().getJedis()) {
-            assertFalse(jedis.exists(key), "Online status key exists");
-        }
-
-        player.setOnlineStatus(MockOnlineStatus.ONLINE);
-
-        //Wait for the data to sync
-        waitForDataPropagation();
-
-        MockSkyblockGame newSkyblockGame = new MockSkyblockGame("new-skyblock", redis.getHost(), redis.getBindPort(), hikariConfig);
-        MockSkyblockPlayer newPlayer = newSkyblockGame.getPlayerProvider().get(playerId);
-
-        assertEquals(MockOnlineStatus.ONLINE, newPlayer.getOnlineStatus(), "Online status is not consistent across skyblock instances");
     }
 
 

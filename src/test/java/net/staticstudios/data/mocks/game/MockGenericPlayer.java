@@ -2,11 +2,11 @@ package net.staticstudios.data.mocks.game;
 
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.Table;
-import net.staticstudios.data.value.PersistentCollection;
-import net.staticstudios.data.value.PersistentValue;
 import net.staticstudios.data.mocks.MockBlockLocation;
 import net.staticstudios.data.mocks.MockLocation;
-import net.staticstudios.data.mocks.user.MockUser;
+import net.staticstudios.data.mocks.MockUser;
+import net.staticstudios.data.value.PersistentCollection;
+import net.staticstudios.data.value.PersistentValue;
 
 import java.util.ArrayList;
 import java.util.Arrays;
