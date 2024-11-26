@@ -200,9 +200,9 @@ public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, Foreig
         setInternal(value);
         //todo: shouldnt we call the update handler? test to make sure the update handler is called
         //todo: we shouldnt call it here but i dont think its called on fpvs everywhere it should be.
-        //todo: also should update handlers even return a changed value? im not sure if that makes sense they should probably just return void
 
         this.foreignObjectId = foreignObjectId;
+        
     }
 
     /**

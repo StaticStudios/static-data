@@ -24,7 +24,7 @@ public class ForeignPersistentValueTest extends DataTest {
     static int NUM_INSTANCES = 3;
     static int NUM_USERS = 10;
 
-    List<MockDiscordService> discordBots = new ArrayList<>();
+    List<MockDiscordService> discordServices = new ArrayList<>();
     List<UUID> userIds = new ArrayList<>();
 
     @AfterAll
@@ -68,14 +68,13 @@ public class ForeignPersistentValueTest extends DataTest {
                 userIds.add(userId);
                 statement.execute("INSERT INTO discord.users (id, name) VALUES ('" + userId + "', 'User" + i + "')");
                 statement.execute("INSERT INTO discord.stats (id) VALUES ('" + userId + "')");
-                statement.execute("INSERT INTO discord.user_stats (user_id, stats_id) VALUES ('" + userId + "', '" + userId + "')");
             }
         }
 
         UUID sessionId = UUID.randomUUID();
 
         for (int i = 0; i < NUM_INSTANCES; i++) {
-            discordBots.add(new MockDiscordService(sessionId + "-discord-bot-" + i, redis.getHost(), redis.getBindPort(), hikariConfig));
+            discordServices.add(new MockDiscordService(sessionId + "-discord-service-" + i, redis.getHost(), redis.getBindPort(), hikariConfig));
         }
     }
 
@@ -89,15 +88,15 @@ public class ForeignPersistentValueTest extends DataTest {
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Create a new user, create new stats, link the two, and ensure the initial value is correct")
     void insertFPVCheckInitialValue() {
-        MockDiscordService bot0 = discordBots.getFirst();
-        MockDiscordService bot1 = discordBots.get(1);
+        MockDiscordService service0 = discordServices.getFirst();
+        MockDiscordService service1 = discordServices.get(1);
 
-        //Create the user object on bot0
-        MockDiscordUser user0 = bot0.getUserProvider().createUser("TestUser");
+        //Create the user object on service0
+        MockDiscordUser user0 = service0.getUserProvider().createUser("TestUser");
         UUID userId = UUID.randomUUID();
 
-        //Create the stats object on bot1, and set the initial messages sent to 10
-        MockDiscordUserStats stats1 = bot1.getUserStatsProvider().createStats();
+        //Create the stats object on service1, and set the initial messages sent to 10
+        MockDiscordUserStats stats1 = service1.getUserStatsProvider().createStats();
         stats1.setMessagesSent(10);
 
         waitForDataPropagation();
@@ -113,15 +112,14 @@ public class ForeignPersistentValueTest extends DataTest {
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Update a foreign persistent value and ensure it is consistent across all instances")
     void updateFPV() {
-        MockDiscordService bot0 = discordBots.getFirst();
-        MockDiscordService bot1 = discordBots.get(1);
+        MockDiscordService service0 = discordServices.getFirst();
+        MockDiscordService service1 = discordServices.get(1);
 
-        //Create the user object on bot0
-        MockDiscordUser user0 = bot0.getUserProvider().createUser("TestUser");
-        UUID userId = user0.getId();
+        //Create the user object on service0
+        MockDiscordUser user0 = service0.getUserProvider().createUser("TestUser");
 
-        //Create the stats object on bot1
-        MockDiscordUserStats stats1 = bot1.getUserStatsProvider().createStats();
+        //Create the stats object on service1
+        MockDiscordUserStats stats1 = service1.getUserStatsProvider().createStats();
         UUID statsId = stats1.getId();
 
         //Set the initial value to 10
@@ -132,12 +130,12 @@ public class ForeignPersistentValueTest extends DataTest {
         //Ensure that the name is not set, since the user and stats are not linked
         assertNull(stats1.getName());
 
-        //Ensure the stats object was created on bot0
-        MockDiscordUserStats stats0 = bot0.getUserStatsProvider().get(statsId);
+        //Ensure the stats object was created on service0
+        MockDiscordUserStats stats0 = service0.getUserStatsProvider().get(statsId);
         assertEquals(10, stats0.getMessagesSent());
 
-        //Ensure the stats object was created on bot2
-        MockDiscordUserStats stats2 = bot1.getUserStatsProvider().get(statsId);
+        //Ensure the stats object was created on service2
+        MockDiscordUserStats stats2 = service1.getUserStatsProvider().get(statsId);
         assertEquals(10, stats2.getMessagesSent());
 
         //Link the user to the stats
@@ -151,8 +149,8 @@ public class ForeignPersistentValueTest extends DataTest {
          */
         assertEquals("TestUser", stats1.getName());
 
-        user0.incrementMessagesSent(); //Update the value from an FPV on bot0
-        assertEquals(11, stats0.getMessagesSent()); //The PV on bot0 should update instantly, since it is local
+        user0.incrementMessagesSent(); //Update the value from an FPV on service0
+        assertEquals(11, stats0.getMessagesSent()); //The PV on service0 should update instantly, since it is local
 
         waitForDataPropagation();
 
@@ -161,8 +159,38 @@ public class ForeignPersistentValueTest extends DataTest {
 
         assertEquals(11, stats1.getMessagesSent());
         assertEquals(11, stats2.getMessagesSent());
+    }
+
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @DisplayName("Insert data into the linking table, load the data, and ensure FPV value's are present")
+    void loadFPV() throws SQLException {
+        MockDiscordService service0 = discordServices.getFirst();
+        MockDiscordUser user0 = service0.getUserProvider().get(userIds.getFirst());
+        MockDiscordUserStats stats0 = service0.getUserStatsProvider().get(userIds.getFirst());
 
 
+        assertEquals(-1, user0.getMessagesSent());
+        assertNull(stats0.getName());
+
+
+        for (UUID userId : userIds) {
+            connection.prepareStatement("INSERT INTO discord.user_stats (user_id, stats_id) VALUES ('" + userId + "', '" + userId + "')").execute();
+        }
+
+        List<MockDiscordService> discordServices = new ArrayList<>();
+
+        UUID sessionId = UUID.randomUUID();
+
+        for (int i = 0; i < NUM_INSTANCES; i++) {
+            discordServices.add(new MockDiscordService(sessionId + "-discord-service-" + i, redis.getHost(), redis.getBindPort(), hikariConfig));
+        }
+
+        service0 = discordServices.getFirst();
+        user0 = service0.getUserProvider().get(userIds.getFirst());
+        stats0 = service0.getUserStatsProvider().get(userIds.getFirst());
+
+        assertEquals(stats0.getMessagesSent(), user0.getMessagesSent());
+        assertEquals(user0.getName(), stats0.getName());
     }
 
     //todo: test deletions
