@@ -9,6 +9,7 @@ import net.staticstudios.data.value.PersistentValue;
 import org.jetbrains.annotations.Blocking;
 
 import java.sql.Connection;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -42,7 +43,8 @@ public class MockDiscordUser extends UniqueData {
     }
 
     public int getMessagesSent() {
-        return messagesSent.get();
+        Integer messagesSent = this.messagesSent.get();
+        return messagesSent == null ? 0 : messagesSent;
     }
 
     public void setMessagesSent(int messagesSent) {
@@ -50,7 +52,7 @@ public class MockDiscordUser extends UniqueData {
     }
 
     public void incrementMessagesSent() {
-        this.messagesSent.set(this.messagesSent.get() + 1);
+        this.messagesSent.set(Objects.requireNonNull(this.messagesSent.get()) + 1);
     }
 
     public void setStatsId(UUID id) {

@@ -247,7 +247,9 @@ public class ForeignPersistentValueTest extends DataTest {
             assertNull(user.getLastNamesUpdate());
             assertEquals(UpdatedValue.of(initialStatsName, initialUserName), stats.getLastNamesUpdate());
             assertNull(stats.getLastMessagesSentUpdate());
-            assertEquals(UpdatedValue.of(initialStatsMessagesSent, initialUserMessagesSent), user.getLastMessagesSentUpdate());
+
+            assertNull(user.getLastMessagesSentUpdate().oldValue());
+            assertEquals(0, user.getLastMessagesSentUpdate().newValue());
         }));
 
         String newName = "NewName";

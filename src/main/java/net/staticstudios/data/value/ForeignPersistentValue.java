@@ -194,6 +194,7 @@ public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, Foreig
     @ApiStatus.Internal
     @SuppressWarnings("unchecked")
     public synchronized void setInternalForeignObject(UUID foreignObjectId, Object value) {
+        value = DataUtils.getValue(getType(), value); //Fix weird type
         if (foreignObjectId == null) {
             //TODO: stop tracking, update the value
             setInternal(null);
@@ -205,7 +206,7 @@ public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, Foreig
         T oldValue = get();
         setInternal(value);
         setInternalForeignObjectId(foreignObjectId);
-        this.getUpdateHandler().onUpdate(new UpdatedValue<>((T) DataUtils.getValue(getType(), oldValue), (T) DataUtils.getValue(getType(), value)));
+        this.getUpdateHandler().onUpdate(new UpdatedValue<>(oldValue, (T) value));
 
 //
 //        Collection<DataWrapper> otherWrappers = dataManager.getDataWrappers(getDataAddress(id));
@@ -238,6 +239,12 @@ public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, Foreig
     @Override
     public String getTable() {
         return foreignTable;
+    }
+
+    @Override
+    @Nullable
+    public T get() {
+        return super.get();
     }
 
     @Override

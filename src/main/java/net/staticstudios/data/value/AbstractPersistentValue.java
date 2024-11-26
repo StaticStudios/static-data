@@ -1,6 +1,9 @@
 package net.staticstudios.data.value;
 
-import net.staticstudios.data.*;
+import net.staticstudios.data.DataManager;
+import net.staticstudios.data.DatabaseSupportedType;
+import net.staticstudios.data.UniqueData;
+import net.staticstudios.data.UpdatedValue;
 import net.staticstudios.data.messaging.DataValueUpdateMessage;
 import net.staticstudios.data.messaging.handle.DataValueUpdateMessageHandler;
 import net.staticstudios.data.meta.SharedValueMetadata;
@@ -41,9 +44,8 @@ public abstract class AbstractPersistentValue<T, M extends SharedValueMetadata<?
     }
 
     @Override
-    @SuppressWarnings("unchecked")
-    public final T get() {
-        return (T) DataUtils.getValue(dataClass, value);
+    public T get() {
+        return value;
     }
 
     @Override
