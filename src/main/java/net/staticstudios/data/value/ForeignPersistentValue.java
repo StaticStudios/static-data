@@ -220,7 +220,7 @@ public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, Foreig
     }
 
     @Override
-    public UUID getDataId() {
+    protected UUID getDataId() {
         if (foreignObjectId == null) {
             throw new ForeignReferenceNotSetException("foreignObjectId is not set!");
         }

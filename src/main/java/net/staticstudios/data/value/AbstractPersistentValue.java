@@ -192,7 +192,7 @@ public abstract class AbstractPersistentValue<T, M extends SharedValueMetadata<?
      */
     public abstract String getTable();
 
-    public abstract UUID getDataId();
+    protected abstract UUID getDataId();
 
     public UniqueData getParent() {
         return parent;

@@ -131,7 +131,7 @@ public class PersistentValue<T> extends AbstractPersistentValue<T, PersistentVal
     }
 
     @Override
-    public UUID getDataId() {
+    protected UUID getDataId() {
         return getParent().getId();
     }
 }
