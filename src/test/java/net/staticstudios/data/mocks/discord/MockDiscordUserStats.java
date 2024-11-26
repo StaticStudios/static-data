@@ -3,6 +3,7 @@ package net.staticstudios.data.mocks.discord;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.Table;
 import net.staticstudios.data.UniqueData;
+import net.staticstudios.data.UpdatedValue;
 import net.staticstudios.data.value.ForeignPersistentValue;
 import net.staticstudios.data.value.PersistentValue;
 import org.jetbrains.annotations.Blocking;
@@ -14,8 +15,10 @@ import java.util.UUID;
  */
 @Table("discord.stats")
 public class MockDiscordUserStats extends UniqueData {
-    private final PersistentValue<Integer> messagesSent = PersistentValue.withDefault(this, Integer.class, 0, "messages_sent");
-    private final ForeignPersistentValue<String> name = ForeignPersistentValue.of(this, String.class, "discord.users", "name", "discord.user_stats", "stats_id", "user_id");
+    private UpdatedValue<String> lastNameUpdate;
+    private final ForeignPersistentValue<String> name = ForeignPersistentValue.of(this, String.class, "discord.users", "name", "discord.user_stats", "stats_id", "user_id", updated -> lastNameUpdate = updated);
+    private UpdatedValue<Integer> lastMessagesSentUpdate;
+    private final PersistentValue<Integer> messagesSent = PersistentValue.withDefault(this, Integer.class, 0, "messages_sent", updated -> lastMessagesSentUpdate = updated);
 
     private MockDiscordUserStats() {
     }
@@ -43,8 +46,20 @@ public class MockDiscordUserStats extends UniqueData {
         return name.get();
     }
 
+    public UUID getUserId() {
+        return name.getForeignObjectId();
+    }
+
     public void setName(String name) {
         this.name.set(name);
+    }
+
+    public UpdatedValue<String> getLastNamesUpdate() {
+        return lastNameUpdate;
+    }
+
+    public UpdatedValue<Integer> getLastMessagesSentUpdate() {
+        return lastMessagesSentUpdate;
     }
 
 }

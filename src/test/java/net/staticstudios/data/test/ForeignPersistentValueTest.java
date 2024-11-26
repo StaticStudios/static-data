@@ -1,13 +1,11 @@
 package net.staticstudios.data.test;
 
+import net.staticstudios.data.UpdatedValue;
 import net.staticstudios.data.mocks.discord.MockDiscordService;
 import net.staticstudios.data.mocks.discord.MockDiscordUser;
 import net.staticstudios.data.mocks.discord.MockDiscordUserStats;
 import net.staticstudios.data.util.DataTest;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.*;
 import org.junitpioneer.jupiter.RetryingTest;
 
 import java.io.IOException;
@@ -17,8 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class ForeignPersistentValueTest extends DataTest {
     static int NUM_INSTANCES = 3;
@@ -93,7 +90,6 @@ public class ForeignPersistentValueTest extends DataTest {
 
         //Create the user object on service0
         MockDiscordUser user0 = service0.getUserProvider().createUser("TestUser");
-        UUID userId = UUID.randomUUID();
 
         //Create the stats object on service1, and set the initial messages sent to 10
         MockDiscordUserStats stats1 = service1.getUserStatsProvider().createStats();
@@ -120,35 +116,52 @@ public class ForeignPersistentValueTest extends DataTest {
 
         //Create the stats object on service1
         MockDiscordUserStats stats1 = service1.getUserStatsProvider().createStats();
-        UUID statsId = stats1.getId();
+
+        int initialMessagesSent = 10;
 
         //Set the initial value to 10
-        stats1.setMessagesSent(10);
+        stats1.setMessagesSent(initialMessagesSent);
 
         waitForDataPropagation();
 
-        //Ensure that the name is not set, since the user and stats are not linked
-        assertNull(stats1.getName());
+        assertAll("stats messages set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertEquals(initialMessagesSent, stats.getMessagesSent());
+                }));
 
-        //Ensure the stats object was created on service0
-        MockDiscordUserStats stats0 = service0.getUserStatsProvider().get(statsId);
-        assertEquals(10, stats0.getMessagesSent());
-
-        //Ensure the stats object was created on service2
-        MockDiscordUserStats stats2 = service1.getUserStatsProvider().get(statsId);
-        assertEquals(10, stats2.getMessagesSent());
+        assertAll("user name not set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertNull(stats.getName());
+                }));
 
         //Link the user to the stats
-        user0.setStatsId(statsId);
+        user0.setStatsId(stats1.getId());
 
         waitForDataPropagation();
+
+        //todo: add other fpvs to the objects and ensure theyre linked
+
+        assertAll("foreignId set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUser user = service.getUserProvider().get(user0.getId());
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertEquals(stats1.getId(), user.getStatsId(), service.getDataManager().getServerId());
+                    assertEquals(user0.getId(), stats.getUserId(), service.getDataManager().getServerId());
+                }));
 
         /* Ensure that the name is now set on the stats object
          * Despite this being a different FPV entirely, it uses the same linking table,
          * so once one link is established, any other FPV with the same linking table will be updated
          */
-        assertEquals("TestUser", stats1.getName());
+        assertAll("stats name set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertEquals(user0.getName(), stats.getName(), service.getDataManager().getServerId());
+                }));
 
+        MockDiscordUserStats stats0 = service0.getUserStatsProvider().get(stats1.getId());
         user0.incrementMessagesSent(); //Update the value from an FPV on service0
         assertEquals(11, stats0.getMessagesSent()); //The PV on service0 should update instantly, since it is local
 
@@ -157,8 +170,11 @@ public class ForeignPersistentValueTest extends DataTest {
         //Validate the data actually propagated
         //todo: we should then test unlinking, and ensure the data gets set to null
 
-        assertEquals(11, stats1.getMessagesSent());
-        assertEquals(11, stats2.getMessagesSent());
+        assertAll("stats messages sent updated",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertEquals(11, stats.getMessagesSent());
+                }));
     }
 
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
@@ -177,7 +193,7 @@ public class ForeignPersistentValueTest extends DataTest {
             connection.prepareStatement("INSERT INTO discord.user_stats (user_id, stats_id) VALUES ('" + userId + "', '" + userId + "')").execute();
         }
 
-        List<MockDiscordService> discordServices = new ArrayList<>();
+        discordServices.clear();
 
         UUID sessionId = UUID.randomUUID();
 
@@ -189,10 +205,77 @@ public class ForeignPersistentValueTest extends DataTest {
         user0 = service0.getUserProvider().get(userIds.getFirst());
         stats0 = service0.getUserStatsProvider().get(userIds.getFirst());
 
+        assertEquals(user0.getId(), stats0.getUserId());
+        assertEquals(stats0.getId(), user0.getStatsId());
+
         assertEquals(stats0.getMessagesSent(), user0.getMessagesSent());
         assertEquals(user0.getName(), stats0.getName());
     }
 
+    @Disabled("This test is failing, since update handlers arent implemented properly yet")
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @DisplayName("Insert data into the linking table, load the data, and ensure all PV & FPV update handler's are called")
+    void testUpdateHandlers() {
+        MockDiscordService service0 = discordServices.getFirst();
+        MockDiscordUser user0 = service0.getUserProvider().get(userIds.getFirst());
+        MockDiscordUserStats stats0 = service0.getUserStatsProvider().get(userIds.getFirst());
+
+        assertAll("no updates called", discordServices.stream().map(service -> () -> {
+            MockDiscordUser user = service.getUserProvider().get(userIds.getFirst());
+            MockDiscordUserStats stats = service.getUserStatsProvider().get(userIds.getFirst());
+            assertNull(user.getLastNamesUpdate());
+            assertNull(user.getLastMessagesSentUpdate());
+
+            assertNull(stats.getLastMessagesSentUpdate());
+            assertNull(stats.getLastNamesUpdate());
+        }));
+
+        String initialUserName = user0.getName();
+        String initialStatsName = stats0.getName();
+        int initialUserMessagesSent = user0.getMessagesSent();
+        int initialStatsMessagesSent = stats0.getMessagesSent();
+
+        user0.setStatsId(user0.getId());
+
+        waitForDataPropagation();
+
+        assertAll("update handlers called", discordServices.stream().map(service -> () -> {
+            MockDiscordUser user = service.getUserProvider().get(userIds.getFirst());
+            MockDiscordUserStats stats = service.getUserStatsProvider().get(userIds.getFirst());
+            assertNull(user.getLastNamesUpdate());
+            assertEquals(UpdatedValue.of(initialStatsName, initialUserName), stats.getLastNamesUpdate());
+            assertNull(stats.getLastMessagesSentUpdate());
+            assertEquals(UpdatedValue.of(initialStatsMessagesSent, initialUserMessagesSent), user.getLastMessagesSentUpdate());
+        }));
+
+        String newName = "NewName";
+        user0.setName(newName);
+
+        waitForDataPropagation();
+
+        assertAll("update handlers called", discordServices.stream().map(service -> () -> {
+            MockDiscordUser user = service.getUserProvider().get(userIds.getFirst());
+            MockDiscordUserStats stats = service.getUserStatsProvider().get(userIds.getFirst());
+            assertEquals(UpdatedValue.of(initialUserName, newName), user.getLastNamesUpdate());
+            assertEquals(UpdatedValue.of(initialUserName, newName), stats.getLastNamesUpdate());
+        }));
+
+        int newMessagesSent = 100;
+        user0.setMessagesSent(newMessagesSent);
+
+        waitForDataPropagation();
+
+        assertAll("update handlers called", discordServices.stream().map(service -> () -> {
+            MockDiscordUser user = service.getUserProvider().get(userIds.getFirst());
+            MockDiscordUserStats stats = service.getUserStatsProvider().get(userIds.getFirst());
+            assertEquals(UpdatedValue.of(initialUserMessagesSent, newMessagesSent), user.getLastMessagesSentUpdate());
+            assertEquals(UpdatedValue.of(initialUserMessagesSent, newMessagesSent), stats.getLastMessagesSentUpdate());
+        }));
+    }
+
+    //todo: test the update handler on local fpvs, local pvs, remote fpvs, and remote pvs
+
     //todo: test deletions
     //todo: add more tests across different types of instances
+    //todo: test to ensure the fpvs are in the lookup table after linked
 }

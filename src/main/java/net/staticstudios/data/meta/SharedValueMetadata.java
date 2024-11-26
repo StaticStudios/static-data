@@ -37,13 +37,8 @@ public interface SharedValueMetadata<T extends SharedValue<?>> extends Metadata 
      * @param value    the value to set
      */
     default void setInternalValue(UniqueData instance, Object value) {
-        Field field = getField();
-        try {
-            SharedValue<?> sharedValue = (SharedValue<?>) field.get(instance);
-            sharedValue.setInternal(value);
-        } catch (IllegalAccessException e) {
-            throw new RuntimeException("Failed to set value in field " + field.getName() + " in " + instance.getClass().getName(), e);
-        }
+        SharedValue<?> sharedValue = getSharedValue(instance);
+        sharedValue.setInternal(value);
     }
 
     /**

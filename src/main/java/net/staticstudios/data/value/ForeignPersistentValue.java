@@ -4,6 +4,7 @@ import net.staticstudios.data.DataManager;
 import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.meta.persistant.value.ForeignPersistentValueMetadata;
 import net.staticstudios.utils.ThreadUtils;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Blocking;
 import org.jetbrains.annotations.Nullable;
 
@@ -39,6 +40,10 @@ public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, Foreig
     public static <T> ForeignPersistentValue<T> of(UniqueData parent, Class<T> type, String foreignTable, String column, String linkingTable, String thisLinkingColumn, String foreignLinkingColumn) {
         return new ForeignPersistentValue<>(parent, foreignTable, linkingTable, thisLinkingColumn, foreignLinkingColumn, column, type, updated -> {
         });
+    }
+
+    public static <T> ForeignPersistentValue<T> of(UniqueData parent, Class<T> type, String foreignTable, String column, String linkingTable, String thisLinkingColumn, String foreignLinkingColumn, UpdateHandler<T> updateHandler) {
+        return new ForeignPersistentValue<>(parent, foreignTable, linkingTable, thisLinkingColumn, foreignLinkingColumn, column, type, updateHandler);
     }
 
     //todo: other of() methods
@@ -180,13 +185,12 @@ public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, Foreig
 
         boolean isAutoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
-        setInternalForeignObject(connection, foreignObjectId);
-        dataManager.linkForeignObjects(connection, this, foreignObjectId);
-
+        dataManager.linkForeignObjects(connection, this, foreignObjectId); //This will call #setInternalForeignObject
         connection.setAutoCommit(isAutoCommit);
     }
 
-    public synchronized void setInternalForeignObject(Connection connection, UUID foreignObjectId) throws SQLException, ForeignReferenceDoesNotExistException {
+    @ApiStatus.Internal
+    public synchronized void setInternalForeignObject(UUID foreignObjectId, Object value) {
         if (foreignObjectId == null) {
             //TODO: stop tracking, update the value
             setInternal(null);
@@ -194,15 +198,27 @@ public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, Foreig
         }
 
         DataManager dataManager = getMetadata().getDataManager();
-        T value = dataManager.getForeignObjectValue(connection, this, foreignObjectId);
         dataManager.addDataWrapperToLookupTable(getDataAddress(foreignObjectId), this);
-
         setInternal(value);
+        setInternalForeignObjectId(foreignObjectId);
+
+//
+//        Collection<DataWrapper> otherWrappers = dataManager.getDataWrappers(getDataAddress(id));
+//        for (DataWrapper wrapper : otherWrappers) {
+//            //This won't be other FPVs since they aren't in the lookup table if the foreign object id is null, so we won't support that
+//            PersistentValue<?> otherPv = (PersistentValue<?>) wrapper;
+//            otherPv.setInternal(value);
+////            otherPv.getUpdateHandler().onUpdate(new UpdatedValue<>(oldValue, value));
+//        }
+
         //todo: shouldnt we call the update handler? test to make sure the update handler is called
         //todo: we shouldnt call it here but i dont think its called on fpvs everywhere it should be.
 
-        this.foreignObjectId = foreignObjectId;
-        
+    }
+
+    @ApiStatus.Internal
+    public synchronized void setInternalForeignObjectId(@Nullable UUID id) {
+        this.foreignObjectId = id;
     }
 
     /**
