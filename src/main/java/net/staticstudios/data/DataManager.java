@@ -1284,16 +1284,12 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
             UUID prevForeignId,
             Object value2
     ) throws SQLException {
-        //todo: improve log messages
-
         Collection<ForeignPersistentValueMetadata> fpvMetaList = getForeignLinks(linkingTable);
 
-
         if (fpvMetaList.isEmpty()) {
-            DataManager.getLogger().warn("Received a ForeignLinkUpdateMessage for a table that does not exist: {}", linkingTable);
+            logger.warn("Could not find metadata for linking table: {}", linkingTable);
             return;
         }
-
 
         for (ForeignPersistentValueMetadata fpvMeta : fpvMetaList) {
             UniqueDataMetadata uniqueDataMetadata = getUniqueDataMetadata(fpvMeta.getParentClass());
@@ -1326,16 +1322,13 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
             UniqueData data = uniqueDataMetadata.getProvider().get(dataId);
 
             if (data == null) {
-                DataManager.getLogger().warn("Received a ForeignLinkUpdateMessage for a value that does not exist. FPV meta address: {}, Data id: {}, Data class: {} [{}]", fpvMeta.getMetadataAddress(), dataId, fpvMeta.getParentClass().getName(), getServerId());
+                logger.warn("Data with id {} does not exist!", dataId);
                 continue;
             }
 
             ForeignPersistentValue<?> fpv = fpvMeta.getSharedValue(data);
 
-            if (fpv == null) {
-                DataManager.getLogger().warn("Received a ForeignLinkUpdateMessage for a value that does not exist: {} -> {} [{}]", dataId, foreignId, getServerId());
-                continue;
-            }
+            assert fpv != null;
 
             if (id2 == null) {
                 //We are unlinking
@@ -1350,7 +1343,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
                     UniqueData prevData = uniqueDataMetadata.getProvider().get(prevForeignId);
 
                     if (prevData == null) {
-                        DataManager.getLogger().warn("Received a ForeignLinkUpdateMessage for a value that does not exist. FPV meta address: {}, Data id: {}, Data class: {} [{}]", fpvMeta.getMetadataAddress(), prevForeignId, fpvMeta.getParentClass().getName(), getServerId());
+                        logger.warn("(Previous) Data with id {} does not exist!", prevForeignId);
                         continue;
                     }
 
