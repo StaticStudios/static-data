@@ -111,7 +111,7 @@ public class ForeignPersistentValueTest extends DataTest {
     }
 
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
-    @DisplayName("Update a foreign persistent value and ensure it is consistent across all instances")
+    @DisplayName("Update a foreign persistent value")
     void updateFPV() {
         MockDiscordService service0 = discordServices.getFirst();
         MockDiscordService service1 = discordServices.get(1);
@@ -122,15 +122,21 @@ public class ForeignPersistentValueTest extends DataTest {
         //Create the stats object on service1
         MockDiscordUserStats stats1 = service1.getUserStatsProvider().createStats();
 
-        stats1.setMessagesSent(10);
-        stats1.setFavoriteNumber(11);
+        String userName = user0.getName();
+        int initialMessagesSent = 10;
+        int favoriteNumber = 22;
+        String favoriteColor = "blue";
+
+        stats1.setMessagesSent(initialMessagesSent);
+        stats1.setFavoriteNumber(favoriteNumber);
+        user0.setFavoriteColor(favoriteColor);
 
         waitForDataPropagation();
 
         assertAll("stats messages set",
                 discordServices.stream().map(service -> () -> {
                     MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
-                    assertEquals(stats1.getMessagesSent(), stats.getMessagesSent());
+                    assertEquals(initialMessagesSent, stats.getMessagesSent());
                 }));
 
         assertAll("user name not set",
@@ -173,7 +179,7 @@ public class ForeignPersistentValueTest extends DataTest {
         assertAll("stats name set",
                 discordServices.stream().map(service -> () -> {
                     MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
-                    assertEquals(user0.getName(), stats.getUserName(), service.getDataManager().getServerId());
+                    assertEquals(userName, stats.getUserName(), service.getDataManager().getServerId());
                 }));
 
         /* Despite this being a different FPV entirely, it uses the same linking table,
@@ -182,7 +188,7 @@ public class ForeignPersistentValueTest extends DataTest {
         assertAll("stats favorite color set",
                 discordServices.stream().map(service -> () -> {
                     MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
-                    assertEquals(user0.getFavoriteColor(), stats.getUserFavoriteColor());
+                    assertEquals(favoriteColor, stats.getUserFavoriteColor());
                 }));
 
         /* Despite this being a different FPV entirely, it uses the same linking table,
@@ -191,22 +197,306 @@ public class ForeignPersistentValueTest extends DataTest {
         assertAll("user favorite number set",
                 discordServices.stream().map(service -> () -> {
                     MockDiscordUser user = service.getUserProvider().get(user0.getId());
-                    assertEquals(stats1.getFavoriteNumber(), user.getStatsFavoriteNumber());
+                    assertEquals(favoriteNumber, user.getStatsFavoriteNumber());
                 }));
 
         MockDiscordUserStats stats0 = service0.getUserStatsProvider().get(stats1.getId());
         user0.incrementStatsMessagesSent(); //Update the value from an FPV on service0
-        assertEquals(11, stats0.getMessagesSent()); //The PV on service0 should update instantly, since it is local
+        assertEquals(initialMessagesSent + 1, stats0.getMessagesSent()); //The PV on service0 should update instantly, since it is local
 
         waitForDataPropagation();
 
         //Validate the data actually propagated
-        //todo: we should then test unlinking, and ensure the data gets set to null
-
         assertAll("stats messages sent updated",
                 discordServices.stream().map(service -> () -> {
                     MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
-                    assertEquals(11, stats.getMessagesSent());
+                    assertEquals(initialMessagesSent + 1, stats.getMessagesSent());
+                }));
+    }
+
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @DisplayName("Unlink a foreign persistent value")
+    void unlinkFPV() {
+        MockDiscordService service0 = discordServices.getFirst();
+        MockDiscordService service1 = discordServices.get(1);
+
+        //Create the user object on service0
+        MockDiscordUser user0 = service0.getUserProvider().createUser("TestUser");
+
+        //Create the stats object on service1
+        MockDiscordUserStats stats1 = service1.getUserStatsProvider().createStats();
+
+        String userName = user0.getName();
+        int initialMessagesSent = 10;
+        int favoriteNumber = 22;
+        String favoriteColor = "blue";
+
+        stats1.setMessagesSent(initialMessagesSent);
+        stats1.setFavoriteNumber(favoriteNumber);
+        user0.setFavoriteColor(favoriteColor);
+
+        waitForDataPropagation();
+
+        user0.setStatsId(stats1.getId());
+
+        waitForDataPropagation();
+
+        assertAll("foreignId set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUser user = service.getUserProvider().get(user0.getId());
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertEquals(stats1.getId(), user.getStatsId(), service.getDataManager().getServerId());
+                    assertEquals(user0.getId(), stats.getUserId(), service.getDataManager().getServerId());
+                    assertEquals(stats1.getId(), user.getStatsFavoriteNumberFPV().getForeignObjectId(), service.getDataManager().getServerId());
+                    assertEquals(user0.getId(), stats.getUserFavoriteColorFPV().getForeignObjectId(), service.getDataManager().getServerId());
+                }));
+
+        assertAll("stats name set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertEquals(userName, stats.getUserName(), service.getDataManager().getServerId());
+                }));
+
+        assertAll("user messages sent set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUser user = service.getUserProvider().get(user0.getId());
+                    assertEquals(initialMessagesSent, user.getStatsMessagesSent(), service.getDataManager().getServerId());
+                }));
+
+        assertAll("stats favorite color set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertEquals(favoriteColor, stats.getUserFavoriteColor());
+                }));
+
+        /* Despite this being a different FPV entirely, it uses the same linking table,
+         * so once one link is established, any other FPV with the same linking table will be updated
+         */
+        assertAll("user favorite number set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUser user = service.getUserProvider().get(user0.getId());
+                    assertEquals(favoriteNumber, user.getStatsFavoriteNumber());
+                }));
+
+        //Check behavior when unlinking
+        user0.setStatsId(null);
+
+        waitForDataPropagation();
+
+        assertAll("foreignId not set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUser user = service.getUserProvider().get(user0.getId());
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertNull(user.getStatsId(), service.getDataManager().getServerId());
+                    assertNull(stats.getUserId(), service.getDataManager().getServerId());
+                    assertNull(user.getStatsFavoriteNumberFPV().getForeignObjectId(), service.getDataManager().getServerId());
+                    assertNull(stats.getUserFavoriteColorFPV().getForeignObjectId(), service.getDataManager().getServerId());
+                }));
+
+        //Validate FPVs are null after unlinking
+        assertAll("stats name not set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertNull(stats.getUserName(), service.getDataManager().getServerId());
+                }));
+
+        assertAll("stats favorite color not set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertNull(stats.getUserFavoriteColor(), service.getDataManager().getServerId());
+                }));
+
+        assertAll("user favorite number not set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUser user = service.getUserProvider().get(user0.getId());
+                    assertEquals(0, user.getStatsFavoriteNumber(), service.getDataManager().getServerId());
+                }));
+
+        assertAll("user messages sent not set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUser user = service.getUserProvider().get(user0.getId());
+                    assertEquals(0, user.getStatsMessagesSent(), service.getDataManager().getServerId());
+                }));
+
+        //Validate update handlers are called on FPVs
+        assertAll("update handlers called",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUser user = service.getUserProvider().get(user0.getId());
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertEquals(UpdatedValue.of(userName, null), stats.getLastUserNamesUpdate());
+                    assertEquals(UpdatedValue.of(initialMessagesSent, null), user.getLastMessagesSentUpdate());
+                }));
+
+        //Ensure PVs are not updated when the FPV is unlinked
+        assertAll("stats messages sent set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertEquals(initialMessagesSent, stats.getMessagesSent(), service.getDataManager().getServerId());
+                }));
+
+        assertAll("stats favorite number set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertEquals(favoriteNumber, stats.getFavoriteNumber(), service.getDataManager().getServerId());
+                }));
+
+        assertAll("user name set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUser user = service.getUserProvider().get(user0.getId());
+                    assertEquals(userName, user.getName(), service.getDataManager().getServerId());
+                }));
+
+        assertAll("user favorite color set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUser user = service.getUserProvider().get(user0.getId());
+                    assertEquals(favoriteColor, user.getFavoriteColor(), service.getDataManager().getServerId());
+                }));
+    }
+
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @DisplayName("Change a foreign persistent value's foreign object id")
+    void changeFPVObject() {
+        MockDiscordService service0 = discordServices.getFirst();
+        MockDiscordService service1 = discordServices.get(1);
+
+        //Create the user object on service0
+        MockDiscordUser user0 = service0.getUserProvider().createUser("TestUser");
+
+        //Create the stats object on service1
+        MockDiscordUserStats stats1 = service1.getUserStatsProvider().createStats();
+
+        String userName = user0.getName();
+        int initialMessagesSent = 10;
+        int favoriteNumber = 22;
+        String favoriteColor = "blue";
+
+        stats1.setMessagesSent(initialMessagesSent);
+        stats1.setFavoriteNumber(favoriteNumber);
+        user0.setFavoriteColor(favoriteColor);
+
+        waitForDataPropagation();
+
+        user0.setStatsId(stats1.getId());
+
+        waitForDataPropagation();
+
+        assertAll("foreignId set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUser user = service.getUserProvider().get(user0.getId());
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertEquals(stats1.getId(), user.getStatsId(), service.getDataManager().getServerId());
+                    assertEquals(user0.getId(), stats.getUserId(), service.getDataManager().getServerId());
+                    assertEquals(stats1.getId(), user.getStatsFavoriteNumberFPV().getForeignObjectId(), service.getDataManager().getServerId());
+                    assertEquals(user0.getId(), stats.getUserFavoriteColorFPV().getForeignObjectId(), service.getDataManager().getServerId());
+                }));
+
+        assertAll("stats name set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertEquals(userName, stats.getUserName(), service.getDataManager().getServerId());
+                }));
+
+        assertAll("user messages sent set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUser user = service.getUserProvider().get(user0.getId());
+                    assertEquals(initialMessagesSent, user.getStatsMessagesSent(), service.getDataManager().getServerId());
+                }));
+
+        assertAll("stats favorite color set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertEquals(favoriteColor, stats.getUserFavoriteColor());
+                }));
+
+        /* Despite this being a different FPV entirely, it uses the same linking table,
+         * so once one link is established, any other FPV with the same linking table will be updated
+         */
+        assertAll("user favorite number set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUser user = service.getUserProvider().get(user0.getId());
+                    assertEquals(favoriteNumber, user.getStatsFavoriteNumber());
+                }));
+
+        MockDiscordUserStats newStats = service1.getUserStatsProvider().createStats();
+
+        waitForDataPropagation();
+
+        int newMessagesSent = 100;
+        int newFavoriteNumber = 33;
+
+        newStats.setMessagesSent(newMessagesSent);
+        newStats.setFavoriteNumber(newFavoriteNumber);
+
+        user0.setStatsId(newStats.getId());
+
+        waitForDataPropagation();
+
+        assertAll("foreignId set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUser user = service.getUserProvider().get(user0.getId());
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(newStats.getId());
+                    assertEquals(newStats.getId(), user.getStatsId(), service.getDataManager().getServerId());
+                    assertEquals(user0.getId(), stats.getUserId(), service.getDataManager().getServerId());
+                    assertEquals(newStats.getId(), user.getStatsFavoriteNumberFPV().getForeignObjectId(), service.getDataManager().getServerId());
+                    assertEquals(user0.getId(), stats.getUserFavoriteColorFPV().getForeignObjectId(), service.getDataManager().getServerId());
+                }));
+
+        assertAll("stats name set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(newStats.getId());
+                    assertEquals(userName, stats.getUserName(), service.getDataManager().getServerId());
+                }));
+
+        assertAll("user messages sent set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUser user = service.getUserProvider().get(user0.getId());
+                    assertEquals(newMessagesSent, user.getStatsMessagesSent(), service.getDataManager().getServerId());
+                }));
+
+        assertAll("stats favorite color set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(newStats.getId());
+                    assertEquals(favoriteColor, stats.getUserFavoriteColor());
+                }));
+
+        assertAll("user favorite number set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUser user = service.getUserProvider().get(user0.getId());
+                    assertEquals(newFavoriteNumber, user.getStatsFavoriteNumber());
+                }));
+
+        //Validate the old stats object is unlinked
+        assertAll("old stats name not set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertNull(stats.getUserName(), service.getDataManager().getServerId());
+                }));
+
+        assertAll("old stats favorite color not set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertNull(stats.getUserFavoriteColor(), service.getDataManager().getServerId());
+                }));
+
+        //Validate the old stats update handlers are called
+        assertAll("old stats update handlers called",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertEquals(UpdatedValue.of(userName, null), stats.getLastUserNamesUpdate(), service.getDataManager().getServerId());
+                }));
+
+        //Validate the new stats update handlers are called
+        assertAll("new stats update handlers called",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(newStats.getId());
+                    assertEquals(UpdatedValue.of(null, userName), stats.getLastUserNamesUpdate());
+                }));
+
+        //Validate the user update handlers are called
+        assertAll("user update handlers called",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUser user = service.getUserProvider().get(user0.getId());
+                    assertEquals(UpdatedValue.of(initialMessagesSent, newMessagesSent), user.getLastMessagesSentUpdate());
                 }));
     }
 
@@ -255,7 +545,7 @@ public class ForeignPersistentValueTest extends DataTest {
         assertAll("no updates called", discordServices.stream().map(service -> () -> {
             MockDiscordUser user = service.getUserProvider().get(userIds.getFirst());
             MockDiscordUserStats stats = service.getUserStatsProvider().get(userIds.getFirst());
-            assertNull(user.getLastNamesUpdate());
+            assertNull(user.getLastNameUpdate());
             assertNull(user.getLastMessagesSentUpdate());
 
             assertNull(stats.getLastMessagesSentUpdate());
@@ -273,7 +563,7 @@ public class ForeignPersistentValueTest extends DataTest {
         assertAll("update handlers called", discordServices.stream().map(service -> () -> {
             MockDiscordUser user = service.getUserProvider().get(userIds.getFirst());
             MockDiscordUserStats stats = service.getUserStatsProvider().get(userIds.getFirst());
-            assertNull(user.getLastNamesUpdate());
+            assertNull(user.getLastNameUpdate());
             assertEquals(UpdatedValue.of(initialStatsName, initialUserName), stats.getLastUserNamesUpdate());
             assertNull(stats.getLastMessagesSentUpdate());
 
@@ -289,7 +579,7 @@ public class ForeignPersistentValueTest extends DataTest {
         assertAll("update handlers called", discordServices.stream().map(service -> () -> {
             MockDiscordUser user = service.getUserProvider().get(userIds.getFirst());
             MockDiscordUserStats stats = service.getUserStatsProvider().get(userIds.getFirst());
-            assertEquals(UpdatedValue.of(initialUserName, newName), user.getLastNamesUpdate());
+            assertEquals(UpdatedValue.of(initialUserName, newName), user.getLastNameUpdate());
             assertEquals(UpdatedValue.of(initialUserName, newName), stats.getLastUserNamesUpdate());
         }));
 
@@ -304,15 +594,11 @@ public class ForeignPersistentValueTest extends DataTest {
             assertEquals(UpdatedValue.of(initialUserMessagesSent, newMessagesSent), user.getLastMessagesSentUpdate());
             assertEquals(UpdatedValue.of(initialUserMessagesSent, newMessagesSent), stats.getLastMessagesSentUpdate());
         }));
-
-        //todo: test when unlinking objects and when setting it to a completely new object as well
-        //todo: test when switching the foreign object to a different object
     }
 
-    //todo: test the update handler on local fpvs, local pvs, remote fpvs, and remote pvs
 
     //todo: test deletions
     //todo: add more tests across different types of instances
     //todo: test to ensure the fpvs are in the lookup table after linked
-    //todo: test the case where there are multiple fpvs on both objects and ensure that they all get set when one is linked
+    //todo: test when multiple fpvs, using different linking tables, are on an object
 }

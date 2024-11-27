@@ -69,7 +69,7 @@ public class MockDiscordUser extends UniqueData {
         return messagesSent.getForeignObjectId();
     }
 
-    public UpdatedValue<String> getLastNamesUpdate() {
+    public UpdatedValue<String> getLastNameUpdate() {
         return lastNameUpdate;
     }
 

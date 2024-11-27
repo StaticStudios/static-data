@@ -584,9 +584,14 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
                     foreignObjectIdColumn = foreignObjectIdColumn.replace(".", "_");
                     UUID foreignId = resultSet.getObject(foreignObjectIdColumn, UUID.class);
 
-                    if (value == null && foreignId != null) {
+                    if (foreignId == null) {
+                        continue;
+                    }
+
+                    if (value == null) {
                         throw new IllegalStateException("Foreign value is null but foreign id is not null!");
                     }
+
 
                     ForeignPersistentValue<?> fpv = foreignPersistentValueMetadata.getSharedValue(instance);
                     fpv.setInternal(value);
@@ -1175,29 +1180,6 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         return serializer.deserialize(serialized);
     }
 
-//    /**
-//     * Register a metadata object.
-//     *
-//     * @param metadata The metadata to register
-//     */
-//    public void registerMetadata(Metadata metadata) {
-//        if (METADATA.containsKey(metadata.getDataAddress())) {
-//            throw new IllegalArgumentException("Metadata for " + metadata.getDataAddress() + " is already registered!");
-//        }
-//
-//        METADATA.put(metadata.getDataAddress(), metadata);
-//    }
-
-//    /**
-//     * Get the metadata for the given collectionAddress.
-//     *
-//     * @param collectionAddress The collectionAddress to get the metadata for
-//     * @return The metadata, or null if not found
-//     */
-//    public @Nullable Metadata getMetadata(String collectionAddress) {
-//        return METADATA.get(collectionAddress);
-//    }
-
     private void copyValues(UniqueData source, UniqueData destination) {
         if (!source.getClass().equals(destination.getClass())) {
             throw new IllegalArgumentException("Source and destination must be of the same class!");
@@ -1229,30 +1211,51 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
 
     @Blocking
     public void linkForeignObjects(Connection connection, ForeignPersistentValue<?> fpv, UUID otherId) throws SQLException, ForeignReferenceDoesNotExistException {
-        //todo: handle all cases where there's conflicts in the linking table
+        UUID prevForeignId = fpv.getForeignObjectId();
+        Object foreignDataValue = null;
+        if (otherId == null) {
+            String removeObjectReferenceSql = "DELETE FROM " + fpv.getLinkingTable() + " WHERE " + fpv.getThisLinkingColumn() + " = ? AND " + fpv.getForeignLinkingColumn() + " = ?";
+            debug("Executing update: " + removeObjectReferenceSql);
 
-        String getOtherObjectSql = "SELECT id FROM " + fpv.getTable() + " WHERE id = ?";
-        debug("Executing query: " + getOtherObjectSql);
+            PreparedStatement removeObjectReferenceStatement = connection.prepareStatement(removeObjectReferenceSql);
+            removeObjectReferenceStatement.setObject(1, fpv.getParent().getId());
+            removeObjectReferenceStatement.setObject(2, fpv.getForeignObjectId());
 
-        PreparedStatement getOtherObjectStatement = connection.prepareStatement(getOtherObjectSql);
+            removeObjectReferenceStatement.execute();
+        } else {
+            String getOtherObjectSql = "SELECT id FROM " + fpv.getTable() + " WHERE id = ?";
+            debug("Executing query: " + getOtherObjectSql);
+
+            PreparedStatement getOtherObjectStatement = connection.prepareStatement(getOtherObjectSql);
 
 
-        getOtherObjectStatement.setObject(1, otherId);
-        if (!getOtherObjectStatement.executeQuery().next()) {
-            throw new ForeignReferenceDoesNotExistException("Object with id doesnt exist! Id: " + otherId);
+            getOtherObjectStatement.setObject(1, otherId);
+            if (!getOtherObjectStatement.executeQuery().next()) {
+                throw new ForeignReferenceDoesNotExistException("Object with id doesnt exist! Id: " + otherId);
+            }
+
+            String updateLinkingTableSql = "INSERT INTO " + fpv.getLinkingTable() + " (" + fpv.getThisLinkingColumn() + ", " + fpv.getForeignLinkingColumn() + ") VALUES (?, ?) ON CONFLICT (" + fpv.getThisLinkingColumn() + ", " + fpv.getForeignLinkingColumn() + ") DO UPDATE SET " + fpv.getThisLinkingColumn() + " = EXCLUDED." + fpv.getThisLinkingColumn();
+
+            debug("Executing update: " + updateLinkingTableSql);
+
+            PreparedStatement statement = connection.prepareStatement(updateLinkingTableSql);
+            statement.setObject(1, fpv.getParent().getId());
+            statement.setObject(2, otherId);
+            statement.execute();
+
+            foreignDataValue = getForeignObjectValue(connection, fpv, otherId);
         }
 
-        String updateLinkingTableSql = "INSERT INTO " + fpv.getLinkingTable() + " (" + fpv.getThisLinkingColumn() + ", " + fpv.getForeignLinkingColumn() + ") VALUES (?, ?) ON CONFLICT (" + fpv.getThisLinkingColumn() + ", " + fpv.getForeignLinkingColumn() + ") DO UPDATE SET " + fpv.getThisLinkingColumn() + " = EXCLUDED." + fpv.getThisLinkingColumn();
-
-        debug("Executing update: " + updateLinkingTableSql);
-
-        PreparedStatement statement = connection.prepareStatement(updateLinkingTableSql);
-        statement.setObject(1, fpv.getParent().getId());
-        statement.setObject(2, otherId);
-        statement.execute();
-
-        Object foreignValue = getForeignObjectValue(connection, fpv, otherId);
-        linkLocalForeignPersistentValues(connection, fpv.getColumn(), fpv.getLinkingTable(), fpv.getThisLinkingColumn(), fpv.getForeignLinkingColumn(), fpv.getParent().getId(), otherId, foreignValue);
+        linkLocalForeignPersistentValues(connection,
+                fpv.getColumn(),
+                fpv.getLinkingTable(),
+                fpv.getThisLinkingColumn(),
+                fpv.getForeignLinkingColumn(),
+                fpv.getParent().getId(),
+                otherId,
+                prevForeignId,
+                foreignDataValue
+        );
 
         getMessenger().broadcastMessageNoPrefix(
                 getForeignLinkChannel(fpv.getMetadata()),
@@ -1262,21 +1265,35 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
                         fpv.getLinkingTable(),
                         fpv.getParent().getId(),
                         otherId,
+                        prevForeignId,
                         fpv.getThisLinkingColumn(),
                         fpv.getForeignLinkingColumn(),
-                        foreignValue
+                        foreignDataValue
                 ));
     }
 
     @ApiStatus.Internal
-    public void linkLocalForeignPersistentValues(Connection connection, String column, String linkingTable, String linkingColumn1, String linkingColumn2, UUID id1, UUID id2, Object value2) throws SQLException {
+    public void linkLocalForeignPersistentValues(
+            Connection connection,
+            String column,
+            String linkingTable,
+            String linkingColumn1,
+            String linkingColumn2,
+            UUID id1,
+            UUID id2,
+            UUID prevForeignId,
+            Object value2
+    ) throws SQLException {
         //todo: improve log messages
+
         Collection<ForeignPersistentValueMetadata> fpvMetaList = getForeignLinks(linkingTable);
+
 
         if (fpvMetaList.isEmpty()) {
             DataManager.getLogger().warn("Received a ForeignLinkUpdateMessage for a table that does not exist: {}", linkingTable);
             return;
         }
+
 
         for (ForeignPersistentValueMetadata fpvMeta : fpvMetaList) {
             UniqueDataMetadata uniqueDataMetadata = getUniqueDataMetadata(fpvMeta.getParentClass());
@@ -1302,7 +1319,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
                 foreignId = id2;
                 foreignDataValue = value2;
             } else {
-                dataId = id2;
+                dataId = id2 == null ? prevForeignId : id2; //Will be null if we unlink
                 foreignId = id1;
             }
 
@@ -1315,14 +1332,31 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
 
             ForeignPersistentValue<?> fpv = fpvMeta.getSharedValue(data);
 
-            //The FPV is different from the one linked so we have to get the value, we can't just use the cached value (value2)
-            if (!fpv.getColumn().equals(column) || !linkingColumn1.equals(fpvMeta.getThisLinkingColumn())) {
-                foreignDataValue = getForeignObjectValue(connection, fpv, foreignId);
-            }
-
             if (fpv == null) {
                 DataManager.getLogger().warn("Received a ForeignLinkUpdateMessage for a value that does not exist: {} -> {} [{}]", dataId, foreignId, getServerId());
                 continue;
+            }
+
+            if (id2 == null) {
+                //We are unlinking
+                foreignDataValue = null;
+                foreignId = null;
+            } else if (!(fpv.getColumn().equals(column) && linkingColumn1.equals(fpvMeta.getThisLinkingColumn()))) {
+                //The FPV is different from the one linked so we have to get the value, we can't just use the cached value (value2)
+                foreignDataValue = getForeignObjectValue(connection, fpv, foreignId);
+
+                if (prevForeignId != null && linkingColumn2.equals(fpvMeta.getThisLinkingColumn())) {
+                    //We are switching foreign objects, and we need to unlink the previous object
+                    UniqueData prevData = uniqueDataMetadata.getProvider().get(prevForeignId);
+
+                    if (prevData == null) {
+                        DataManager.getLogger().warn("Received a ForeignLinkUpdateMessage for a value that does not exist. FPV meta address: {}, Data id: {}, Data class: {} [{}]", fpvMeta.getMetadataAddress(), prevForeignId, fpvMeta.getParentClass().getName(), getServerId());
+                        continue;
+                    }
+
+                    ForeignPersistentValue<?> prevFpv = fpvMeta.getSharedValue(prevData);
+                    prevFpv.setInternalForeignObject(null, null);
+                }
             }
 
             fpv.setInternalForeignObject(foreignId, foreignDataValue);

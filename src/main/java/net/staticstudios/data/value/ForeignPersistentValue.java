@@ -47,106 +47,7 @@ public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, Foreig
     public static <T> ForeignPersistentValue<T> of(UniqueData parent, Class<T> type, String foreignTable, String column, String linkingTable, String thisLinkingColumn, String foreignLinkingColumn, UpdateHandler<T> updateHandler) {
         return new ForeignPersistentValue<>(parent, foreignTable, linkingTable, thisLinkingColumn, foreignLinkingColumn, column, type, updateHandler);
     }
-
-    //todo: other of() methods
     //todo: jd
-    //
-//    /**
-//     * Create a new ForeignPersistentValue.
-//     * This method allows you to specify an update handler that will be called when the value is set.
-//     * Note that the update handler is fired on each instance when an update is received.
-//     * Also note that the update handler is not guaranteed to run on a specific thread.
-//     *
-//     * @param parent             The parent data object
-//     * @param type               The type of the value that will be stored
-//     * @param foreignTable       The table name that contains the foreign column
-//     * @param foreignColumn      The column name that contains the foreign value
-//     * @param localLinkingColumn The column name that contains the foreign object's id
-//     * @param updateHandler      The update handler to use
-//     * @return The new ForeignPersistentValue
-//     */
-//    @SuppressWarnings("unused")
-//    public static <T> ForeignPersistentValue<T> of(UniqueData parent, Class<T> type, String foreignTable, String foreignColumn, String localLinkingColumn, UpdateHandler<T> updateHandler) {
-//        return new ForeignPersistentValue<>(parent, foreignTable, foreignColumn, localLinkingColumn, type, updateHandler);
-//    }
-//
-//    /**
-//     * Create a new ForeignPersistentValue with a default value.
-//     *
-//     * @param parent             The parent data object
-//     * @param type               The type of the value that will be stored
-//     * @param defaultValue       The default (initial) value to use if the value is not present in the database
-//     * @param foreignTable       The table name that contains the foreign column
-//     * @param foreignColumn      The column name that contains the foreign value
-//     * @param localLinkingColumn The column name that contains the foreign object's id
-//     * @return The new ForeignPersistentValue
-//     */
-//    @SuppressWarnings("unused")
-//    public static <T> ForeignPersistentValue<T> withDefault(UniqueData parent, Class<T> type, T defaultValue, String foreignTable, String foreignColumn, String localLinkingColumn) {
-//        ForeignPersistentValue<T> value = new ForeignPersistentValue<>(parent, foreignTable, foreignColumn, localLinkingColumn, type, (oldVal, newVal) -> newVal);
-//        value.setInternal(defaultValue);
-//        return value;
-//    }
-//
-//    /**
-//     * Create a new ForeignPersistentValue with a default value.
-//     * This method allows you to specify an update handler that will be called when the value is set.
-//     * Note that the update handler is fired on each instance when an update is received.
-//     * Also note that the update handler is not guaranteed to run on a specific thread.
-//     *
-//     * @param parent             The parent data object
-//     * @param type               The type of the value that will be stored
-//     * @param defaultValue       The default (initial) value to use if the value is not present in the database
-//     * @param foreignTable       The table name that contains the foreign column
-//     * @param foreignColumn      The column name that contains the foreign value
-//     * @param localLinkingColumn The column name that contains the foreign object's id
-//     * @return The new ForeignPersistentValue
-//     */
-//    @SuppressWarnings("unused")
-//    public static <T> ForeignPersistentValue<T> withDefault(UniqueData parent, Class<T> type, T defaultValue, String foreignTable, String foreignColumn, String localLinkingColumn, UpdateHandler<T> updateHandler) {
-//        ForeignPersistentValue<T> value = new ForeignPersistentValue<>(parent, foreignTable, foreignColumn, localLinkingColumn, type, updateHandler);
-//        value.setInternal(defaultValue);
-//        return value;
-//    }
-//
-//    /**
-//     * Create a new ForeignPersistentValue with a default value supplier.
-//     *
-//     * @param parent               The parent data object
-//     * @param type                 The type of the value that will be stored
-//     * @param defaultValueSupplier The supplier that will be called to get the default (initial) value to use if the value is not present in the database
-//     * @param foreignTable         The table name that contains the foreign column
-//     * @param foreignColumn        The column name that contains the foreign value
-//     * @param localLinkingColumn   The column name that contains the foreign object's id
-//     * @return The new ForeignPersistentValue
-//     */
-//    @SuppressWarnings("unused")
-//    public static <T> ForeignPersistentValue<T> supplyDefault(UniqueData parent, Class<T> type, Supplier<T> defaultValueSupplier, String foreignTable, String foreignColumn, String localLinkingColumn) {
-//        ForeignPersistentValue<T> value = new ForeignPersistentValue<>(parent, foreignTable, foreignColumn, localLinkingColumn, type, (oldVal, newVal) -> newVal);
-//        value.setInternal(defaultValueSupplier.get());
-//        return value;
-//    }
-//
-//    /**
-//     * Create a new ForeignPersistentValue with a default value supplier.
-//     * This method allows you to specify an update handler that will be called when the value is set.
-//     * Note that the update handler is fired on each instance when an update is received.
-//     * Also note that the update handler is not guaranteed to run on a specific thread.
-//     *
-//     * @param parent               The parent data object
-//     * @param type                 The type of the value that will be stored
-//     * @param defaultValueSupplier The supplier that will be called to get the default (initial) value to use if the value is not present in the database
-//     * @param foreignTable         The table name that contains the foreign column
-//     * @param foreignColumn        The column name that contains the foreign value
-//     * @param localLinkingColumn   The column name that contains the foreign object's id
-//     * @return The new ForeignPersistentValue
-//     */
-//    @SuppressWarnings("unused")
-//    public static <T> ForeignPersistentValue<T> supplyDefault(UniqueData parent, Class<T> type, Supplier<T> defaultValueSupplier, String foreignTable, String foreignColumn, String localLinkingColumn, UpdateHandler<T> updateHandler) {
-//        ForeignPersistentValue<T> value = new ForeignPersistentValue<>(parent, foreignTable, foreignColumn, localLinkingColumn, type, updateHandler);
-//        value.setInternal(defaultValueSupplier.get());
-//        return value;
-//    }
 
 
     public String getLinkingTable() {
@@ -178,12 +79,8 @@ public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, Foreig
     }
 
     @Blocking
-    public synchronized void setForeignObject(Connection connection, UUID foreignObjectId) throws SQLException, ForeignReferenceDoesNotExistException {
+    public synchronized void setForeignObject(Connection connection, @Nullable UUID foreignObjectId) throws SQLException, ForeignReferenceDoesNotExistException {
         DataManager dataManager = getMetadata().getDataManager();
-
-        if (this.foreignObjectId != null && foreignObjectId == null) {
-            dataManager.removeDataWrapperFromLookupTable(getDataAddress(this.foreignObjectId), this);
-        }
 
         boolean isAutoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
@@ -193,15 +90,14 @@ public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, Foreig
 
     @ApiStatus.Internal
     @SuppressWarnings("unchecked")
-    public synchronized void setInternalForeignObject(UUID foreignObjectId, Object value) {
-        value = DataUtils.getValue(getType(), value); //Fix weird type
+    public synchronized void setInternalForeignObject(@Nullable UUID foreignObjectId, Object value) {
+        DataManager dataManager = getMetadata().getDataManager();
         if (foreignObjectId == null) {
-            //TODO: stop tracking, update the value
-            setInternal(null);
+            handleUnlink();
             return;
         }
 
-        DataManager dataManager = getMetadata().getDataManager();
+        value = DataUtils.getValue(getType(), value); //Fix weird boxing issues with primitive types
         dataManager.addDataWrapperToLookupTable(getDataAddress(foreignObjectId), this);
         T oldValue = get();
         setInternal(value);
@@ -212,6 +108,20 @@ public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, Foreig
     @ApiStatus.Internal
     public synchronized void setInternalForeignObjectId(@Nullable UUID id) {
         this.foreignObjectId = id;
+    }
+
+    private void handleUnlink() {
+        T value = (T) DataUtils.getValue(getType(), get());
+        DataManager dataManager = getMetadata().getDataManager();
+
+        UUID foreignObjectId = this.foreignObjectId;
+
+        setInternal(null);
+        setInternalForeignObjectId(null);
+
+
+        dataManager.removeDataWrapperFromLookupTable(getDataAddress(foreignObjectId), this);
+        this.getUpdateHandler().onUpdate(new UpdatedValue<>(value, null));
     }
 
     /**
@@ -243,6 +153,7 @@ public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, Foreig
         return foreignObjectId;
     }
 
+    @Nullable
     @Override
     public String getDataAddress() {
         if (foreignObjectId == null) {
