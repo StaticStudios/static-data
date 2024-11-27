@@ -19,7 +19,7 @@ public class ForeignLinkUpdateMessageHandler implements MessageHandler<ForeignLi
     @Override
     public CompletableFuture<String> onMessage(MessageMetadata metadata, ForeignLinkUpdateMessage payload) {
         try (Connection connection = dataManager.getConnection()) {
-            dataManager.linkLocalForeignPersistentValues(connection, payload.linkingTable(), payload.column1(), payload.column2(), payload.id1(), payload.id2(), payload.value2());
+            dataManager.linkLocalForeignPersistentValues(connection, payload.column(), payload.linkingTable(), payload.column1(), payload.column2(), payload.id1(), payload.id2(), payload.value2());
         } catch (Exception e) {
             e.printStackTrace();
         }

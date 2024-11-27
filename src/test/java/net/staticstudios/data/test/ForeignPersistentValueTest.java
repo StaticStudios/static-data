@@ -42,14 +42,16 @@ public class ForeignPersistentValueTest extends DataTest {
             statement.execute("""
                     CREATE TABLE discord.users (
                         id uuid PRIMARY KEY,
-                        name TEXT NOT NULL
+                        name TEXT NOT NULL,
+                        favorite_color TEXT NOT NULL DEFAULT 'red'
                     )
                     """);
 
             statement.execute("""
                     CREATE TABLE discord.stats (
                         id uuid PRIMARY KEY,
-                        messages_sent integer NOT NULL DEFAULT 0
+                        messages_sent integer NOT NULL DEFAULT 0,
+                        favorite_number integer NOT NULL DEFAULT 0
                     )
                     """);
 
@@ -104,8 +106,8 @@ public class ForeignPersistentValueTest extends DataTest {
 
         waitForDataPropagation();
 
-        assertEquals(10, user0.getMessagesSent());
-        assertEquals("TestUser", stats1.getName());
+        assertEquals(10, user0.getStatsMessagesSent());
+        assertEquals("TestUser", stats1.getUserName());
     }
 
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
@@ -120,23 +122,33 @@ public class ForeignPersistentValueTest extends DataTest {
         //Create the stats object on service1
         MockDiscordUserStats stats1 = service1.getUserStatsProvider().createStats();
 
-        int initialMessagesSent = 10;
-
-        //Set the initial value to 10
-        stats1.setMessagesSent(initialMessagesSent);
+        stats1.setMessagesSent(10);
+        stats1.setFavoriteNumber(11);
 
         waitForDataPropagation();
 
         assertAll("stats messages set",
                 discordServices.stream().map(service -> () -> {
                     MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
-                    assertEquals(initialMessagesSent, stats.getMessagesSent());
+                    assertEquals(stats1.getMessagesSent(), stats.getMessagesSent());
                 }));
 
         assertAll("user name not set",
                 discordServices.stream().map(service -> () -> {
                     MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
-                    assertNull(stats.getName());
+                    assertNull(stats.getUserName());
+                }));
+
+        assertAll("user favorite number not set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUser user = service.getUserProvider().get(user0.getId());
+                    assertNull(user.getStatsFavoriteNumberFPV().get());
+                }));
+
+        assertAll("stats favorite color not set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertNull(stats.getUserFavoriteColorFPV().get());
                 }));
 
         //Link the user to the stats
@@ -144,14 +156,14 @@ public class ForeignPersistentValueTest extends DataTest {
 
         waitForDataPropagation();
 
-        //todo: add other fpvs to the objects and ensure theyre linked
-
         assertAll("foreignId set",
                 discordServices.stream().map(service -> () -> {
                     MockDiscordUser user = service.getUserProvider().get(user0.getId());
                     MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
                     assertEquals(stats1.getId(), user.getStatsId(), service.getDataManager().getServerId());
                     assertEquals(user0.getId(), stats.getUserId(), service.getDataManager().getServerId());
+                    assertEquals(stats1.getId(), user.getStatsFavoriteNumberFPV().getForeignObjectId(), service.getDataManager().getServerId());
+                    assertEquals(user0.getId(), stats.getUserFavoriteColorFPV().getForeignObjectId(), service.getDataManager().getServerId());
                 }));
 
         /* Ensure that the name is now set on the stats object
@@ -161,11 +173,29 @@ public class ForeignPersistentValueTest extends DataTest {
         assertAll("stats name set",
                 discordServices.stream().map(service -> () -> {
                     MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
-                    assertEquals(user0.getName(), stats.getName(), service.getDataManager().getServerId());
+                    assertEquals(user0.getName(), stats.getUserName(), service.getDataManager().getServerId());
+                }));
+
+        /* Despite this being a different FPV entirely, it uses the same linking table,
+         * so once one link is established, any other FPV with the same linking table will be updated
+         */
+        assertAll("stats favorite color set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUserStats stats = service.getUserStatsProvider().get(stats1.getId());
+                    assertEquals(user0.getFavoriteColor(), stats.getUserFavoriteColor());
+                }));
+
+        /* Despite this being a different FPV entirely, it uses the same linking table,
+         * so once one link is established, any other FPV with the same linking table will be updated
+         */
+        assertAll("user favorite number set",
+                discordServices.stream().map(service -> () -> {
+                    MockDiscordUser user = service.getUserProvider().get(user0.getId());
+                    assertEquals(stats1.getFavoriteNumber(), user.getStatsFavoriteNumber());
                 }));
 
         MockDiscordUserStats stats0 = service0.getUserStatsProvider().get(stats1.getId());
-        user0.incrementMessagesSent(); //Update the value from an FPV on service0
+        user0.incrementStatsMessagesSent(); //Update the value from an FPV on service0
         assertEquals(11, stats0.getMessagesSent()); //The PV on service0 should update instantly, since it is local
 
         waitForDataPropagation();
@@ -188,8 +218,8 @@ public class ForeignPersistentValueTest extends DataTest {
         MockDiscordUserStats stats0 = service0.getUserStatsProvider().get(userIds.getFirst());
 
 
-        assertEquals(0, user0.getMessagesSent());
-        assertNull(stats0.getName());
+        assertEquals(0, user0.getStatsMessagesSent());
+        assertNull(stats0.getUserName());
 
 
         for (UUID userId : userIds) {
@@ -211,8 +241,8 @@ public class ForeignPersistentValueTest extends DataTest {
         assertEquals(user0.getId(), stats0.getUserId());
         assertEquals(stats0.getId(), user0.getStatsId());
 
-        assertEquals(stats0.getMessagesSent(), user0.getMessagesSent());
-        assertEquals(user0.getName(), stats0.getName());
+        assertEquals(stats0.getMessagesSent(), user0.getStatsMessagesSent());
+        assertEquals(user0.getName(), stats0.getUserName());
     }
 
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
@@ -229,13 +259,12 @@ public class ForeignPersistentValueTest extends DataTest {
             assertNull(user.getLastMessagesSentUpdate());
 
             assertNull(stats.getLastMessagesSentUpdate());
-            assertNull(stats.getLastNamesUpdate());
+            assertNull(stats.getLastUserNamesUpdate());
         }));
 
         String initialUserName = user0.getName();
-        String initialStatsName = stats0.getName();
-        int initialUserMessagesSent = user0.getMessagesSent();
-        int initialStatsMessagesSent = stats0.getMessagesSent();
+        String initialStatsName = stats0.getUserName();
+        int initialUserMessagesSent = user0.getStatsMessagesSent();
 
         user0.setStatsId(user0.getId());
 
@@ -245,7 +274,7 @@ public class ForeignPersistentValueTest extends DataTest {
             MockDiscordUser user = service.getUserProvider().get(userIds.getFirst());
             MockDiscordUserStats stats = service.getUserStatsProvider().get(userIds.getFirst());
             assertNull(user.getLastNamesUpdate());
-            assertEquals(UpdatedValue.of(initialStatsName, initialUserName), stats.getLastNamesUpdate());
+            assertEquals(UpdatedValue.of(initialStatsName, initialUserName), stats.getLastUserNamesUpdate());
             assertNull(stats.getLastMessagesSentUpdate());
 
             assertNull(user.getLastMessagesSentUpdate().oldValue());
@@ -261,11 +290,11 @@ public class ForeignPersistentValueTest extends DataTest {
             MockDiscordUser user = service.getUserProvider().get(userIds.getFirst());
             MockDiscordUserStats stats = service.getUserStatsProvider().get(userIds.getFirst());
             assertEquals(UpdatedValue.of(initialUserName, newName), user.getLastNamesUpdate());
-            assertEquals(UpdatedValue.of(initialUserName, newName), stats.getLastNamesUpdate());
+            assertEquals(UpdatedValue.of(initialUserName, newName), stats.getLastUserNamesUpdate());
         }));
 
         int newMessagesSent = 100;
-        user0.setMessagesSent(newMessagesSent);
+        user0.setStatsMessagesSent(newMessagesSent);
 
         waitForDataPropagation();
 

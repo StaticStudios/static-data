@@ -691,7 +691,12 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
 
         for (ForeignPersistentValueMetadata valueMetadata : foreignPersistentValueMetadataList) {
             foreignColumns.add(valueMetadata.getTable() + "." + valueMetadata.getColumn());
-            foreignObjectIdColumns.add(valueMetadata.getLinkingTable() + "." + valueMetadata.getForeignLinkingColumn());
+
+            String foreignObjectIdColumn = valueMetadata.getLinkingTable() + "." + valueMetadata.getForeignLinkingColumn();
+            if (foreignObjectIdColumns.contains(foreignObjectIdColumn)) {
+                continue;
+            }
+            foreignObjectIdColumns.add(foreignObjectIdColumn);
         }
 
         if (!foreignColumns.isEmpty()) {
@@ -730,8 +735,17 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
             sb.append(" JOIN ").append(table).append(" ON ").append(metadata.getTopLevelTable()).append(".id = ").append(table).append(".id");
         }
 
+        List<ForeignPersistentValueMetadata> joinedForeignValues = new ArrayList<>();
 
         for (ForeignPersistentValueMetadata valueMetadata : foreignPersistentValueMetadataList) {
+            if (joinedForeignValues.stream().anyMatch(otherValueMetaData ->
+                    otherValueMetaData.getLinkingTable().equals(valueMetadata.getLinkingTable()) &&
+                            otherValueMetaData.getForeignLinkingColumn().equals(valueMetadata.getForeignLinkingColumn()) &&
+                            otherValueMetaData.getThisLinkingColumn().equals(valueMetadata.getThisLinkingColumn())
+            )) {
+                continue;
+            }
+
             sb.append(" LEFT JOIN ")
                     .append(valueMetadata.getLinkingTable())
                     .append(" ON ")
@@ -750,6 +764,8 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
                     .append(" = ")
                     .append(valueMetadata.getTable())
                     .append(".id");
+
+            joinedForeignValues.add(valueMetadata);
         }
 
 
@@ -1236,16 +1252,13 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         statement.execute();
 
         Object foreignValue = getForeignObjectValue(connection, fpv, otherId);
-        linkLocalForeignPersistentValues(connection, fpv.getLinkingTable(), fpv.getThisLinkingColumn(), fpv.getForeignLinkingColumn(), fpv.getParent().getId(), otherId, foreignValue);
-
-
-        //todo: pull out the loginc in the message handler to call a method here instead so we can reuse it
-        //todo: any other local FPVs that have the same linking table need their value updated. this includes other fpvs on the same data object
+        linkLocalForeignPersistentValues(connection, fpv.getColumn(), fpv.getLinkingTable(), fpv.getThisLinkingColumn(), fpv.getForeignLinkingColumn(), fpv.getParent().getId(), otherId, foreignValue);
 
         getMessenger().broadcastMessageNoPrefix(
                 getForeignLinkChannel(fpv.getMetadata()),
                 ForeignLinkUpdateMessageHandler.class,
                 new ForeignLinkUpdateMessage(
+                        fpv.getColumn(),
                         fpv.getLinkingTable(),
                         fpv.getParent().getId(),
                         otherId,
@@ -1256,7 +1269,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
     }
 
     @ApiStatus.Internal
-    public void linkLocalForeignPersistentValues(Connection connection, String linkingTable, String linkingColumn1, String linkingColumn2, UUID id1, UUID id2, Object value2) throws SQLException {
+    public void linkLocalForeignPersistentValues(Connection connection, String column, String linkingTable, String linkingColumn1, String linkingColumn2, UUID id1, UUID id2, Object value2) throws SQLException {
         //todo: improve log messages
         Collection<ForeignPersistentValueMetadata> fpvMetaList = getForeignLinks(linkingTable);
 
@@ -1301,8 +1314,9 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
             }
 
             ForeignPersistentValue<?> fpv = fpvMeta.getSharedValue(data);
+
             //The FPV is different from the one linked so we have to get the value, we can't just use the cached value (value2)
-            if (!linkingColumn1.equals(fpvMeta.getThisLinkingColumn())) {
+            if (!fpv.getColumn().equals(column) || !linkingColumn1.equals(fpvMeta.getThisLinkingColumn())) {
                 foreignDataValue = getForeignObjectValue(connection, fpv, foreignId);
             }
 

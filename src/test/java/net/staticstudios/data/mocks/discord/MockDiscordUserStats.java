@@ -15,6 +15,8 @@ import java.util.UUID;
  */
 @Table("discord.stats")
 public class MockDiscordUserStats extends UniqueData {
+    private final ForeignPersistentValue<String> favoriteColor = ForeignPersistentValue.of(this, String.class, "discord.users", "favorite_color", "discord.user_stats", "stats_id", "user_id");
+    private final PersistentValue<Integer> favoriteNumber = PersistentValue.withDefault(this, Integer.class, 0, "favorite_number");
     private UpdatedValue<String> lastNameUpdate;
     private final ForeignPersistentValue<String> name = ForeignPersistentValue.of(this, String.class, "discord.users", "name", "discord.user_stats", "stats_id", "user_id", updated -> lastNameUpdate = updated);
     private UpdatedValue<Integer> lastMessagesSentUpdate;
@@ -42,7 +44,7 @@ public class MockDiscordUserStats extends UniqueData {
         this.messagesSent.set(this.messagesSent.get() + 1);
     }
 
-    public String getName() {
+    public String getUserName() {
         return name.get();
     }
 
@@ -50,16 +52,36 @@ public class MockDiscordUserStats extends UniqueData {
         return name.getForeignObjectId();
     }
 
-    public void setName(String name) {
+    public void setUserName(String name) {
         this.name.set(name);
     }
 
-    public UpdatedValue<String> getLastNamesUpdate() {
+    public UpdatedValue<String> getLastUserNamesUpdate() {
         return lastNameUpdate;
     }
 
     public UpdatedValue<Integer> getLastMessagesSentUpdate() {
         return lastMessagesSentUpdate;
+    }
+
+    public String getUserFavoriteColor() {
+        return favoriteColor.get();
+    }
+
+    public void setUserFavoriteColor(String favoriteColor) {
+        this.favoriteColor.set(favoriteColor);
+    }
+
+    public int getFavoriteNumber() {
+        return favoriteNumber.get();
+    }
+
+    public void setFavoriteNumber(int favoriteNumber) {
+        this.favoriteNumber.set(favoriteNumber);
+    }
+
+    public ForeignPersistentValue<String> getUserFavoriteColorFPV() {
+        return favoriteColor;
     }
 
 }
