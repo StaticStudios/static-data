@@ -207,19 +207,6 @@ public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, Foreig
         setInternal(value);
         setInternalForeignObjectId(foreignObjectId);
         this.getUpdateHandler().onUpdate(new UpdatedValue<>(oldValue, (T) value));
-
-//
-//        Collection<DataWrapper> otherWrappers = dataManager.getDataWrappers(getDataAddress(id));
-//        for (DataWrapper wrapper : otherWrappers) {
-//            //This won't be other FPVs since they aren't in the lookup table if the foreign object id is null, so we won't support that
-//            PersistentValue<?> otherPv = (PersistentValue<?>) wrapper;
-//            otherPv.setInternal(value);
-////            otherPv.getUpdateHandler().onUpdate(new UpdatedValue<>(oldValue, value));
-//        }
-
-        //todo: shouldnt we call the update handler? test to make sure the update handler is called
-        //todo: we shouldnt call it here but i dont think its called on fpvs everywhere it should be.
-
     }
 
     @ApiStatus.Internal

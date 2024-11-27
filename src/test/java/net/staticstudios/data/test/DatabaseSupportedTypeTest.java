@@ -80,19 +80,7 @@ public class DatabaseSupportedTypeTest extends DataTest {
 
         assertAll("data creation", netflixServices.stream().map(service -> () -> {
             MockNetflixUser user = service.getUserProvider().get(user0.getId());
-
-            assertEquals(user0.getString(), user.getString());
-            assertEquals(user0.getChar(), user.getChar());
-            assertEquals(user0.getShort(), user.getShort());
-            assertEquals(user0.getInt(), user.getInt());
-            assertEquals(user0.getLong(), user.getLong());
-            assertEquals(user0.getFloat(), user.getFloat());
-            assertEquals(user0.getDouble(), user.getDouble());
-            assertEquals(user0.getBoolean(), user.getBoolean());
-            assertEquals(user0.getUuid(), user.getUuid());
-            assertEquals(user0.getTimestamp().toInstant().toEpochMilli(), user.getTimestamp().toInstant().toEpochMilli());
-            assertArrayEquals(user0.getByteArray(), user.getByteArray());
-            assertArrayEquals(user0.getUuidArray(), user.getUuidArray());
+            assertUserEquals(user0, user);
         }));
 
         //Update each value
@@ -114,20 +102,23 @@ public class DatabaseSupportedTypeTest extends DataTest {
 
         assertAll("data update", netflixServices.stream().map(service -> () -> {
             MockNetflixUser user = service.getUserProvider().get(user0.getId());
-
-            assertEquals(user0.getString(), user.getString());
-            assertEquals(user0.getChar(), user.getChar());
-            assertEquals(user0.getShort(), user.getShort());
-            assertEquals(user0.getInt(), user.getInt());
-            assertEquals(user0.getLong(), user.getLong());
-            assertEquals(user0.getFloat(), user.getFloat());
-            assertEquals(user0.getDouble(), user.getDouble());
-            assertEquals(user0.getBoolean(), user.getBoolean());
-            assertEquals(user0.getUuid(), user.getUuid());
-            assertEquals(user0.getTimestamp().toInstant().toEpochMilli(), user.getTimestamp().toInstant().toEpochMilli());
-            assertArrayEquals(user0.getByteArray(), user.getByteArray());
-            assertArrayEquals(user0.getUuidArray(), user.getUuidArray());
+            assertUserEquals(user0, user);
         }));
+    }
+
+    private void assertUserEquals(MockNetflixUser user0, MockNetflixUser user) {
+        assertEquals(user0.getString(), user.getString());
+        assertEquals(user0.getChar(), user.getChar());
+        assertEquals(user0.getShort(), user.getShort());
+        assertEquals(user0.getInt(), user.getInt());
+        assertEquals(user0.getLong(), user.getLong());
+        assertEquals(user0.getFloat(), user.getFloat());
+        assertEquals(user0.getDouble(), user.getDouble());
+        assertEquals(user0.getBoolean(), user.getBoolean());
+        assertEquals(user0.getUuid(), user.getUuid());
+        assertEquals(user0.getTimestamp(), user.getTimestamp());
+        assertArrayEquals(user0.getByteArray(), user.getByteArray());
+        assertArrayEquals(user0.getUuidArray(), user.getUuidArray());
     }
 
 }
