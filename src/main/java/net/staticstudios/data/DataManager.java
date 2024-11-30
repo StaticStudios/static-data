@@ -640,7 +640,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
                         Object deserializedValue = deserialize(entryValue.getType(), value);
                         entryValue.setInitialValue(deserializedValue);
                     }
-                    collection.addAllInternal(Collections.singleton(entry));
+                    collection.addAllInternal(Collections.singleton(entry), false);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
@@ -865,10 +865,6 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         List<PersistentCollectionMetadata> persistentCollectionMetadataList = uniqueDataMetadata.getCollectionMetadata(PersistentCollectionMetadata.class);
 
         List<CachedValueMetadata> cachedValueMetadataList = uniqueDataMetadata.getValueMetadata(CachedValueMetadata.class);
-
-        if (persistentValueMetadataList.isEmpty()) {
-            throw new IllegalArgumentException("No PersistentValues found for " + entity.getClass().getName());
-        }
 
         for (PersistentValueMetadata valueMetadata : persistentValueMetadataList) {
             PersistentValue<?> value = valueMetadata.getSharedValue(entity);

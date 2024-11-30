@@ -106,7 +106,7 @@ public abstract class SharedCollection<T extends CollectionEntry, M extends Shar
     @NotNull
     @Override
     public synchronized Iterator<T> iterator() {
-        return new ArrayList<>(values).iterator();
+        return new Itr(values.toArray());
     }
 
     @Override
@@ -130,7 +130,7 @@ public abstract class SharedCollection<T extends CollectionEntry, M extends Shar
     public synchronized boolean add(T t) {
         List<T> singleton = Collections.singletonList(t);
 
-        addAllInternal(singleton);
+        addAllInternal(singleton, true);
         ThreadUtils.submit(() -> addAllToDataSource(singleton));
 
         return true;
@@ -149,7 +149,7 @@ public abstract class SharedCollection<T extends CollectionEntry, M extends Shar
     @Override
     public synchronized boolean addAll(@NotNull Collection<? extends T> c) {
         List<T> values = new ArrayList<>(c);
-        addAllInternal(values);
+        addAllInternal(values, true);
 
         ThreadUtils.submit(() -> addAllToDataSource(values));
 
@@ -192,20 +192,22 @@ public abstract class SharedCollection<T extends CollectionEntry, M extends Shar
      *
      * @param values The values to add
      */
-    public synchronized void addAllInternal(Collection<?> values) {
+    public synchronized void addAllInternal(Collection<?> values, boolean callAddHandler) {
         List<T> valuesToAdd = new ArrayList<>();
         for (Object value : values) {
             if (type.isInstance(value)) {
                 valuesToAdd.add(type.cast(value));
             }
         }
-        try {
-            for (T value : valuesToAdd) {
-                getAddHandler().accept(value);
+        if (callAddHandler) {
+            try {
+                for (T value : valuesToAdd) {
+                    getAddHandler().accept(value);
+                }
+            } catch (Exception e) {
+                DataManager.getLogger().error("Failed to invoke add handler for collection: {}", this);
+                e.printStackTrace();
             }
-        } catch (Exception e) {
-            DataManager.getLogger().error("Failed to invoke add handler for collection: {}", this);
-            e.printStackTrace();
         }
         this.values.addAll(valuesToAdd);
     }
@@ -285,5 +287,47 @@ public abstract class SharedCollection<T extends CollectionEntry, M extends Shar
 
     public void callUpdateHandler(CollectionEntry entry) {
         getUpdateHandler().accept((T) entry);
+    }
+
+    private class Itr implements Iterator<T> {
+        private final Object[] values;
+        int cursor;       // index of next element to return
+        int lastRet = -1; // index of last element returned; -1 if no such
+
+        public Itr(Object[] values) {
+            this.values = values;
+        }
+
+        public boolean hasNext() {
+            return cursor != values.length;
+        }
+
+        @SuppressWarnings("unchecked")
+        public T next() {
+            int i = cursor;
+            if (!hasNext())
+                throw new NoSuchElementException();
+            cursor = i + 1;
+            return (T) values[lastRet = i];
+        }
+
+        public void remove() {
+            if (lastRet < 0)
+                throw new IllegalStateException();
+            //todo: remove from data source
+            SharedCollection.this.remove(values[lastRet]);
+
+            lastRet = -1;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public void forEachRemaining(Consumer<? super T> action) {
+            Objects.requireNonNull(action);
+            for (int i = cursor; i < values.length; i++) {
+                action.accept((T) values[i]);
+            }
+            cursor = values.length;
+        }
     }
 }

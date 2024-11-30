@@ -446,7 +446,7 @@ public class PersistentCollection<V extends CollectionEntry> extends SharedColle
     @Blocking
     public synchronized void addAll(Connection connection, @NotNull Collection<? extends V> c) {
         List<V> values = new ArrayList<>(c);
-        addAllInternal(values);
+        addAllInternal(values, true);
 
         addAllToDataSource(connection, values, true);
     }

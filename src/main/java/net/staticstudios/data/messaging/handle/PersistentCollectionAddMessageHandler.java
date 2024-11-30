@@ -65,7 +65,7 @@ public class PersistentCollectionAddMessageHandler implements MessageHandler<Per
                 entriesToAdd.add(entry);
             }
 
-            collection.addAllInternal(entriesToAdd);
+            collection.addAllInternal(entriesToAdd, true);
         }
 
         return null;

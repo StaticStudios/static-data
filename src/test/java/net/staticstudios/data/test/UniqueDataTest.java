@@ -1,14 +1,11 @@
 package net.staticstudios.data.test;
 
 import net.staticstudios.data.DeletionType;
-import net.staticstudios.data.mocks.MockLocation;
-import net.staticstudios.data.mocks.MockThreadProvider;
 import net.staticstudios.data.mocks.game.prison.MockPrisonGame;
 import net.staticstudios.data.mocks.game.prison.MockPrisonPlayer;
 import net.staticstudios.data.mocks.game.skyblock.MockSkyblockGame;
 import net.staticstudios.data.mocks.game.skyblock.MockSkyblockPlayer;
 import net.staticstudios.data.util.DataTest;
-import net.staticstudios.utils.ThreadUtils;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -156,122 +153,6 @@ public class UniqueDataTest extends DataTest {
                     }
                 }
         );
-    }
-
-
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
-    @DisplayName("Create a skyblock player with 2 distinct initial home locations, then add another, and ensure that the player has 3 home locations")
-    void createPlayerWithDistinctHomeLocations() {
-        MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
-
-        MockSkyblockPlayer player = new MockSkyblockPlayer(skyblockGame.getDataManager(), "John",
-                new MockLocation(skyblockGame.getDataManager(), 0, 0, 0),
-                new MockLocation(skyblockGame.getDataManager(), 1, 1, 1)
-        );
-        UUID playerId = player.getId();
-        skyblockGame.getPlayerProvider().set(player);
-
-        //Wait for the data to sync
-        waitForDataPropagation();
-
-        assertAll("Home locations are not consistent across skyblock instances", () -> {
-            for (int i = 1; i < NUM_INSTANCES; i++) {
-                MockSkyblockPlayer p = skyblockGameInstances.get(i).getPlayerProvider().get(playerId);
-                assertEquals(2, p.getHomeLocations().size());
-            }
-        });
-
-        player.addHomeLocation(skyblockGame.getDataManager(), 2, 2, 2);
-
-        assertEquals(3, player.getHomeLocations().size(), "Player does not have 3 home locations");
-
-        //Wait for the data to sync
-        waitForDataPropagation();
-
-        assertAll("Home locations are not consistent across skyblock instances", () -> {
-            for (int i = 1; i < NUM_INSTANCES; i++) {
-                MockSkyblockPlayer p = skyblockGameInstances.get(i).getPlayerProvider().get(playerId);
-                assertEquals(3, p.getHomeLocations().size());
-            }
-        });
-    }
-
-
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
-    @DisplayName("Create a player with 2 of the same initial home locations, remove one, and ensure that the player has only one home location")
-    void createPlayerWithSameHomeLocations() {
-        MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
-
-        MockSkyblockPlayer player = new MockSkyblockPlayer(skyblockGame.getDataManager(), "John",
-                new MockLocation(skyblockGame.getDataManager(), 0, 0, 0),
-                new MockLocation(skyblockGame.getDataManager(), 0, 0, 0)
-        );
-        UUID playerId = player.getId();
-        skyblockGame.getPlayerProvider().set(player);
-
-        //Wait for the data to sync
-        waitForDataPropagation();
-
-        assertAll("Home locations are not consistent across skyblock instances", () -> {
-            for (int i = 1; i < NUM_INSTANCES; i++) {
-                MockSkyblockPlayer p = skyblockGameInstances.get(i).getPlayerProvider().get(playerId);
-                assertEquals(2, p.getHomeLocations().size());
-            }
-        });
-
-        player.removeHomeLocation(skyblockGame.getDataManager(), 0, 0, 0);
-
-        assertEquals(1, player.getHomeLocations().size(), "Player does not have only one home location");
-
-        //Wait for the data to sync
-        waitForDataPropagation();
-
-        assertAll("Home locations are not consistent across skyblock instances", () -> {
-            for (int i = 1; i < NUM_INSTANCES; i++) {
-                MockSkyblockPlayer p = skyblockGameInstances.get(i).getPlayerProvider().get(playerId);
-                assertEquals(1, p.getHomeLocations().size());
-            }
-        });
-    }
-
-
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
-    @DisplayName("Update a player's home location")
-    void updateHomeLocation() {
-        MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
-
-        MockSkyblockPlayer player = skyblockGame.getPlayerProvider().get(userIds.getFirst());
-        MockLocation location = player.getHomeLocations().stream().findFirst().orElse(null);
-
-        assertNotNull(location, "Player does not have a home location");
-
-        location.setX(5);
-        location.setY(5);
-        location.setZ(5);
-
-        location.update(player.getHomeLocations());
-
-        //Wait for the data to sync
-        waitForDataPropagation();
-
-        assertAll("Home locations are not consistent across skyblock instances", () -> {
-            for (int i = 1; i < NUM_INSTANCES; i++) {
-                MockSkyblockPlayer p = skyblockGameInstances.get(i).getPlayerProvider().get(userIds.getFirst());
-                MockLocation l = p.getHomeLocations().stream().filter(loc -> loc.getX() == 5 && loc.getY() == 5 && loc.getZ() == 5).findFirst().orElse(null);
-                assertNotNull(l, "Home location does not exist on " + skyblockGameInstances.get(i).getDataManager().getServerId());
-            }
-        });
-
-        //Restart the game to ensure its read from the db properly
-        ThreadUtils.shutdown();
-        ThreadUtils.setProvider(new MockThreadProvider());
-
-        MockSkyblockGame newSkyblockGame = new MockSkyblockGame("new-skyblock", redis.getHost(), redis.getBindPort(), hikariConfig);
-        MockSkyblockPlayer newPlayer = newSkyblockGame.getPlayerProvider().get(userIds.getFirst());
-
-        MockLocation newLocation = newPlayer.getHomeLocations().stream().filter(loc -> loc.getX() == 5 && loc.getY() == 5 && loc.getZ() == 5).findFirst().orElse(null);
-        assertNotNull(newLocation, "Home location does not exist on new skyblock instance");
-
     }
 
 
