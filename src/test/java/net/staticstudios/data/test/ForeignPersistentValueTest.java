@@ -625,19 +625,11 @@ public class ForeignPersistentValueTest extends DataTest {
             assertEquals(favoriteNumber, user.getStatsFavoriteNumber());
             assertEquals(userName, stats.getUserName());
         }));
-//
-//        discordServices.stream().forEach(service -> {
-//            service.getDataManager().dumpLookupTable();
-//        });
 
         service0.getUserProvider().delete(user0.getId(), DeletionType.ALL);
 
         waitForDataPropagation();
         waitForDataPropagation();
-
-//        discordServices.stream().forEach(service -> {
-//            service.getDataManager().dumpLookupTable();
-//        });
 
         assertAll("data deleted", discordServices.stream().map(service -> () -> {
             MockDiscordUser user = service.getUserProvider().get(userIds.getFirst());
@@ -648,8 +640,6 @@ public class ForeignPersistentValueTest extends DataTest {
             assertNull(stats.getUserName());
         }));
     }
-    //todo: test when multiple fpvs, using different linking tables, are on an object
-
 
     //todo: query the db and ensure the results are correct
 }

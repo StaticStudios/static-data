@@ -91,7 +91,7 @@ public class DataTest {
         //Ping myself to ensure that redis has had enough time to handle every queued message
 
         AtomicBoolean propagated = new AtomicBoolean(false);
-        propagationMessenger.sendMessage("propagation", PingMessageHandler.class, new PingMessage()).thenRun(() -> propagated.set(true));
+        propagationMessenger.sendMessage("waitForDataPropagation", PingMessageHandler.class, new PingMessage()).thenRun(() -> propagated.set(true));
         while (!propagated.get()) {
             try {
                 Thread.sleep(50);

@@ -13,6 +13,7 @@ import net.staticstudios.data.shared.SharedValue;
 import net.staticstudios.utils.ReflectionUtils;
 import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Field;
 import java.sql.Connection;
@@ -175,6 +176,7 @@ public abstract class AbstractPersistentValue<T, M extends SharedValueMetadata<?
     }
 
 
+    @Nullable
     @Override
     public String getDataAddress() {
         return getDataAddress(getDataId());

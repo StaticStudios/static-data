@@ -21,12 +21,9 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-
-//todo: split this up into multiple test classes
 public class UniqueDataTest extends DataTest {
     static int NUM_INSTANCES = 3;
     static int NUM_USERS = 10;
-    static int NUM_HOME_LOCATIONS = 3;
 
     List<MockSkyblockGame> skyblockGameInstances = new ArrayList<>();
     List<UUID> userIds = new ArrayList<>();
@@ -54,8 +51,7 @@ public class UniqueDataTest extends DataTest {
             statement.execute("""
                     CREATE TABLE players (
                         id uuid PRIMARY KEY,
-                        money bigint NOT NULL DEFAULT 0,
-                        favorite_block varchar(255) NOT NULL DEFAULT '0,0,0'
+                        money bigint NOT NULL DEFAULT 0
                     )
                     """);
 
@@ -73,17 +69,6 @@ public class UniqueDataTest extends DataTest {
                     )
                     """);
 
-            statement.execute("""
-                    CREATE TABLE home_locations (
-                        id uuid NOT NULL,
-                        player_id uuid NOT NULL,
-                        x int NOT NULL,
-                        y int NOT NULL,
-                        z int NOT NULL,
-                        PRIMARY KEY (id, player_id)
-                    )
-                    """);
-
             //Insert some data
             for (int i = 0; i < NUM_USERS; i++) {
                 UUID userId = UUID.randomUUID();
@@ -92,9 +77,6 @@ public class UniqueDataTest extends DataTest {
                 statement.execute("INSERT INTO players (id) VALUES ('%s')".formatted(userId));
                 statement.execute("INSERT INTO skyblock.players (id) VALUES ('%s')".formatted(userId));
 
-                for (int j = 0; j < NUM_HOME_LOCATIONS; j++) {
-                    statement.execute("INSERT INTO home_locations (id, player_id, x, y, z) VALUES ('%s', '%s', %s, %s, %s)".formatted(UUID.randomUUID(), userId, j, j, j));
-                }
             }
         }
 
@@ -112,7 +94,6 @@ public class UniqueDataTest extends DataTest {
             statement.execute("DROP TABLE players");
             statement.execute("DROP TABLE skyblock.players");
             statement.execute("DROP TABLE prison.players");
-            statement.execute("DROP TABLE home_locations");
         }
     }
 
@@ -131,11 +112,9 @@ public class UniqueDataTest extends DataTest {
         });
     }
 
-
-    //todo: rename this test, and add more info about what its actually testing (inheritance)
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Update a skyblock player's (user's) name")
-    void updateName() {
+    void testUpdatingSuperClassValue() {
         //The name exists on the user, not the player
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
         UUID playerId = userIds.getFirst();
@@ -158,7 +137,7 @@ public class UniqueDataTest extends DataTest {
 
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Create a player on skyblock, and verify the player does not exist on prison")
-    void createSkyblockPlayerAndVerifyPrisonPlayerNotExist() {
+    void testCreatingDataWithSharedBaseClass() {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
         MockPrisonGame prisonGame = new MockPrisonGame("prison", redis.getHost(), redis.getBindPort(), hikariConfig);
 
@@ -175,7 +154,7 @@ public class UniqueDataTest extends DataTest {
 
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Create a player on skyblock, give it some money, create a player on prison with the same id, and verify the money is equal to skyblock")
-    void createSkyblockPlayerAndVerifyPrisonPlayerMoney() {
+    void testCreatingDataWithSharedBaseClass2() {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
         MockPrisonGame prisonGame = new MockPrisonGame("prison", redis.getHost(), redis.getBindPort(), hikariConfig);
 
@@ -202,7 +181,7 @@ public class UniqueDataTest extends DataTest {
 
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Delete a player")
-    void deletePlayer() {
+    void testDeletion() {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
         MockSkyblockPlayer player = skyblockGame.getPlayerProvider().get(userIds.getFirst());
 
@@ -221,4 +200,5 @@ public class UniqueDataTest extends DataTest {
         });
     }
 }
+
 //todo: test value serializers

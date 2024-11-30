@@ -2,9 +2,8 @@ package net.staticstudios.data.mocks.game.skyblock;
 
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.Table;
-import net.staticstudios.data.value.PersistentValue;
-import net.staticstudios.data.mocks.MockLocation;
 import net.staticstudios.data.mocks.game.MockGenericPlayer;
+import net.staticstudios.data.value.PersistentValue;
 
 import java.util.UUID;
 
@@ -17,12 +16,12 @@ public class MockSkyblockPlayer extends MockGenericPlayer {
         super();
     }
 
-    public MockSkyblockPlayer(DataManager dataManager, String name, MockLocation... homeLocations) {
-        this(dataManager, UUID.randomUUID(), name, homeLocations);
+    public MockSkyblockPlayer(DataManager dataManager, String name) {
+        this(dataManager, UUID.randomUUID(), name);
     }
 
-    public MockSkyblockPlayer(DataManager dataManager, UUID id, String name, MockLocation... homeLocations) {
-        super(dataManager, id, name, homeLocations);
+    public MockSkyblockPlayer(DataManager dataManager, UUID id, String name) {
+        super(dataManager, id, name);
         dataManager.insert(this);
     }
 

@@ -109,7 +109,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         });
     }
 
-    //todo: jd
+
     public static void debug(String log) {
         logger.debug(log);
     }
@@ -853,6 +853,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
      * @param entity     The entity to create
      * @throws SQLException If an error occurs
      */
+    @Blocking
     public <T extends UniqueData> void insert(Connection connection, Jedis jedis, T entity) throws SQLException {
         long start = System.currentTimeMillis();
         connection.setAutoCommit(false);
@@ -994,6 +995,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
      * @param data         The entity to delete
      * @param deletionType The type of deletion to perform
      */
+    @Blocking
     public void delete(UniqueData data, DeletionType deletionType) {
         try (Connection connection = getConnection()) {
             try (Jedis jedis = getJedis()) {
@@ -1013,6 +1015,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
      * @param deletionType The type of deletion to perform
      * @throws SQLException If an error occurs
      */
+    @Blocking
     public void delete(Connection connection, Jedis jedis, UniqueData data, DeletionType deletionType) throws SQLException {
         //Currently we only support fully deleting an entity as other types of deletions are much more complicated and not needed as of now.
         if (deletionType == DeletionType.ALL) {
@@ -1020,6 +1023,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         }
     }
 
+    @Blocking
     private void deleteAll(Connection connection, Jedis jedis, UniqueData data) throws SQLException {
         UniqueDataMetadata uniqueDataMetadata = getUniqueDataMetadata(data.getClass());
 
@@ -1234,6 +1238,15 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
     }
 
 
+    /**
+     * Link two {@link UniqueData} objects together.
+     *
+     * @param connection The connection to use
+     * @param fpv        The {@link ForeignPersistentValue} which is initiating the link
+     * @param otherId    The ID of the object to link to
+     * @throws SQLException                          If an error occurs
+     * @throws ForeignReferenceDoesNotExistException If the object with the given ID does not exist
+     */
     @Blocking
     public void linkForeignObjects(Connection connection, ForeignPersistentValue<?> fpv, UUID otherId) throws SQLException, ForeignReferenceDoesNotExistException {
         UUID prevForeignId = fpv.getForeignObjectId();
@@ -1297,6 +1310,20 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
                 ));
     }
 
+    /**
+     * Handle the linking of two {@link UniqueData} objects.
+     *
+     * @param connection     The connection to use
+     * @param column         The column that the data to link resides in
+     * @param linkingTable   The table that links the two data objects
+     * @param linkingColumn1 The column in the linking table that links to the first data object
+     * @param linkingColumn2 The column in the linking table that links to the second data object
+     * @param id1            The ID of the first data object
+     * @param id2            The ID of the second data object
+     * @param prevForeignId  The previous ID that object 1 was linked to
+     * @param value2         The value that object 2 has
+     * @throws SQLException If an error occurs
+     */
     @ApiStatus.Internal
     public void linkLocalForeignPersistentValues(
             Connection connection,
@@ -1393,6 +1420,11 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         return (T) deserialize(fpv.getType(), value);
     }
 
+    /**
+     * Unlink all foreign persistent values for a given data address.
+     *
+     * @param address The address of the data
+     */
     public void unlinkForeignPersistentValues(String address) {
         List<DataWrapper> dataWrappers = new ArrayList<>(getDataWrappers(address));
 
