@@ -314,7 +314,6 @@ public abstract class SharedCollection<T extends CollectionEntry, M extends Shar
         public void remove() {
             if (lastRet < 0)
                 throw new IllegalStateException();
-            //todo: remove from data source
             SharedCollection.this.remove(values[lastRet]);
 
             lastRet = -1;
