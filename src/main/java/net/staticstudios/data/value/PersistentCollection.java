@@ -6,8 +6,8 @@ import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.messaging.PersistentCollectionChangeMessage;
 import net.staticstudios.data.messaging.handle.PersistentCollectionAddMessageHandler;
 import net.staticstudios.data.messaging.handle.PersistentCollectionRemoveMessageHandler;
-import net.staticstudios.data.meta.PersistentCollectionMetadata;
-import net.staticstudios.data.meta.PersistentEntryValueMetadata;
+import net.staticstudios.data.meta.persistant.collection.PersistentCollectionMetadata;
+import net.staticstudios.data.meta.persistant.collection.PersistentEntryValueMetadata;
 import net.staticstudios.data.shared.CollectionEntry;
 import net.staticstudios.data.shared.SharedCollection;
 import net.staticstudios.utils.Pair;
@@ -179,13 +179,11 @@ public class PersistentCollection<V extends CollectionEntry> extends SharedColle
             }
 
             if (sendMessage) {
-                UniqueData entity = getData();
                 dataManager.getMessenger().broadcastMessageNoPrefix(
-                        dataManager.getChannel(this),
+                        dataManager.getDataChannel(this),
                         PersistentCollectionRemoveMessageHandler.class,
                         new PersistentCollectionChangeMessage(
-                                entity.getId(),
-                                getAddress(),
+                                getDataAddress(),
                                 pkeyValues
                         ));
             }
@@ -378,13 +376,11 @@ public class PersistentCollection<V extends CollectionEntry> extends SharedColle
             }
 
             if (sendMessage) {
-                UniqueData entity = getData();
                 dataManager.getMessenger().broadcastMessageNoPrefix(
-                        dataManager.getChannel(this),
+                        dataManager.getDataChannel(this),
                         PersistentCollectionAddMessageHandler.class,
                         new PersistentCollectionChangeMessage(
-                                entity.getId(),
-                                getAddress(),
+                                getDataAddress(),
                                 changedValues
                         ));
             }
@@ -427,6 +423,11 @@ public class PersistentCollection<V extends CollectionEntry> extends SharedColle
         removeAll(connection, Collections.singletonList(v));
     }
 
+    @Override
+    public String getDataAddress() {
+        return getData().getId() + ".collection." + table + "." + linkingColumn;
+    }
+
     @Blocking
     public synchronized void removeAll(Connection connection, @NotNull Collection<?> c) {
         List<V> values = new ArrayList<>();
@@ -445,7 +446,7 @@ public class PersistentCollection<V extends CollectionEntry> extends SharedColle
     @Blocking
     public synchronized void addAll(Connection connection, @NotNull Collection<? extends V> c) {
         List<V> values = new ArrayList<>(c);
-        addAllInternal(values);
+        addAllInternal(values, true);
 
         addAllToDataSource(connection, values, true);
     }

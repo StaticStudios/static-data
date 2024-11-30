@@ -1,8 +1,8 @@
 package net.staticstudios.data.mocks.game.skyblock;
 
 import com.zaxxer.hikari.HikariConfig;
+import net.staticstudios.data.DataProvider;
 import net.staticstudios.data.mocks.game.MockGame;
-import net.staticstudios.data.mocks.game.MockPlayerProvider;
 
 public class MockSkyblockGame extends MockGame<MockSkyblockPlayer> {
     private final MockSkyblockPlayerProvider playerProvider;
@@ -14,7 +14,7 @@ public class MockSkyblockGame extends MockGame<MockSkyblockPlayer> {
     }
 
     @Override
-    public MockPlayerProvider<MockSkyblockPlayer> getPlayerProvider() {
+    public DataProvider<MockSkyblockPlayer> getPlayerProvider() {
         return playerProvider;
     }
 }

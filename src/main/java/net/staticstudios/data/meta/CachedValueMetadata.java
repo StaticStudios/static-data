@@ -3,6 +3,7 @@ package net.staticstudios.data.meta;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.value.CachedValue;
+import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.Field;
 import java.util.Objects;
@@ -13,13 +14,15 @@ public final class CachedValueMetadata implements SharedValueMetadata<CachedValu
     private final String table;
     private final Class<?> type;
     private final Field field;
+    private final Class<? extends UniqueData> parentClass;
 
-    public CachedValueMetadata(DataManager dataManager, String table, String key, Class<?> type, Field field) {
+    public CachedValueMetadata(DataManager dataManager, String table, String key, Class<?> type, Field field, Class<? extends UniqueData> parentClass) {
         this.dataManager = dataManager;
         this.table = table;
         this.key = key;
         this.type = type;
         this.field = field;
+        this.parentClass = parentClass;
     }
 
     /**
@@ -33,7 +36,7 @@ public final class CachedValueMetadata implements SharedValueMetadata<CachedValu
      */
     @SuppressWarnings("unused") //Used via reflection
     public static <T extends UniqueData> CachedValueMetadata extract(DataManager dataManager, Class<T> parentClass, String table, CachedValue<?> value, Field field) {
-        return new CachedValueMetadata(dataManager, table, value.getKey(), value.getType(), field);
+        return new CachedValueMetadata(dataManager, table, value.getKey(), value.getType(), field, parentClass);
     }
 
     public String getKey() {
@@ -76,7 +79,12 @@ public final class CachedValueMetadata implements SharedValueMetadata<CachedValu
     }
 
     @Override
-    public String getAddress() {
-        return "cached_value-" + key;
+    public @NotNull String getMetadataAddress() {
+        return "redis." + table + "." + key;
+    }
+
+    @Override
+    public Class<? extends UniqueData> getParentClass() {
+        return parentClass;
     }
 }

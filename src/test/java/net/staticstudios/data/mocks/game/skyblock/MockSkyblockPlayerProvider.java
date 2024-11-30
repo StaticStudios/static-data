@@ -1,15 +1,10 @@
 package net.staticstudios.data.mocks.game.skyblock;
 
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.mocks.game.MockPlayerProvider;
+import net.staticstudios.data.DataProvider;
 
-public class MockSkyblockPlayerProvider extends MockPlayerProvider<MockSkyblockPlayer> {
+public class MockSkyblockPlayerProvider extends DataProvider<MockSkyblockPlayer> {
     public MockSkyblockPlayerProvider(DataManager dataManager) {
-        super(dataManager);
-    }
-
-    @Override
-    public Class<MockSkyblockPlayer> getDataType() {
-        return MockSkyblockPlayer.class;
+        super(dataManager, MockSkyblockPlayer.class);
     }
 }

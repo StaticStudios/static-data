@@ -1,10 +1,18 @@
 package net.staticstudios.data.value;
 
+import net.staticstudios.data.UpdatedValue;
+
 @FunctionalInterface
 public interface UpdateHandler<T> {
-    T onUpdate(T originalValue, T newValue);
+    /**
+     * Note that this is called after the value has been updated.
+     *
+     * @param updated The updated value.
+     */
+    void onUpdate(UpdatedValue<T> updated);
 
-    default T unsafeHandleUpdate(Object originalValue, Object newValue) {
-        return onUpdate((T) originalValue, (T) newValue);
+    @SuppressWarnings("unchecked")
+    default void unsafeHandleUpdate(Object originalValue, Object newValue) {
+        onUpdate((UpdatedValue<T>) new UpdatedValue<>(originalValue, newValue));
     }
 }

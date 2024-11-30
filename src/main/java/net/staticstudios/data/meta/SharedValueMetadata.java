@@ -2,7 +2,6 @@ package net.staticstudios.data.meta;
 
 import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.shared.SharedValue;
-import net.staticstudios.data.value.PersistentValue;
 
 import java.lang.reflect.Field;
 
@@ -38,13 +37,8 @@ public interface SharedValueMetadata<T extends SharedValue<?>> extends Metadata 
      * @param value    the value to set
      */
     default void setInternalValue(UniqueData instance, Object value) {
-        Field field = getField();
-        try {
-            PersistentValue<?> metadata = (PersistentValue<?>) field.get(instance);
-            metadata.setInternal(value);
-        } catch (IllegalAccessException e) {
-            throw new RuntimeException("Failed to set value in field " + field.getName() + " in " + instance.getClass().getName(), e);
-        }
+        SharedValue<?> sharedValue = getSharedValue(instance);
+        sharedValue.setInternal(value);
     }
 
     /**

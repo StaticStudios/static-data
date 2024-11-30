@@ -1,17 +1,29 @@
 package net.staticstudios.data;
 
+import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.Multimap;
+import com.google.common.collect.Multimaps;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import net.staticstudios.utils.*;
 import net.staticstudios.data.messaging.DataLookupMessage;
+import net.staticstudios.data.messaging.ForeignLinkDeleteMessage;
+import net.staticstudios.data.messaging.ForeignLinkUpdateMessage;
 import net.staticstudios.data.messaging.handle.*;
-import net.staticstudios.data.meta.*;
+import net.staticstudios.data.meta.CachedValueMetadata;
+import net.staticstudios.data.meta.Metadata;
+import net.staticstudios.data.meta.UniqueDataMetadata;
+import net.staticstudios.data.meta.persistant.collection.PersistentCollectionMetadata;
+import net.staticstudios.data.meta.persistant.collection.PersistentEntryValueMetadata;
+import net.staticstudios.data.meta.persistant.value.AbstractPersistentValueMetadata;
+import net.staticstudios.data.meta.persistant.value.ForeignPersistentValueMetadata;
+import net.staticstudios.data.meta.persistant.value.PersistentValueMetadata;
 import net.staticstudios.data.shared.CollectionEntry;
-import net.staticstudios.data.value.CachedValue;
-import net.staticstudios.data.value.PersistentCollection;
-import net.staticstudios.data.value.PersistentEntryValue;
-import net.staticstudios.data.value.PersistentValue;
+import net.staticstudios.data.shared.DataWrapper;
+import net.staticstudios.data.value.*;
 import net.staticstudios.messaging.Messenger;
+import net.staticstudios.utils.*;
+import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Blocking;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -42,7 +54,9 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
     private final List<UniqueDataMetadata> uniqueDataMetadata = new ArrayList<>();
     private final JedisPool jedisPool;
     private final List<ValueSerializer<?, ?>> SERIALIZERS = new ArrayList<>();
-    private final Map<String, Metadata> METADATA = new HashMap<>();
+    private final Multimap<String, DataWrapper> dataWrapperLookupTable;
+    private final Multimap<String, Metadata> metadataLookupTable;
+    private final Multimap<String, ForeignPersistentValueMetadata> foreignLinkLookupTable;
     private Messenger messenger;
 
     /**
@@ -65,12 +79,16 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         this.jedisHost = redisHost;
         this.jedisPort = redisPort;
 
-        logger.debug("DataManager created. Unique server ID: " + uniqueServerId);
+        logger.debug("DataManager created. Unique server ID: {}", uniqueServerId);
 
         logger.debug("Creating new connection pool");
 
         dataSource = new HikariDataSource(hikariConfig);
         jedisPool = new JedisPool(redisHost, redisPort);
+
+        dataWrapperLookupTable = Multimaps.synchronizedMultimap(ArrayListMultimap.create());
+        metadataLookupTable = Multimaps.synchronizedMultimap(ArrayListMultimap.create());
+        foreignLinkLookupTable = Multimaps.synchronizedMultimap(ArrayListMultimap.create());
 
         ThreadUtils.onShutdownRunAsync(ShutdownStage.CLEANUP, () -> {
             CompletableFuture<Void> future = new CompletableFuture<>();
@@ -91,6 +109,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         });
     }
 
+
     public static void debug(String log) {
         logger.debug(log);
     }
@@ -98,6 +117,110 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
     public static Logger getLogger() {
         return logger;
     }
+
+
+    //Begin lookup table shenanigans
+    public void addDataWrapperToLookupTable(DataWrapper wrapper) {
+        addDataWrapperToLookupTable(wrapper.getDataAddress(), wrapper);
+    }
+
+    public void removeDataWrapperFromLookupTable(DataWrapper wrapper) {
+        removeDataWrapperFromLookupTable(wrapper.getDataAddress(), wrapper);
+    }
+
+    public void addDataWrapperToLookupTable(String address, DataWrapper wrapper) {
+        if (address == null) {
+            return;
+        }
+
+        dataWrapperLookupTable.put(address, wrapper);
+    }
+
+    public void removeDataWrapperFromLookupTable(String address, DataWrapper wrapper) {
+        if (address == null) {
+            return;
+        }
+
+        dataWrapperLookupTable.remove(address, wrapper);
+    }
+
+    public Collection<DataWrapper> getDataWrappers(String address) {
+        return dataWrapperLookupTable.get(address);
+    }
+
+    public Collection<DataWrapper> extractDataWrappers(UniqueData data) {
+        UniqueDataMetadata metadata = getUniqueDataMetadata(data.getClass());
+
+        List<DataWrapper> wrappers = new ArrayList<>();
+
+        Set<Metadata> memberMetadata = metadata.getMemberMetadata();
+
+        for (Metadata member : memberMetadata) {
+            wrappers.add(member.getWrapper(data));
+        }
+
+        return wrappers;
+    }
+
+    public void insertIntoDataWrapperLookupTable(UniqueData data) {
+        Collection<DataWrapper> wrappers = extractDataWrappers(data);
+
+        for (DataWrapper wrapper : wrappers) {
+            addDataWrapperToLookupTable(wrapper);
+        }
+    }
+
+    public void removeFromDataWrapperLookupTable(UniqueData data) {
+        Collection<DataWrapper> wrappers = extractDataWrappers(data);
+
+        for (DataWrapper wrapper : wrappers) {
+            removeDataWrapperFromLookupTable(wrapper);
+        }
+    }
+
+    public void dumpLookupTable() {
+        logger.debug("----------[{}] LOOKUP TABLE DUMP----------", uniqueServerId);
+
+        for (Map.Entry<String, Collection<DataWrapper>> entry : dataWrapperLookupTable.asMap().entrySet()) {
+            logger.debug("Lookup table entry: {}", entry.getKey());
+            for (DataWrapper wrapper : entry.getValue()) {
+                logger.debug("  - {}", wrapper);
+            }
+        }
+    }
+
+    public void addMetadataToLookupTable(Metadata metadata) {
+        String address = metadata.getMetadataAddress();
+
+        metadataLookupTable.put(address, metadata);
+    }
+
+    public void removeMetadataFromLookupTable(Metadata metadata) {
+        String address = metadata.getMetadataAddress();
+
+        metadataLookupTable.remove(address, metadata);
+    }
+
+    public Collection<Metadata> getMetadata(String address) {
+        return metadataLookupTable.get(address);
+    }
+
+    public void addForeignLinkToLookupTable(ForeignPersistentValueMetadata fpvMeta) {
+        String linkingTable = fpvMeta.getLinkingTable();
+
+        foreignLinkLookupTable.put(linkingTable, fpvMeta);
+    }
+
+    public void removeForeignLinkFromLookupTable(ForeignPersistentValueMetadata fpvMeta) {
+        String linkingTable = fpvMeta.getLinkingTable();
+
+        foreignLinkLookupTable.remove(linkingTable, fpvMeta);
+    }
+
+    public Collection<ForeignPersistentValueMetadata> getForeignLinks(String linkingTable) {
+        return foreignLinkLookupTable.get(linkingTable);
+    }
+    //End lookup table shenanigans
 
     /**
      * Set the messenger instance to use for this DataManager.
@@ -116,6 +239,8 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         messenger.registerHandler(new PersistentCollectionAddMessageHandler(this));
         messenger.registerHandler(new PersistentCollectionRemoveMessageHandler(this));
         messenger.registerHandler(new PersistentCollectionEntryUpdateMessageHandler(this));
+        messenger.registerHandler(new ForeignLinkUpdateMessageHandler(this));
+        messenger.registerHandler(new ForeignLinkDeleteMessageHandler(this));
 
         messenger.addPatternFilter(this::shouldHandleMessage);
 
@@ -147,10 +272,6 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
-    }
-
-    public Collection<String> getTables() {
-        return uniqueDataMetadata.stream().map(UniqueDataMetadata::getTopLevelTable).toList();
     }
 
     @Override
@@ -195,14 +316,38 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         UniqueDataMetadata metadata = UniqueDataMetadata.extract(this, provider.getDataType());
         uniqueDataMetadata.add(metadata);
 
-        for (Metadata m : metadata.getMemberMetadata()) {
-            registerMetadata(m);
+        for (Metadata memberMetadata : metadata.getMemberMetadata()) {
+            addMetadataToLookupTable(memberMetadata);
+
+            if (memberMetadata instanceof ForeignPersistentValueMetadata fpvMeta) {
+                addForeignLinkToLookupTable(fpvMeta);
+            }
         }
     }
 
-    public String getChannel(Addressable addressable) {
-        return "messages-data-collectionAddress-" + addressable.getAddress();
+    public String getDataChannel(DataWrapper dataWrapper) {
+        String address = dataWrapper.getDataAddress();
+
+        return getDataChannel(address);
     }
+
+    public String getDataChannel(String dataAddress) {
+
+        if (dataAddress == null) {
+            throw new IllegalArgumentException("Data address is null!");
+        }
+
+        return "messages-data-data_address-" + dataAddress;
+    }
+
+    public String getForeignLinkChannel(ForeignPersistentValueMetadata fpvMeta) {
+        return "messages-data-foreign_link-" + fpvMeta.getLinkingTable();
+    }
+
+    public String getMetadataChannel(Metadata metadata) {
+        return "messages-data-metadata_address-" + metadata.getMetadataAddress();
+    }
+
 
     /**
      * Get the channel for the given data.
@@ -236,16 +381,35 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
 
         String[] parts = channel.substring("messages-data-".length()).split("-", 2);
 
-        if (parts[0].equals("data_tables")) {
-            String[] tables = parts[1].split(",");
+        return switch (parts[0]) {
+            case "data_address" -> {
+                String address = parts[1];
+                Collection<DataWrapper> wrappers = getDataWrappers(address);
 
-            return getUniqueDataMetadata(List.of(tables)) != null;
-        }
+                yield !wrappers.isEmpty();
+            }
 
-        String address = parts[1];
-        Metadata metadata = getMetadata(address);
+            case "metadata_address" -> {
+                String address = parts[1];
+                Collection<Metadata> metadata = getMetadata(address);
 
-        return metadata != null;
+                yield !metadata.isEmpty();
+            }
+
+            case "foreign_link" -> {
+                String linkingTable = parts[1];
+                Collection<ForeignPersistentValueMetadata> foreignLinks = getForeignLinks(linkingTable);
+
+                yield !foreignLinks.isEmpty();
+            }
+
+            case "data_tables" -> {
+                String[] tables = parts[1].split(",");
+
+                yield getUniqueDataMetadata(List.of(tables)) != null;
+            }
+            default -> throw new IllegalStateException("Unexpected value: " + parts[0]);
+        };
     }
 
     /**
@@ -268,14 +432,6 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         throw new IllegalArgumentException("No provider found for " + clazz.getName());
     }
 
-    /**
-     * Get the provider responsible for the given data type.
-     * This will return the provider that is registered with the highest level class of the data type.
-     *
-     * @param clazz The class of the data type
-     * @return The provider
-     * @throws IllegalArgumentException If no provider is found
-     */
     public @NotNull UniqueDataMetadata getUniqueDataMetadata(Class<? extends UniqueData> clazz) {
         for (UniqueDataMetadata metadata : uniqueDataMetadata) {
             if (clazz.isAssignableFrom(metadata.getType())) {
@@ -368,6 +524,18 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         }
     }
 
+    private List<AbstractPersistentValueMetadata<?>> getAbstractPersistentValueMetadata(UniqueDataMetadata metadata) {
+        List<PersistentValueMetadata> persistentValueMetadataList = metadata.getValueMetadata(PersistentValueMetadata.class);
+        List<ForeignPersistentValueMetadata> foreignPersistentValueMetadataList = metadata.getValueMetadata(ForeignPersistentValueMetadata.class);
+
+        List<AbstractPersistentValueMetadata<?>> abstractPersistentValueMetadataList = new ArrayList<>();
+
+        abstractPersistentValueMetadataList.addAll(persistentValueMetadataList);
+        abstractPersistentValueMetadataList.addAll(foreignPersistentValueMetadataList);
+
+        return abstractPersistentValueMetadataList;
+    }
+
     /**
      * Select some data from the data source.
      *
@@ -408,16 +576,40 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
                 results.put(instanceId, instance);
             }
 
-            List<PersistentValueMetadata> persistentValueMetadataList = uniqueDataMetadata.getValueMetadata(PersistentValueMetadata.class);
+            List<AbstractPersistentValueMetadata<?>> abstractPersistentValueMetadataList = getAbstractPersistentValueMetadata(uniqueDataMetadata);
 
-            for (PersistentValueMetadata valueMetadata : persistentValueMetadataList) {
+            for (AbstractPersistentValueMetadata<?> valueMetadata : abstractPersistentValueMetadataList) {
                 Object value = resultSet.getObject(valueMetadata.getColumn());
+
+                if (valueMetadata instanceof ForeignPersistentValueMetadata foreignPersistentValueMetadata) {
+                    String foreignObjectIdColumn = foreignPersistentValueMetadata.getLinkingTable() + "." + foreignPersistentValueMetadata.getForeignLinkingColumn();
+                    foreignObjectIdColumn = foreignObjectIdColumn.replace(".", "_");
+                    UUID foreignId = resultSet.getObject(foreignObjectIdColumn, UUID.class);
+
+                    if (foreignId == null) {
+                        continue;
+                    }
+
+                    if (value == null) {
+                        throw new IllegalStateException("Foreign value is null but foreign id is not null!");
+                    }
+
+
+                    ForeignPersistentValue<?> fpv = foreignPersistentValueMetadata.getSharedValue(instance);
+                    fpv.setInternal(value);
+                    fpv.setInternalForeignObjectId(foreignId);
+                    continue;
+                }
+
+                assert value != null;
+
                 Object deserializedValue = deserialize(valueMetadata.getType(), value);
                 valueMetadata.setInternalValue(instance, deserializedValue);
             }
         }
 
 
+        //Collections start
         List<Pair<PersistentCollectionMetadata, String>> selectCollectionsStatementPairs = buildSelectCollectionsStatements(uniqueDataMetadata, byId);
         for (Pair<PersistentCollectionMetadata, String> pair : selectCollectionsStatementPairs) {
             PersistentCollectionMetadata collectionMetadata = pair.first();
@@ -450,13 +642,15 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
                         Object deserializedValue = deserialize(entryValue.getType(), value);
                         entryValue.setInitialValue(deserializedValue);
                     }
-                    collection.addAllInternal(Collections.singleton(entry));
+                    collection.addAllInternal(Collections.singleton(entry), false);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }
             }
         }
+        //Collections end
 
+        //CachedValues start
         List<CachedValueMetadata> cachedValueMetadataList = uniqueDataMetadata.getValueMetadata(CachedValueMetadata.class);
 
         if (!cachedValueMetadataList.isEmpty()) {
@@ -473,6 +667,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
                 }
             }
         }
+        //CachedValues end
 
         return results.values();
     }
@@ -481,6 +676,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         StringBuilder sb = new StringBuilder("SELECT ");
 
         List<PersistentValueMetadata> persistentValueMetadataList = metadata.getValueMetadata(PersistentValueMetadata.class);
+        List<ForeignPersistentValueMetadata> foreignPersistentValueMetadataList = metadata.getValueMetadata(ForeignPersistentValueMetadata.class);
 
         List<String> columns = new ArrayList<>();
 
@@ -497,6 +693,44 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
             }
         }
 
+        List<String> foreignColumns = new ArrayList<>();
+        List<String> foreignObjectIdColumns = new ArrayList<>();
+
+        for (ForeignPersistentValueMetadata valueMetadata : foreignPersistentValueMetadataList) {
+            foreignColumns.add(valueMetadata.getTable() + "." + valueMetadata.getColumn());
+
+            String foreignObjectIdColumn = valueMetadata.getLinkingTable() + "." + valueMetadata.getForeignLinkingColumn();
+            if (foreignObjectIdColumns.contains(foreignObjectIdColumn)) {
+                continue;
+            }
+            foreignObjectIdColumns.add(foreignObjectIdColumn);
+        }
+
+        if (!foreignColumns.isEmpty()) {
+            sb.append(", ");
+        }
+
+        for (int i = 0; i < foreignColumns.size(); i++) {
+            sb.append(foreignColumns.get(i));
+            if (i < foreignColumns.size() - 1) {
+                sb.append(", ");
+            }
+        }
+
+        if (!foreignObjectIdColumns.isEmpty()) {
+            sb.append(", ");
+        }
+
+        for (int i = 0; i < foreignObjectIdColumns.size(); i++) {
+            sb.append(foreignObjectIdColumns.get(i))
+                    .append(" AS ")
+                    .append(foreignObjectIdColumns.get(i).replace(".", "_"));
+            if (i < foreignObjectIdColumns.size() - 1) {
+                sb.append(", ");
+            }
+        }
+
+
         sb.append(" FROM ");
 
         List<String> tables = new ArrayList<>(metadata.getTables());
@@ -507,6 +741,40 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         for (String table : tables) {
             sb.append(" JOIN ").append(table).append(" ON ").append(metadata.getTopLevelTable()).append(".id = ").append(table).append(".id");
         }
+
+        List<ForeignPersistentValueMetadata> joinedForeignValues = new ArrayList<>();
+
+        for (ForeignPersistentValueMetadata valueMetadata : foreignPersistentValueMetadataList) {
+            if (joinedForeignValues.stream().anyMatch(otherValueMetaData ->
+                    otherValueMetaData.getLinkingTable().equals(valueMetadata.getLinkingTable()) &&
+                            otherValueMetaData.getForeignLinkingColumn().equals(valueMetadata.getForeignLinkingColumn()) &&
+                            otherValueMetaData.getThisLinkingColumn().equals(valueMetadata.getThisLinkingColumn())
+            )) {
+                continue;
+            }
+
+            sb.append(" LEFT JOIN ")
+                    .append(valueMetadata.getLinkingTable())
+                    .append(" ON ")
+                    .append(metadata.getTopLevelTable())
+                    .append(".id")
+                    .append(" = ")
+                    .append(valueMetadata.getLinkingTable())
+                    .append(".")
+                    .append(valueMetadata.getThisLinkingColumn())
+                    .append(" LEFT JOIN ")
+                    .append(valueMetadata.getTable())
+                    .append(" ON ")
+                    .append(valueMetadata.getLinkingTable())
+                    .append(".")
+                    .append(valueMetadata.getForeignLinkingColumn())
+                    .append(" = ")
+                    .append(valueMetadata.getTable())
+                    .append(".id");
+
+            joinedForeignValues.add(valueMetadata);
+        }
+
 
         if (byId) {
             sb.append(" WHERE ").append(metadata.getTopLevelTable()).append(".id = ?");
@@ -559,6 +827,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
      *
      * @param entity The entity to create
      */
+    @Blocking
     public <T extends UniqueData> void insert(T entity) {
         try (Connection connection = getConnection()) {
             try (Jedis jedis = getJedis()) {
@@ -584,6 +853,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
      * @param entity     The entity to create
      * @throws SQLException If an error occurs
      */
+    @Blocking
     public <T extends UniqueData> void insert(Connection connection, Jedis jedis, T entity) throws SQLException {
         long start = System.currentTimeMillis();
         connection.setAutoCommit(false);
@@ -594,14 +864,10 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         UniqueDataMetadata uniqueDataMetadata = getUniqueDataMetadata(entity.getClass());
 
         List<PersistentValueMetadata> persistentValueMetadataList = uniqueDataMetadata.getValueMetadata(PersistentValueMetadata.class);
+        List<ForeignPersistentValueMetadata> foreignPersistentValueMetadataList = uniqueDataMetadata.getValueMetadata(ForeignPersistentValueMetadata.class);
         List<PersistentCollectionMetadata> persistentCollectionMetadataList = uniqueDataMetadata.getCollectionMetadata(PersistentCollectionMetadata.class);
 
         List<CachedValueMetadata> cachedValueMetadataList = uniqueDataMetadata.getValueMetadata(CachedValueMetadata.class);
-
-
-        if (persistentValueMetadataList.isEmpty()) {
-            throw new IllegalArgumentException("No PersistentValues found for " + entity.getClass().getName());
-        }
 
         for (PersistentValueMetadata valueMetadata : persistentValueMetadataList) {
             PersistentValue<?> value = valueMetadata.getSharedValue(entity);
@@ -610,6 +876,12 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
             }
         }
 
+        for (ForeignPersistentValueMetadata valueMetadata : foreignPersistentValueMetadataList) {
+            ForeignPersistentValue<?> value = valueMetadata.getSharedValue(entity);
+            if (value.get() != null) {
+                throw new IllegalArgumentException("Foreign value " + valueMetadata.getColumn() + " is non-null! All foreign values should be null before insertion!");
+            }
+        }
 
         Map<String, List<PersistentValueMetadata>> tablesToMetadata = new HashMap<>();
         for (PersistentValueMetadata valueMetadata : persistentValueMetadataList) {
@@ -707,6 +979,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
                         entity.getId()
                 ));
 
+
         //Since the values on some tables might differ, get the state from the db and update the instance
         long startGetState = System.currentTimeMillis();
         UniqueData fromDatasource = select(connection, jedis, uniqueDataMetadata, true, id).iterator().next();
@@ -722,6 +995,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
      * @param data         The entity to delete
      * @param deletionType The type of deletion to perform
      */
+    @Blocking
     public void delete(UniqueData data, DeletionType deletionType) {
         try (Connection connection = getConnection()) {
             try (Jedis jedis = getJedis()) {
@@ -741,6 +1015,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
      * @param deletionType The type of deletion to perform
      * @throws SQLException If an error occurs
      */
+    @Blocking
     public void delete(Connection connection, Jedis jedis, UniqueData data, DeletionType deletionType) throws SQLException {
         //Currently we only support fully deleting an entity as other types of deletions are much more complicated and not needed as of now.
         if (deletionType == DeletionType.ALL) {
@@ -748,10 +1023,12 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         }
     }
 
+    @Blocking
     private void deleteAll(Connection connection, Jedis jedis, UniqueData data) throws SQLException {
         UniqueDataMetadata uniqueDataMetadata = getUniqueDataMetadata(data.getClass());
 
         List<PersistentValueMetadata> persistentValueMetadataList = uniqueDataMetadata.getValueMetadata(PersistentValueMetadata.class);
+        List<ForeignPersistentValueMetadata> foreignPersistentValueMetadataList = uniqueDataMetadata.getValueMetadata(ForeignPersistentValueMetadata.class);
         List<PersistentCollectionMetadata> persistentCollectionMetadataList = uniqueDataMetadata.getCollectionMetadata(PersistentCollectionMetadata.class);
 
         Map<String, List<PersistentValueMetadata>> tablesToMetadata = new HashMap<>();
@@ -761,6 +1038,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
             tablesToMetadata.computeIfAbsent(table, k -> new ArrayList<>()).add(valueMetadata);
         }
 
+        boolean autoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
 
         for (Map.Entry<String, List<PersistentValueMetadata>> entry : tablesToMetadata.entrySet()) {
@@ -783,7 +1061,17 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
             statement.execute();
         }
 
-        connection.setAutoCommit(true);
+        for (ForeignPersistentValueMetadata fpvMetadata : foreignPersistentValueMetadataList) {
+            ForeignPersistentValue<?> fpv = fpvMetadata.getSharedValue(data);
+            String fpvLinkingTableRemoveSql = "DELETE FROM " + fpvMetadata.getLinkingTable() + " WHERE " + fpvMetadata.getThisLinkingColumn() + " = ? AND " + fpvMetadata.getForeignLinkingColumn() + " = ?";
+            debug("Executing update: " + fpvLinkingTableRemoveSql);
+            PreparedStatement fpvLinkingTableRemoveStatement = connection.prepareStatement(fpvLinkingTableRemoveSql);
+            fpvLinkingTableRemoveStatement.setObject(1, data.getId());
+            fpvLinkingTableRemoveStatement.setObject(2, fpv.getForeignObjectId());
+            fpvLinkingTableRemoveStatement.execute();
+        }
+
+        connection.setAutoCommit(autoCommit);
 
         List<CachedValueMetadata> cachedValueMetadataList = uniqueDataMetadata.getValueMetadata(CachedValueMetadata.class);
         if (!cachedValueMetadataList.isEmpty()) {
@@ -804,6 +1092,22 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
                         data.getId()
                 )
         );
+
+        //send messages saying the following pvs have been removed, so other instances know to unlink them
+        for (PersistentValueMetadata pvMetadata : persistentValueMetadataList) {
+            PersistentValue<?> pv = pvMetadata.getSharedValue(data);
+            String dataAddress = pv.getDataAddress();
+
+            unlinkForeignPersistentValues(dataAddress);
+
+            getMessenger().broadcastMessageNoPrefix(
+                    getDataChannel(dataAddress),
+                    ForeignLinkDeleteMessageHandler.class,
+                    new ForeignLinkDeleteMessage(
+                            dataAddress
+                    )
+            );
+        }
     }
 
     /**
@@ -905,29 +1209,6 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         return serializer.deserialize(serialized);
     }
 
-    /**
-     * Register a metadata object.
-     *
-     * @param metadata The metadata to register
-     */
-    public void registerMetadata(Metadata metadata) {
-        if (METADATA.containsKey(metadata.getAddress())) {
-            throw new IllegalArgumentException("Metadata for " + metadata.getAddress() + " is already registered!");
-        }
-
-        METADATA.put(metadata.getAddress(), metadata);
-    }
-
-    /**
-     * Get the metadata for the given address.
-     *
-     * @param address The address to get the metadata for
-     * @return The metadata, or null if not found
-     */
-    public @Nullable Metadata getMetadata(String address) {
-        return METADATA.get(address);
-    }
-
     private void copyValues(UniqueData source, UniqueData destination) {
         if (!source.getClass().equals(destination.getClass())) {
             throw new IllegalArgumentException("Source and destination must be of the same class!");
@@ -935,11 +1216,11 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
 
         UniqueDataMetadata metadata = getUniqueDataMetadata(source.getClass());
 
-        List<PersistentValueMetadata> persistentValueMetadataList = metadata.getValueMetadata(PersistentValueMetadata.class);
+        List<AbstractPersistentValueMetadata<?>> abstractPersistentValueMetadataList = getAbstractPersistentValueMetadata(metadata);
 
-        for (PersistentValueMetadata valueMetadata : persistentValueMetadataList) {
-            PersistentValue<?> sourceValue = valueMetadata.getSharedValue(source);
-            PersistentValue<?> destinationValue = valueMetadata.getSharedValue(destination);
+        for (AbstractPersistentValueMetadata<?> valueMetadata : abstractPersistentValueMetadataList) {
+            AbstractPersistentValue<?, ?> sourceValue = (AbstractPersistentValue<?, ?>) valueMetadata.getSharedValue(source);
+            AbstractPersistentValue<?, ?> destinationValue = (AbstractPersistentValue<?, ?>) valueMetadata.getSharedValue(destination);
             destinationValue.setInternal(sourceValue.get());
         }
     }
@@ -955,4 +1236,205 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
 
         return buildCachedValueKey(key, table, data.getId());
     }
+
+
+    /**
+     * Link two {@link UniqueData} objects together.
+     *
+     * @param connection The connection to use
+     * @param fpv        The {@link ForeignPersistentValue} which is initiating the link
+     * @param otherId    The ID of the object to link to
+     * @throws SQLException                          If an error occurs
+     * @throws ForeignReferenceDoesNotExistException If the object with the given ID does not exist
+     */
+    @Blocking
+    public void linkForeignObjects(Connection connection, ForeignPersistentValue<?> fpv, UUID otherId) throws SQLException, ForeignReferenceDoesNotExistException {
+        UUID prevForeignId = fpv.getForeignObjectId();
+        Object foreignDataValue = null;
+        if (otherId == null) {
+            String removeObjectReferenceSql = "DELETE FROM " + fpv.getLinkingTable() + " WHERE " + fpv.getThisLinkingColumn() + " = ? AND " + fpv.getForeignLinkingColumn() + " = ?";
+            debug("Executing update: " + removeObjectReferenceSql);
+
+            PreparedStatement removeObjectReferenceStatement = connection.prepareStatement(removeObjectReferenceSql);
+            removeObjectReferenceStatement.setObject(1, fpv.getParent().getId());
+            removeObjectReferenceStatement.setObject(2, fpv.getForeignObjectId());
+
+            removeObjectReferenceStatement.execute();
+        } else {
+            String getOtherObjectSql = "SELECT id FROM " + fpv.getTable() + " WHERE id = ?";
+            debug("Executing query: " + getOtherObjectSql);
+
+            PreparedStatement getOtherObjectStatement = connection.prepareStatement(getOtherObjectSql);
+
+
+            getOtherObjectStatement.setObject(1, otherId);
+            if (!getOtherObjectStatement.executeQuery().next()) {
+                throw new ForeignReferenceDoesNotExistException("Object with id doesnt exist! Id: " + otherId);
+            }
+
+            String updateLinkingTableSql = "INSERT INTO " + fpv.getLinkingTable() + " (" + fpv.getThisLinkingColumn() + ", " + fpv.getForeignLinkingColumn() + ") VALUES (?, ?) ON CONFLICT (" + fpv.getThisLinkingColumn() + ", " + fpv.getForeignLinkingColumn() + ") DO UPDATE SET " + fpv.getThisLinkingColumn() + " = EXCLUDED." + fpv.getThisLinkingColumn();
+
+            debug("Executing update: " + updateLinkingTableSql);
+
+            PreparedStatement statement = connection.prepareStatement(updateLinkingTableSql);
+            statement.setObject(1, fpv.getParent().getId());
+            statement.setObject(2, otherId);
+            statement.execute();
+
+            foreignDataValue = getForeignObjectValue(connection, fpv, otherId);
+        }
+
+        linkLocalForeignPersistentValues(connection,
+                fpv.getColumn(),
+                fpv.getLinkingTable(),
+                fpv.getThisLinkingColumn(),
+                fpv.getForeignLinkingColumn(),
+                fpv.getParent().getId(),
+                otherId,
+                prevForeignId,
+                foreignDataValue
+        );
+
+        getMessenger().broadcastMessageNoPrefix(
+                getForeignLinkChannel(fpv.getMetadata()),
+                ForeignLinkUpdateMessageHandler.class,
+                new ForeignLinkUpdateMessage(
+                        fpv.getColumn(),
+                        fpv.getLinkingTable(),
+                        fpv.getParent().getId(),
+                        otherId,
+                        prevForeignId,
+                        fpv.getThisLinkingColumn(),
+                        fpv.getForeignLinkingColumn(),
+                        foreignDataValue
+                ));
+    }
+
+    /**
+     * Handle the linking of two {@link UniqueData} objects.
+     *
+     * @param connection     The connection to use
+     * @param column         The column that the data to link resides in
+     * @param linkingTable   The table that links the two data objects
+     * @param linkingColumn1 The column in the linking table that links to the first data object
+     * @param linkingColumn2 The column in the linking table that links to the second data object
+     * @param id1            The ID of the first data object
+     * @param id2            The ID of the second data object
+     * @param prevForeignId  The previous ID that object 1 was linked to
+     * @param value2         The value that object 2 has
+     * @throws SQLException If an error occurs
+     */
+    @ApiStatus.Internal
+    public void linkLocalForeignPersistentValues(
+            Connection connection,
+            String column,
+            String linkingTable,
+            String linkingColumn1,
+            String linkingColumn2,
+            UUID id1,
+            UUID id2,
+            UUID prevForeignId,
+            Object value2
+    ) throws SQLException {
+        Collection<ForeignPersistentValueMetadata> fpvMetaList = getForeignLinks(linkingTable);
+
+        if (fpvMetaList.isEmpty()) {
+            logger.warn("Could not find metadata for linking table: {}", linkingTable);
+            return;
+        }
+
+        for (ForeignPersistentValueMetadata fpvMeta : fpvMetaList) {
+            UniqueDataMetadata uniqueDataMetadata = getUniqueDataMetadata(fpvMeta.getParentClass());
+
+            if (!fpvMeta.getLinkingTable().equals(linkingTable)) {
+                continue;
+            }
+
+            if (!fpvMeta.getThisLinkingColumn().equals(linkingColumn1) && !fpvMeta.getThisLinkingColumn().equals(linkingColumn2)) {
+                continue;
+            }
+
+            if (!fpvMeta.getForeignLinkingColumn().equals(linkingColumn1) && !fpvMeta.getForeignLinkingColumn().equals(linkingColumn2)) {
+                continue;
+            }
+
+            UUID dataId;
+            UUID foreignId;
+            Object foreignDataValue = null;
+
+            if (linkingColumn1.equals(fpvMeta.getThisLinkingColumn())) {
+                dataId = id1;
+                foreignId = id2;
+                foreignDataValue = value2;
+            } else {
+                dataId = id2 == null ? prevForeignId : id2; //Will be null if we unlink
+                foreignId = id1;
+            }
+
+            UniqueData data = uniqueDataMetadata.getProvider().get(dataId);
+
+            if (data == null) {
+                logger.warn("Data with id {} does not exist!", dataId);
+                continue;
+            }
+
+            ForeignPersistentValue<?> fpv = fpvMeta.getSharedValue(data);
+
+            assert fpv != null;
+
+            if (id2 == null) {
+                //We are unlinking
+                foreignDataValue = null;
+                foreignId = null;
+            } else if (!(fpv.getColumn().equals(column) && linkingColumn1.equals(fpvMeta.getThisLinkingColumn()))) {
+                //The FPV is different from the one linked so we have to get the value, we can't just use the cached value (value2)
+                foreignDataValue = getForeignObjectValue(connection, fpv, foreignId);
+
+                if (prevForeignId != null && linkingColumn2.equals(fpvMeta.getThisLinkingColumn())) {
+                    //We are switching foreign objects, and we need to unlink the previous object
+                    UniqueData prevData = uniqueDataMetadata.getProvider().get(prevForeignId);
+
+                    if (prevData == null) {
+                        logger.warn("(Previous) Data with id {} does not exist!", prevForeignId);
+                        continue;
+                    }
+
+                    ForeignPersistentValue<?> prevFpv = fpvMeta.getSharedValue(prevData);
+                    prevFpv.setInternalForeignObject(null, null);
+                }
+            }
+
+            fpv.setInternalForeignObject(foreignId, foreignDataValue);
+        }
+    }
+
+    public <T> T getForeignObjectValue(Connection connection, ForeignPersistentValue<T> fpv, @NotNull UUID otherId) throws SQLException {
+        String getColumnValueSql = "SELECT " + fpv.getColumn() + " FROM " + fpv.getTable() + " WHERE id = ?";
+        debug("Executing query: " + getColumnValueSql);
+
+        PreparedStatement getColumnValueStatement = connection.prepareStatement(getColumnValueSql);
+        getColumnValueStatement.setObject(1, otherId);
+        ResultSet resultSet = getColumnValueStatement.executeQuery();
+        resultSet.next();
+        Object value = resultSet.getObject(fpv.getColumn());
+        return (T) deserialize(fpv.getType(), value);
+    }
+
+    /**
+     * Unlink all foreign persistent values for a given data address.
+     *
+     * @param address The address of the data
+     */
+    public void unlinkForeignPersistentValues(String address) {
+        List<DataWrapper> dataWrappers = new ArrayList<>(getDataWrappers(address));
+
+        for (DataWrapper dataWrapper : dataWrappers) {
+            if (!(dataWrapper instanceof ForeignPersistentValue<?> fpv)) {
+                continue;
+            }
+
+            fpv.unlinkForeignObject();
+        }
+    }
+
 }

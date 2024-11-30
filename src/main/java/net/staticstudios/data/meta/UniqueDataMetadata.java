@@ -1,6 +1,5 @@
 package net.staticstudios.data.meta;
 
-import net.staticstudios.utils.Wrapper;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.DataProvider;
 import net.staticstudios.data.Table;
@@ -9,6 +8,7 @@ import net.staticstudios.data.shared.SharedCollection;
 import net.staticstudios.data.shared.SharedValue;
 import net.staticstudios.data.value.PersistentCollection;
 import net.staticstudios.data.value.PersistentValue;
+import net.staticstudios.utils.Wrapper;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -18,11 +18,9 @@ import java.lang.reflect.Method;
 import java.util.*;
 
 public class UniqueDataMetadata {
+
     private final DataManager dataManager;
-    private final Map<Class<? extends SharedCollectionMetadata<?, ?>>, Map<String, SharedCollectionMetadata<?, ?>>> collectionMetadata;
-    private final Map<Class<? extends SharedValueMetadata<?>>, Map<String, SharedValueMetadata<?>>> valueMetadata;
     private final Class<? extends UniqueData> type;
-    private final Map<String, SharedValueMetadata<?>> addressedValueMetadata;
     private final Map<Field, Metadata> metadataMap;
     private final Map<String, Class<? extends UniqueData>> categorizedData;
     private final Field idValueField;
@@ -32,9 +30,6 @@ public class UniqueDataMetadata {
     private UniqueDataMetadata(DataManager dataManager, Class<? extends UniqueData> type) {
         this.dataManager = dataManager;
         this.type = type;
-        this.valueMetadata = new HashMap<>();
-        this.collectionMetadata = new HashMap<>();
-        this.addressedValueMetadata = new HashMap<>();
         this.metadataMap = new HashMap<>();
         this.categorizedData = new HashMap<>();
         try {
@@ -56,7 +51,6 @@ public class UniqueDataMetadata {
     public static <T extends UniqueData> UniqueDataMetadata extract(DataManager dataManager, Class<T> clazz) {
         UniqueDataMetadata metadata = new UniqueDataMetadata(dataManager, clazz);
         T dummyInstance;
-
         try {
             Constructor<T> constructor = clazz.getDeclaredConstructor();
             constructor.setAccessible(true);
@@ -67,12 +61,13 @@ public class UniqueDataMetadata {
             throw new RuntimeException("Failed to create dummy instance of " + clazz.getName() + "! Make sure it has a no-args constructor!", e);
         }
 
+
         Set<SharedValueMetadata<?>> valueMetadataSet = new HashSet<>();
         Set<SharedCollectionMetadata<?, ?>> collectionMetadataSet = new HashSet<>();
         Wrapper<String> topLevelTableWrapper = new Wrapper<>();
 
         try {
-            extractValuesAndCollections(dataManager, clazz, dummyInstance, null, valueMetadataSet, collectionMetadataSet, topLevelTableWrapper, metadata.categorizedData);
+            extractMemberMetadata(dataManager, clazz, dummyInstance, null, valueMetadataSet, collectionMetadataSet, topLevelTableWrapper, metadata.categorizedData);
         } catch (Exception e) {
             throw new RuntimeException("Failed to extract information from " + clazz.getName(), e);
         }
@@ -84,23 +79,16 @@ public class UniqueDataMetadata {
         metadata.topLevelTable = topLevelTableWrapper.get();
 
         for (SharedValueMetadata<?> valueMetadata : valueMetadataSet) {
-            Map<String, SharedValueMetadata<?>> metaDataMap = metadata.valueMetadata.getOrDefault(valueMetadata.getClass(), new HashMap<>());
-            metaDataMap.put(valueMetadata.getAddress(), valueMetadata);
-            metadata.valueMetadata.put((Class<? extends SharedValueMetadata<?>>) valueMetadata.getClass(), metaDataMap);
-            metadata.addressedValueMetadata.put(valueMetadata.getAddress(), valueMetadata);
             metadata.metadataMap.put(valueMetadata.getField(), valueMetadata);
         }
 
         for (SharedCollectionMetadata<?, ?> collectionMetadata : collectionMetadataSet) {
-            Map<String, SharedCollectionMetadata<?, ?>> metaDataMap = metadata.collectionMetadata.getOrDefault(collectionMetadata.getClass(), new HashMap<>());
-            metaDataMap.put(collectionMetadata.getAddress(), collectionMetadata);
-            metadata.collectionMetadata.put((Class<? extends SharedCollectionMetadata<?, ?>>) collectionMetadata.getClass(), metaDataMap);
             metadata.metadataMap.put(collectionMetadata.getField(), collectionMetadata);
         }
         return metadata;
     }
 
-    private static void extractValuesAndCollections(
+    private static void extractMemberMetadata(
             DataManager dataManager,
             Class<? extends UniqueData> clazz,
             Object dummyInstance,
@@ -149,7 +137,7 @@ public class UniqueDataMetadata {
 
         Class<?> superClass = clazz.getSuperclass();
         if (superClass != null && superClass.isAssignableFrom(dummyInstance.getClass())) {
-            extractValuesAndCollections(dataManager, (Class<? extends UniqueData>) superClass, dummyInstance, table, valueMetadataSet, collectionMetadataSet, topLevelTableWrapper, categorizedData);
+            extractMemberMetadata(dataManager, (Class<? extends UniqueData>) superClass, dummyInstance, table, valueMetadataSet, collectionMetadataSet, topLevelTableWrapper, categorizedData);
         }
     }
 
@@ -160,12 +148,10 @@ public class UniqueDataMetadata {
     public <T extends SharedValueMetadata> List<T> getValueMetadata(Class<T> clazz) {
         List<T> values = new ArrayList<>();
 
-        Map<String, SharedValueMetadata<?>> valueMetadata = this.valueMetadata.get(clazz);
-        if (valueMetadata == null) {
-            return values;
-        }
-        for (SharedValueMetadata metadata : valueMetadata.values()) {
-            values.add((T) metadata);
+        for (Metadata metadata : metadataMap.values()) {
+            if (metadata.getClass().isAssignableFrom(clazz)) {
+                values.add((T) metadata);
+            }
         }
 
         return values;
@@ -174,24 +160,13 @@ public class UniqueDataMetadata {
     public <T extends SharedCollectionMetadata<?, ?>> List<T> getCollectionMetadata(Class<T> clazz) {
         List<T> values = new ArrayList<>();
 
-        Map<String, SharedCollectionMetadata<?, ?>> collectionMetadata = this.collectionMetadata.get(clazz);
-        if (collectionMetadata == null) {
-            return values;
-        }
-
-        for (SharedCollectionMetadata<?, ?> metadata : collectionMetadata.values()) {
-            values.add((T) metadata);
+        for (Metadata metadata : metadataMap.values()) {
+            if (metadata.getClass().isAssignableFrom(clazz)) {
+                values.add((T) metadata);
+            }
         }
 
         return values;
-    }
-
-    public SharedValue<?> getValue(UniqueData data, String address) {
-        try {
-            return (SharedValue<?>) addressedValueMetadata.get(address).getField().get(data);
-        } catch (IllegalAccessException e) {
-            throw new RuntimeException("Failed to get value for " + address + " in " + data.getClass().getName(), e);
-        }
     }
 
     public UniqueData createInstance(DataManager dataManager) {

@@ -1,9 +1,11 @@
-package net.staticstudios.data.meta;
+package net.staticstudios.data.meta.persistant.collection;
 
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.UniqueData;
+import net.staticstudios.data.meta.SharedCollectionMetadata;
 import net.staticstudios.data.shared.CollectionEntry;
 import net.staticstudios.data.value.PersistentCollection;
+import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -134,12 +136,13 @@ public class PersistentCollectionMetadata implements SharedCollectionMetadata<Co
     }
 
     @Override
-    public String getAddress() {
-        return "persistent_collection-" + getTable() + "-" + getLinkingColumn();
-    }
-
-    @Override
     public DataManager getDataManager() {
         return dataManager;
+    }
+
+
+    @Override
+    public @NotNull String getMetadataAddress() {
+        return "collection." + table + "." + linkingColumn;
     }
 }

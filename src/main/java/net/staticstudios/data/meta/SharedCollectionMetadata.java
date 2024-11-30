@@ -14,12 +14,7 @@ import java.util.List;
  * @implSpec Implementations must declare a static extract(Class, SharedCollection, Field) method that returns an instance of the implementing class.
  */
 public interface SharedCollectionMetadata<E extends CollectionEntry, V extends SharedEntryValueMetadata> extends Metadata {
-    /**
-     * Get the parent class of this collection.
-     *
-     * @return The parent class
-     */
-    Class<? extends UniqueData> getParentClass();
+
 
     /**
      * Get the entry class for this collection.

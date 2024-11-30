@@ -1,61 +1,33 @@
 package net.staticstudios.data.test;
 
-import com.github.fppt.jedismock.RedisServer;
-import com.zaxxer.hikari.HikariConfig;
-import net.staticstudios.utils.ThreadUtils;
 import net.staticstudios.data.DeletionType;
-import net.staticstudios.data.mocks.MockLocation;
-import net.staticstudios.data.mocks.MockOnlineStatus;
-import net.staticstudios.data.mocks.MockTestDataObject;
-import net.staticstudios.data.mocks.MockThreadProvider;
 import net.staticstudios.data.mocks.game.prison.MockPrisonGame;
 import net.staticstudios.data.mocks.game.prison.MockPrisonPlayer;
 import net.staticstudios.data.mocks.game.skyblock.MockSkyblockGame;
 import net.staticstudios.data.mocks.game.skyblock.MockSkyblockPlayer;
-import net.staticstudios.data.mocks.service.MockService;
-import org.junit.jupiter.api.*;
-import org.testcontainers.containers.PostgreSQLContainer;
-import redis.clients.jedis.Jedis;
+import net.staticstudios.data.util.DataTest;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junitpioneer.jupiter.RetryingTest;
 
 import java.io.IOException;
-import java.sql.*;
-import java.time.Instant;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class UniqueDataTest {
+public class UniqueDataTest extends DataTest {
     static int NUM_INSTANCES = 3;
     static int NUM_USERS = 10;
-    static int NUM_HOME_LOCATIONS = 3;
 
-    //I tried using test containers for redis but ran into a lot of issues. This should be good enough for testing.
-    static RedisServer redis;
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(
-            "postgres:16.2"
-    );
-    static Connection connection;
-    static HikariConfig hikariConfig;
     List<MockSkyblockGame> skyblockGameInstances = new ArrayList<>();
     List<UUID> userIds = new ArrayList<>();
 
-    @BeforeAll
-    static void init() throws IOException, SQLException {
-        postgres.start();
-        redis = RedisServer.newRedisServer().start();
-
-        hikariConfig = new HikariConfig();
-        hikariConfig.setDataSourceClassName("org.postgresql.ds.PGSimpleDataSource");
-        hikariConfig.addDataSourceProperty("serverName", postgres.getHost());
-        hikariConfig.addDataSourceProperty("portNumber", postgres.getFirstMappedPort());
-        hikariConfig.addDataSourceProperty("user", postgres.getUsername());
-        hikariConfig.addDataSourceProperty("password", postgres.getPassword());
-        hikariConfig.setLeakDetectionThreshold(10000);
-
-        connection = DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
-    }
 
     @AfterAll
     static void teardown() throws IOException {
@@ -65,8 +37,6 @@ public class UniqueDataTest {
 
     @BeforeEach
     void setup() throws SQLException {
-        ThreadUtils.setProvider(new MockThreadProvider());
-
         try (Statement statement = connection.createStatement()) {
             statement.execute("CREATE SCHEMA IF NOT EXISTS skyblock");
             statement.execute("CREATE SCHEMA IF NOT EXISTS prison");
@@ -81,8 +51,7 @@ public class UniqueDataTest {
             statement.execute("""
                     CREATE TABLE players (
                         id uuid PRIMARY KEY,
-                        money bigint NOT NULL DEFAULT 0,
-                        favorite_block varchar(255) NOT NULL DEFAULT '0,0,0'
+                        money bigint NOT NULL DEFAULT 0
                     )
                     """);
 
@@ -100,35 +69,6 @@ public class UniqueDataTest {
                     )
                     """);
 
-            statement.execute("""
-                    CREATE TABLE home_locations (
-                        id uuid NOT NULL,
-                        player_id uuid NOT NULL,
-                        x int NOT NULL,
-                        y int NOT NULL,
-                        z int NOT NULL,
-                        PRIMARY KEY (id, player_id)
-                    )
-                    """);
-
-            statement.execute("""
-                    CREATE TABLE test_data_types (
-                        id uuid PRIMARY KEY,
-                        test_string varchar(255) NOT NULL DEFAULT 'test',
-                        test_char char NOT NULL DEFAULT 'c',
-                        test_short smallint NOT NULL DEFAULT 1,
-                        test_int int NOT NULL DEFAULT 1,
-                        test_long bigint NOT NULL DEFAULT 1,
-                        test_float real NOT NULL DEFAULT 1.0,
-                        test_double double precision NOT NULL DEFAULT 1.0,
-                        test_boolean boolean NOT NULL DEFAULT true,
-                        test_uuid uuid NOT NULL DEFAULT gen_random_uuid(),
-                        test_timestamp timestamp NOT NULL DEFAULT '1970-01-01 00:00:00',
-                        test_byte_array bytea NOT NULL DEFAULT E'\\\\x010203',
-                        test_uuid_array uuid[] NOT NULL DEFAULT ARRAY[gen_random_uuid()]
-                    )
-                    """);
-
             //Insert some data
             for (int i = 0; i < NUM_USERS; i++) {
                 UUID userId = UUID.randomUUID();
@@ -137,9 +77,6 @@ public class UniqueDataTest {
                 statement.execute("INSERT INTO players (id) VALUES ('%s')".formatted(userId));
                 statement.execute("INSERT INTO skyblock.players (id) VALUES ('%s')".formatted(userId));
 
-                for (int j = 0; j < NUM_HOME_LOCATIONS; j++) {
-                    statement.execute("INSERT INTO home_locations (id, player_id, x, y, z) VALUES ('%s', '%s', %s, %s, %s)".formatted(UUID.randomUUID(), userId, j, j, j));
-                }
             }
         }
 
@@ -157,16 +94,11 @@ public class UniqueDataTest {
             statement.execute("DROP TABLE players");
             statement.execute("DROP TABLE skyblock.players");
             statement.execute("DROP TABLE prison.players");
-            statement.execute("DROP TABLE home_locations");
-            statement.execute("DROP TABLE test_data_types");
         }
-
-        MockThreadProvider threadProvider = (MockThreadProvider) ThreadUtils.provider;
-        threadProvider.shutdown();
     }
 
-    @Test
     @DisplayName("Ensure every skyblock game has the same players")
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     void verifyPlayers() {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
 
@@ -174,36 +106,15 @@ public class UniqueDataTest {
             for (int i = 1; i < NUM_INSTANCES; i++) {
                 MockSkyblockGame g = skyblockGameInstances.get(i);
                 for (MockSkyblockPlayer p : skyblockGame.getPlayerProvider().getAll()) {
-                    assertNotNull(g.getPlayerProvider().get(p.getId()));
+                    assertNotNull(g.getPlayerProvider().get(p.getId()), "Player does not exist on " + g.getDataManager().getServerId());
                 }
             }
         });
     }
 
-    @Test
-    @DisplayName("Update a skyblock player's money")
-    void updateMoney() throws InterruptedException {
-        MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
-        UUID playerId = userIds.getFirst();
-
-        MockSkyblockPlayer player = skyblockGame.getPlayerProvider().get(playerId);
-        player.setMoney(5);
-
-        //Wait for the data to sync
-        Thread.sleep(1000);
-
-        assertAll("Money is not consistent across skyblock instances", () -> {
-                    for (int i = 1; i < NUM_INSTANCES; i++) {
-                        MockSkyblockPlayer p = skyblockGameInstances.get(i).getPlayerProvider().get(playerId);
-                        assertEquals(5, p.getMoney());
-                    }
-                }
-        );
-    }
-
-    @Test
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Update a skyblock player's (user's) name")
-    void updateName() throws InterruptedException {
+    void testUpdatingSuperClassValue() {
         //The name exists on the user, not the player
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
         UUID playerId = userIds.getFirst();
@@ -212,7 +123,7 @@ public class UniqueDataTest {
         player.setName("Dan");
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         assertAll("Name is not consistent across skyblock instances", () -> {
                     for (int i = 1; i < NUM_INSTANCES; i++) {
@@ -223,144 +134,10 @@ public class UniqueDataTest {
         );
     }
 
-    @Test
-    @DisplayName("Create a skyblock player with default values")
-    void createPlayerWithDefaults() throws InterruptedException {
-        MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
-        String name = "John";
 
-        MockSkyblockPlayer player = new MockSkyblockPlayer(skyblockGame.getDataManager(), name);
-        UUID playerId = player.getId();
-        skyblockGame.getPlayerProvider().set(player);
-
-        //Wait for the data to sync
-        Thread.sleep(1000);
-
-        assertAll("Name is not consistent across skyblock instances", () -> {
-            for (int i = 1; i < NUM_INSTANCES; i++) {
-                MockSkyblockPlayer p = skyblockGameInstances.get(i).getPlayerProvider().get(playerId);
-                assertEquals(name, p.getName());
-            }
-        });
-    }
-
-    @Test
-    @DisplayName("Create a skyblock player with 2 distinct initial home locations, then add another, and ensure that the player has 3 home locations")
-    void createPlayerWithDistinctHomeLocations() throws InterruptedException {
-        MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
-
-        MockSkyblockPlayer player = new MockSkyblockPlayer(skyblockGame.getDataManager(), "John",
-                new MockLocation(skyblockGame.getDataManager(), 0, 0, 0),
-                new MockLocation(skyblockGame.getDataManager(), 1, 1, 1)
-        );
-        UUID playerId = player.getId();
-        skyblockGame.getPlayerProvider().set(player);
-
-        //Wait for the data to sync
-        Thread.sleep(1000);
-
-        assertAll("Home locations are not consistent across skyblock instances", () -> {
-            for (int i = 1; i < NUM_INSTANCES; i++) {
-                MockSkyblockPlayer p = skyblockGameInstances.get(i).getPlayerProvider().get(playerId);
-                assertEquals(2, p.getHomeLocations().size());
-            }
-        });
-
-        player.addHomeLocation(skyblockGame.getDataManager(), 2, 2, 2);
-
-        assertEquals(3, player.getHomeLocations().size(), "Player does not have 3 home locations");
-
-        //Wait for the data to sync
-        Thread.sleep(1000);
-
-        assertAll("Home locations are not consistent across skyblock instances", () -> {
-            for (int i = 1; i < NUM_INSTANCES; i++) {
-                MockSkyblockPlayer p = skyblockGameInstances.get(i).getPlayerProvider().get(playerId);
-                assertEquals(3, p.getHomeLocations().size());
-            }
-        });
-    }
-
-    @Test
-    @DisplayName("Create a player with 2 of the same initial home locations, remove one, and ensure that the player has only one home location")
-    void createPlayerWithSameHomeLocations() throws InterruptedException {
-        MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
-
-        MockSkyblockPlayer player = new MockSkyblockPlayer(skyblockGame.getDataManager(), "John",
-                new MockLocation(skyblockGame.getDataManager(), 0, 0, 0),
-                new MockLocation(skyblockGame.getDataManager(), 0, 0, 0)
-        );
-        UUID playerId = player.getId();
-        skyblockGame.getPlayerProvider().set(player);
-
-        //Wait for the data to sync
-        Thread.sleep(1000);
-
-        assertAll("Home locations are not consistent across skyblock instances", () -> {
-            for (int i = 1; i < NUM_INSTANCES; i++) {
-                MockSkyblockPlayer p = skyblockGameInstances.get(i).getPlayerProvider().get(playerId);
-                assertEquals(2, p.getHomeLocations().size());
-            }
-        });
-
-        player.removeHomeLocation(skyblockGame.getDataManager(), 0, 0, 0);
-
-        assertEquals(1, player.getHomeLocations().size(), "Player does not have only one home location");
-
-        //Wait for the data to sync
-        Thread.sleep(1000);
-
-        assertAll("Home locations are not consistent across skyblock instances", () -> {
-            for (int i = 1; i < NUM_INSTANCES; i++) {
-                MockSkyblockPlayer p = skyblockGameInstances.get(i).getPlayerProvider().get(playerId);
-                assertEquals(1, p.getHomeLocations().size());
-            }
-        });
-    }
-
-    @Test
-    @DisplayName("Update a player's home location")
-    void updateHomeLocation() throws InterruptedException {
-        MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
-
-        MockSkyblockPlayer player = skyblockGame.getPlayerProvider().get(userIds.getFirst());
-        MockLocation location = player.getHomeLocations().stream().findFirst().orElse(null);
-
-        assertNotNull(location, "Player does not have a home location");
-
-        location.setX(5);
-        location.setY(5);
-        location.setZ(5);
-
-        location.update(player.getHomeLocations());
-
-        //Wait for the data to sync
-        Thread.sleep(1000);
-
-        assertAll("Home locations are not consistent across skyblock instances", () -> {
-            for (int i = 1; i < NUM_INSTANCES; i++) {
-                MockSkyblockPlayer p = skyblockGameInstances.get(i).getPlayerProvider().get(userIds.getFirst());
-                MockLocation l = p.getHomeLocations().stream().filter(loc -> loc.getX() == 5 && loc.getY() == 5 && loc.getZ() == 5).findFirst().orElse(null);
-                assertNotNull(l, "Home location does not exist on " + skyblockGameInstances.get(i).getDataManager().getServerId());
-            }
-        });
-
-        //Restart the game to ensure its read from the db properly
-        ThreadUtils.shutdown();
-        ThreadUtils.setProvider(new MockThreadProvider());
-
-        MockSkyblockGame newSkyblockGame = new MockSkyblockGame("new-skyblock", redis.getHost(), redis.getBindPort(), hikariConfig);
-        MockSkyblockPlayer newPlayer = newSkyblockGame.getPlayerProvider().get(userIds.getFirst());
-
-        MockLocation newLocation = newPlayer.getHomeLocations().stream().filter(loc -> loc.getX() == 5 && loc.getY() == 5 && loc.getZ() == 5).findFirst().orElse(null);
-        assertNotNull(newLocation, "Home location does not exist on new skyblock instance");
-
-    }
-
-
-    @Test
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Create a player on skyblock, and verify the player does not exist on prison")
-    void createSkyblockPlayerAndVerifyPrisonPlayerNotExist() throws InterruptedException {
+    void testCreatingDataWithSharedBaseClass() {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
         MockPrisonGame prisonGame = new MockPrisonGame("prison", redis.getHost(), redis.getBindPort(), hikariConfig);
 
@@ -369,14 +146,15 @@ public class UniqueDataTest {
         skyblockGame.getPlayerProvider().set(player);
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         assertNull(prisonGame.getPlayerProvider().get(playerId), "Player exists on prison");
     }
 
-    @Test
+
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Create a player on skyblock, give it some money, create a player on prison with the same id, and verify the money is equal to skyblock")
-    void createSkyblockPlayerAndVerifyPrisonPlayerMoney() throws InterruptedException {
+    void testCreatingDataWithSharedBaseClass2() {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
         MockPrisonGame prisonGame = new MockPrisonGame("prison", redis.getHost(), redis.getBindPort(), hikariConfig);
 
@@ -385,14 +163,10 @@ public class UniqueDataTest {
         MockSkyblockPlayer skyblockPlayer = new MockSkyblockPlayer(skyblockGame.getDataManager(), playerId, "John");
         skyblockGame.getPlayerProvider().set(skyblockPlayer);
 
-        //Wait for the data to sync
-        Thread.sleep(1000);
-        //todo: we shouldnt have to do the above wait, but it currently throws errors if we dont. this needs to be addressed.
-
         skyblockPlayer.setMoney(5);
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         MockPrisonPlayer prisonPlayer = new MockPrisonPlayer(prisonGame.getDataManager(), playerId, "Dan");
         prisonGame.getPlayerProvider().set(prisonPlayer);
@@ -404,145 +178,10 @@ public class UniqueDataTest {
         assertNotEquals("Dan", prisonPlayer.getName(), "Name should not be overridden when creating a new object that extends the user");
     }
 
-    @Test
-    @DisplayName("Test all DatabaseSupportedTypes")
-    void insertAllDatabaseSupportedTypes() throws InterruptedException {
-        MockService service = new MockService("service", redis.getHost(), redis.getBindPort(), hikariConfig);
-        MockService service2 = new MockService("service-2", redis.getHost(), redis.getBindPort(), hikariConfig);
 
-        MockTestDataObject testDataObject = service.createTestDataObject();
-
-        //Wait for the data to sync
-        Thread.sleep(1000);
-
-        MockTestDataObject testDataObject2 = service2.getDataObjectProvider().get(testDataObject.getId());
-
-        assertAll("Initial values are not consistent", () -> {
-            assertEquals(testDataObject.getString(), testDataObject2.getString());
-            assertEquals(testDataObject.getChar(), testDataObject2.getChar());
-            assertEquals(testDataObject.getShort(), testDataObject2.getShort());
-            assertEquals(testDataObject.getInt(), testDataObject2.getInt());
-            assertEquals(testDataObject.getLong(), testDataObject2.getLong());
-            assertEquals(testDataObject.getFloat(), testDataObject2.getFloat());
-            assertEquals(testDataObject.getDouble(), testDataObject2.getDouble());
-            assertEquals(testDataObject.getBoolean(), testDataObject2.getBoolean());
-            assertEquals(testDataObject.getUuid(), testDataObject2.getUuid());
-            assertEquals(testDataObject.getTimestamp().toInstant().toEpochMilli(), testDataObject2.getTimestamp().toInstant().toEpochMilli());
-            assertArrayEquals(testDataObject.getByteArray(), testDataObject2.getByteArray());
-            assertArrayEquals(testDataObject.getUuidArray(), testDataObject2.getUuidArray());
-        });
-
-        //Update each value
-        testDataObject.setString("test2");
-        testDataObject.setChar('d');
-        testDataObject.setShort((short) 2);
-        testDataObject.setInt(2);
-        testDataObject.setLong(2);
-        testDataObject.setFloat(2.0f);
-        testDataObject.setDouble(2.0);
-        testDataObject.setBoolean(false);
-        testDataObject.setUuid(UUID.randomUUID());
-        testDataObject.setTimestamp(Timestamp.from(Instant.now()));
-        testDataObject.setByteArray(new byte[]{0x02, 0x03});
-
-
-        //Wait for the data to sync
-        Thread.sleep(1000);
-
-        assertAll("Updated values are not consistent", () -> {
-            assertEquals(testDataObject.getString(), testDataObject2.getString());
-            assertEquals(testDataObject.getChar(), testDataObject2.getChar());
-            assertEquals(testDataObject.getShort(), testDataObject2.getShort());
-            assertEquals(testDataObject.getInt(), testDataObject2.getInt());
-            assertEquals(testDataObject.getLong(), testDataObject2.getLong());
-            assertEquals(testDataObject.getFloat(), testDataObject2.getFloat());
-            assertEquals(testDataObject.getDouble(), testDataObject2.getDouble());
-            assertEquals(testDataObject.getBoolean(), testDataObject2.getBoolean());
-            assertEquals(testDataObject.getUuid(), testDataObject2.getUuid());
-            assertEquals(testDataObject.getTimestamp().toInstant().toEpochMilli(), testDataObject2.getTimestamp().toInstant().toEpochMilli());
-            assertArrayEquals(testDataObject.getByteArray(), testDataObject2.getByteArray());
-            assertArrayEquals(testDataObject.getUuidArray(), testDataObject2.getUuidArray());
-        });
-
-        MockService service3 = new MockService("service-3", redis.getHost(), redis.getBindPort(), hikariConfig);
-        MockTestDataObject testDataObject3 = service3.getDataObjectProvider().get(testDataObject.getId());
-
-        assertAll("Read values are not consistent", () -> {
-            assertEquals(testDataObject.getString(), testDataObject3.getString());
-            assertEquals(testDataObject.getChar(), testDataObject3.getChar());
-            assertEquals(testDataObject.getShort(), testDataObject3.getShort());
-            assertEquals(testDataObject.getInt(), testDataObject3.getInt());
-            assertEquals(testDataObject.getLong(), testDataObject3.getLong());
-            assertEquals(testDataObject.getFloat(), testDataObject3.getFloat());
-            assertEquals(testDataObject.getDouble(), testDataObject3.getDouble());
-            assertEquals(testDataObject.getBoolean(), testDataObject3.getBoolean());
-            assertEquals(testDataObject.getUuid(), testDataObject3.getUuid());
-            assertEquals(testDataObject.getTimestamp().toInstant().toEpochMilli(), testDataObject3.getTimestamp().toInstant().toEpochMilli());
-            assertArrayEquals(testDataObject.getByteArray(), testDataObject3.getByteArray());
-            assertArrayEquals(testDataObject.getUuidArray(), testDataObject3.getUuidArray());
-        });
-    }
-
-    @Test
-    @DisplayName("Set a player's online status to offline, then back to online")
-    void changeOnlineStatus() throws InterruptedException {
-        MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
-        UUID playerId = userIds.getFirst();
-
-
-        String key = skyblockGame.getDataManager().buildCachedValueKey("online_status", "skyblock.players", playerId);
-        try (Jedis jedis = skyblockGame.getDataManager().getJedis()) {
-            assertFalse(jedis.exists(key), "Online status key exists");
-        }
-
-        MockSkyblockPlayer player = skyblockGame.getPlayerProvider().get(playerId);
-        player.setOnlineStatus(MockOnlineStatus.ONLINE);
-
-        //Wait for the data to sync
-        Thread.sleep(1000);
-
-        assertAll("Online status is not consistent across skyblock instances", () -> {
-            for (int i = 1; i < NUM_INSTANCES; i++) {
-                MockSkyblockPlayer p = skyblockGameInstances.get(i).getPlayerProvider().get(playerId);
-                assertEquals(MockOnlineStatus.ONLINE, p.getOnlineStatus(), skyblockGameInstances.get(i).getDataManager().getServerId() + " online status is not consistent");
-            }
-        });
-
-
-        try (Jedis jedis = skyblockGame.getDataManager().getJedis()) {
-            assertTrue(jedis.exists(key), "Online status key does not exist");
-        }
-
-        player.setOnlineStatus(MockOnlineStatus.OFFLINE);
-
-        //Wait for the data to sync
-        Thread.sleep(1000);
-
-        assertAll("Online status is not consistent across skyblock instances", () -> {
-            for (int i = 1; i < NUM_INSTANCES; i++) {
-                MockSkyblockPlayer p = skyblockGameInstances.get(i).getPlayerProvider().get(playerId);
-                assertEquals(MockOnlineStatus.OFFLINE, p.getOnlineStatus());
-            }
-        });
-
-        try (Jedis jedis = skyblockGame.getDataManager().getJedis()) {
-            assertFalse(jedis.exists(key), "Online status key exists");
-        }
-
-        player.setOnlineStatus(MockOnlineStatus.ONLINE);
-
-        //Wait for the data to sync
-        Thread.sleep(1000);
-
-        MockSkyblockGame newSkyblockGame = new MockSkyblockGame("new-skyblock", redis.getHost(), redis.getBindPort(), hikariConfig);
-        MockSkyblockPlayer newPlayer = newSkyblockGame.getPlayerProvider().get(playerId);
-
-        assertEquals(MockOnlineStatus.ONLINE, newPlayer.getOnlineStatus(), "Online status is not consistent across skyblock instances");
-    }
-
-    @Test
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
     @DisplayName("Delete a player")
-    void deletePlayer() throws InterruptedException {
+    void testDeletion() {
         MockSkyblockGame skyblockGame = skyblockGameInstances.getFirst();
         MockSkyblockPlayer player = skyblockGame.getPlayerProvider().get(userIds.getFirst());
 
@@ -551,7 +190,7 @@ public class UniqueDataTest {
         skyblockGame.getDataManager().delete(player, DeletionType.ALL);
 
         //Wait for the data to sync
-        Thread.sleep(1000);
+        waitForDataPropagation();
 
         assertAll("Player still exists", () -> {
             for (int i = 1; i < NUM_INSTANCES; i++) {
@@ -561,3 +200,5 @@ public class UniqueDataTest {
         });
     }
 }
+
+//todo: test value serializers

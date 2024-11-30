@@ -1,4 +1,4 @@
-package net.staticstudios.data.mocks;
+package net.staticstudios.data.mocks.netflix;
 
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.Table;
@@ -8,8 +8,11 @@ import net.staticstudios.data.value.PersistentValue;
 import java.sql.Timestamp;
 import java.util.UUID;
 
-@Table("public.test_data_types")
-public class MockTestDataObject extends UniqueData {
+/**
+ * A mock Netflix user has {@link PersistentValue}s for every DatabaseSupportedType.
+ */
+@Table("netflix.users")
+public class MockNetflixUser extends UniqueData {
     // Have a PersistentValue for every DatabaseSupportedType
     private final PersistentValue<String> testString = PersistentValue.withDefault(this, String.class, "test", "test_string");
     private final PersistentValue<Character> testChar = PersistentValue.withDefault(this, Character.class, 'c', "test_char");
@@ -25,10 +28,10 @@ public class MockTestDataObject extends UniqueData {
     private final PersistentValue<UUID[]> testUUIDArray = PersistentValue.withDefault(this, UUID[].class, new UUID[]{UUID.randomUUID()}, "test_uuid_array");
 
     @SuppressWarnings("unused")
-    private MockTestDataObject() {
+    private MockNetflixUser() {
     }
 
-    public MockTestDataObject(DataManager dataManager) {
+    public MockNetflixUser(DataManager dataManager) {
         super(dataManager, UUID.randomUUID());
         dataManager.insert(this);
     }

@@ -12,7 +12,6 @@ import net.staticstudios.data.messaging.PersistentCollectionChangeMessage;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 public class PersistentCollectionChangeMessageTypeAdapter extends TypeAdapter<PersistentCollectionChangeMessage> {
 
@@ -24,11 +23,9 @@ public class PersistentCollectionChangeMessageTypeAdapter extends TypeAdapter<Pe
         out.beginObject();
 
 
-        out.name("collectionAddress");
-        out.value(value.address());
+        out.name("collection_address");
+        out.value(value.collectionAddress());
 
-        out.name("uniqueId");
-        out.value(value.uniqueId().toString());
 
         TypeAdapter<List<Map<String, String>>> adapter = DataMessageUtils.getGson().getAdapter(LIST_STRING_STRING_MAP);
 
@@ -42,7 +39,7 @@ public class PersistentCollectionChangeMessageTypeAdapter extends TypeAdapter<Pe
     public PersistentCollectionChangeMessage read(JsonReader in) throws IOException {
         in.beginObject();
 
-        String address = null;
+        String collectionAddress = null;
         String uniqueId = null;
         List<Map<String, String>> values = null;
 
@@ -55,18 +52,10 @@ public class PersistentCollectionChangeMessageTypeAdapter extends TypeAdapter<Pe
                 fieldname = in.nextName();
             }
 
-            if ("collectionAddress".equals(fieldname)) {
+            if ("collection_address".equals(fieldname)) {
                 token = in.peek();
                 if (token.equals(JsonToken.STRING)) {
-                    address = in.nextString();
-                    continue;
-                }
-            }
-
-            if ("uniqueId".equals(fieldname)) {
-                token = in.peek();
-                if (token.equals(JsonToken.STRING)) {
-                    uniqueId = in.nextString();
+                    collectionAddress = in.nextString();
                     continue;
                 }
             }
@@ -82,10 +71,9 @@ public class PersistentCollectionChangeMessageTypeAdapter extends TypeAdapter<Pe
 
         in.endObject();
 
-        Preconditions.checkNotNull(address, "collectionAddress cannot be null");
-        Preconditions.checkNotNull(uniqueId, "uniqueId cannot be null");
+        Preconditions.checkNotNull(collectionAddress, "collection_address cannot be null");
         Preconditions.checkNotNull(values, "values cannot be null");
 
-        return new PersistentCollectionChangeMessage(UUID.fromString(uniqueId), address, values);
+        return new PersistentCollectionChangeMessage(collectionAddress, values);
     }
 }

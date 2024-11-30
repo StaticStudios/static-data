@@ -1,15 +1,10 @@
 package net.staticstudios.data.mocks.game.prison;
 
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.mocks.game.MockPlayerProvider;
+import net.staticstudios.data.DataProvider;
 
-public class MockPrisonPlayerProvider extends MockPlayerProvider<MockPrisonPlayer> {
+public class MockPrisonPlayerProvider extends DataProvider<MockPrisonPlayer> {
     public MockPrisonPlayerProvider(DataManager dataManager) {
-        super(dataManager);
-    }
-
-    @Override
-    public Class<MockPrisonPlayer> getDataType() {
-        return MockPrisonPlayer.class;
+        super(dataManager, MockPrisonPlayer.class);
     }
 }
