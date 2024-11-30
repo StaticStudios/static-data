@@ -80,7 +80,7 @@ public class CachedValue<T> implements SharedValue<T> {
     public void set(T value) {
         CachedValueMetadata metadata = getMetadata();
         DataManager dataManager = metadata.getDataManager();
-        T oldValue = this.value;
+        T oldValue = get();
         setInternal(value);
         updateHandler.onUpdate(new UpdatedValue<>(oldValue, value));
 
@@ -119,7 +119,7 @@ public class CachedValue<T> implements SharedValue<T> {
     public void set(Jedis jedis, T value) {
         CachedValueMetadata metadata = getMetadata();
         DataManager dataManager = metadata.getDataManager();
-        T oldValue = this.value;
+        T oldValue = get();
         setInternal(value);
         updateHandler.onUpdate(new UpdatedValue<>(oldValue, value));
 

@@ -1,6 +1,7 @@
 package net.staticstudios.data.test;
 
 import net.staticstudios.data.DeletionType;
+import net.staticstudios.data.UpdatedValue;
 import net.staticstudios.data.mocks.reddit.MockRedditService;
 import net.staticstudios.data.mocks.reddit.MockRedditUser;
 import net.staticstudios.data.util.DataTest;
@@ -79,6 +80,12 @@ public class CachedValueTest extends DataTest {
             assertFalse(jedis.exists(key));
         }
 
+        //Validate that no update handler has been called yet
+        assertAll("validate update handler", redditServices.stream().map(service -> () -> {
+            MockRedditUser user = service.getUserProvider().get(user0.getId());
+            assertNull(user.getLastIsOnlineUpdate());
+        }));
+
         user0.setOnline(true);
 
         waitForDataPropagation();
@@ -91,6 +98,12 @@ public class CachedValueTest extends DataTest {
         try (Jedis jedis = service0.getDataManager().getJedis()) {
             assertTrue(jedis.exists(key));
         }
+
+        //Validate that the update handler has been called
+        assertAll("validate update handler", redditServices.stream().map(service -> () -> {
+            MockRedditUser user = service.getUserProvider().get(user0.getId());
+            assertEquals(UpdatedValue.of(false, true), user.getLastIsOnlineUpdate());
+        }));
 
         user0.setOnline(false);
 
@@ -105,6 +118,12 @@ public class CachedValueTest extends DataTest {
         try (Jedis jedis = service0.getDataManager().getJedis()) {
             assertFalse(jedis.exists(key));
         }
+
+        //Validate that the update handler has been called
+        assertAll("validate update handler", redditServices.stream().map(service -> () -> {
+            MockRedditUser user = service.getUserProvider().get(user0.getId());
+            assertEquals(UpdatedValue.of(true, false), user.getLastIsOnlineUpdate());
+        }));
     }
 
     @RetryingTest(maxAttempts = 5, suspendForMs = 100)

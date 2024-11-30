@@ -3,6 +3,7 @@ package net.staticstudios.data.mocks.reddit;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.Table;
 import net.staticstudios.data.UniqueData;
+import net.staticstudios.data.UpdatedValue;
 import net.staticstudios.data.value.CachedValue;
 
 import java.util.UUID;
@@ -12,7 +13,8 @@ import java.util.UUID;
  */
 @Table("reddit.users")
 public class MockRedditUser extends UniqueData {
-    private final CachedValue<Boolean> isOnline = CachedValue.of(this, Boolean.class, false, "is_online");
+    private UpdatedValue<Boolean> lastIsOnlineUpdate;
+    private final CachedValue<Boolean> isOnline = CachedValue.of(this, Boolean.class, false, "is_online", updated -> lastIsOnlineUpdate = updated);
 
     @SuppressWarnings("unused")
     private MockRedditUser() {
@@ -29,5 +31,9 @@ public class MockRedditUser extends UniqueData {
 
     public void setOnline(boolean isOnline) {
         this.isOnline.set(isOnline);
+    }
+
+    public UpdatedValue<Boolean> getLastIsOnlineUpdate() {
+        return lastIsOnlineUpdate;
     }
 }
