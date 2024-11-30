@@ -20,13 +20,7 @@ import java.util.*;
 public class UniqueDataMetadata {
 
     private final DataManager dataManager;
-//    private final Map<Class<? extends SharedCollectionMetadata<?, ?>>, Map<String, SharedCollectionMetadata<?, ?>>> collectionMetadata;
-//    private final Map<Class<? extends SharedValueMetadata<?>>, Map<String, SharedValueMetadata<?>>> valueMetadata;
-
-//    private final List<Metadata> memberMetadata;
-
     private final Class<? extends UniqueData> type;
-    //    private final Map<String, SharedValueMetadata<?>> addressedValueMetadata;
     private final Map<Field, Metadata> metadataMap;
     private final Map<String, Class<? extends UniqueData>> categorizedData;
     private final Field idValueField;
@@ -36,10 +30,6 @@ public class UniqueDataMetadata {
     private UniqueDataMetadata(DataManager dataManager, Class<? extends UniqueData> type) {
         this.dataManager = dataManager;
         this.type = type;
-//        this.valueMetadata = new HashMap<>();
-//        this.collectionMetadata = new HashMap<>();
-//        this.addressedValueMetadata = new HashMap<>();
-//        this.memberMetadata = new ArrayList<>();
         this.metadataMap = new HashMap<>();
         this.categorizedData = new HashMap<>();
         try {
@@ -89,17 +79,10 @@ public class UniqueDataMetadata {
         metadata.topLevelTable = topLevelTableWrapper.get();
 
         for (SharedValueMetadata<?> valueMetadata : valueMetadataSet) {
-//            Map<String, SharedValueMetadata<?>> metaDataMap = metadata.valueMetadata.getOrDefault(valueMetadata.getClass(), new HashMap<>());
-//            metaDataMap.put(valueMetadata.getDataAddress(), valueMetadata);
-//            metadata.valueMetadata.put((Class<? extends SharedValueMetadata`<?>>) valueMetadata.getClass(), metaDataMap);
-//            metadata.addressedValueMetadata.put(valueMetadata.getDataAddress(), valueMetadata);
             metadata.metadataMap.put(valueMetadata.getField(), valueMetadata);
         }
 
         for (SharedCollectionMetadata<?, ?> collectionMetadata : collectionMetadataSet) {
-//            Map<String, SharedCollectionMetadata<?, ?>> metaDataMap = metadata.collectionMetadata.getOrDefault(collectionMetadata.getClass(), new HashMap<>());
-//            metaDataMap.put(collectionMetadata.getDataAddress(), collectionMetadata);
-//            metadata.collectionMetadata.put((Class<? extends SharedCollection`Metadata<?, ?>>) collectionMetadata.getClass(), metaDataMap);
             metadata.metadataMap.put(collectionMetadata.getField(), collectionMetadata);
         }
         return metadata;
@@ -171,28 +154,11 @@ public class UniqueDataMetadata {
             }
         }
 
-//        Map<String, SharedValueMetadata<?>> valueMetadata = this.valueMetadata.get(clazz);
-//        if (valueMetadata == null) {
-//            return values;
-//        }
-//        for (SharedValueMetadata metadata : valueMetadata.values()) {
-//            values.add((T) metadata);
-//        }
-
         return values;
     }
 
     public <T extends SharedCollectionMetadata<?, ?>> List<T> getCollectionMetadata(Class<T> clazz) {
         List<T> values = new ArrayList<>();
-
-//        Map<String, SharedCollectionMetadata<?, ?>> collectionMetadata = this.collectionMetadata.get(clazz);
-//        if (collectionMetadata == null) {
-//            return values;
-//        }
-//
-//        for (SharedCollectionMetadata<?, ?> metadata : collectionMetadata.values()) {
-//            values.add((T) metadata);
-//        }
 
         for (Metadata metadata : metadataMap.values()) {
             if (metadata.getClass().isAssignableFrom(clazz)) {
@@ -202,14 +168,6 @@ public class UniqueDataMetadata {
 
         return values;
     }
-
-//    public SharedValue<?> getValue(UniqueData data, String address) {
-//        try {
-//            return (SharedValue<?>) addressedValueMetadata.get(address).getField().get(data);
-//        } catch (IllegalAccessException e) {
-//            throw new RuntimeException("Failed to get value for " + address + " in " + data.getClass().getName(), e);
-//        }
-//    }
 
     public UniqueData createInstance(DataManager dataManager) {
         try {
