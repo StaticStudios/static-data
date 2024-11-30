@@ -93,7 +93,7 @@ public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, Foreig
     public synchronized void setInternalForeignObject(@Nullable UUID foreignObjectId, Object value) {
         DataManager dataManager = getMetadata().getDataManager();
         if (foreignObjectId == null) {
-            handleUnlink();
+            unlinkForeignObject();
             return;
         }
 
@@ -110,7 +110,8 @@ public class ForeignPersistentValue<T> extends AbstractPersistentValue<T, Foreig
         this.foreignObjectId = id;
     }
 
-    private void handleUnlink() {
+    @ApiStatus.Internal
+    public void unlinkForeignObject() {
         T value = (T) DataUtils.getValue(getType(), get());
         DataManager dataManager = getMetadata().getDataManager();
 

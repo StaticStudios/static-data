@@ -33,7 +33,6 @@ public class DataDeleteAllMessageHandler implements MessageHandler<DataLookupMes
         }
 
         DataProvider<?> provider = uniqueDataMetadata.getProvider();
-        dataManager.removeFromDataWrapperLookupTable(provider.get(payload.uniqueId()));
         provider.remove(payload.uniqueId());
 
         return null;

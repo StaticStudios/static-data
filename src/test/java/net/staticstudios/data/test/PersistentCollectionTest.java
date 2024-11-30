@@ -162,4 +162,7 @@ public class PersistentCollectionTest extends DataTest {
                     assertEquals(newFriendId, user.getLastFriendAdded().getId());
                 }));
     }
+
+
+    //todo: query the db and ensure the results are correct
 }

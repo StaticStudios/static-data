@@ -64,10 +64,11 @@ public abstract class DataProvider<T extends UniqueData> {
 
     public void delete(UUID id, DeletionType deletionType) {
         UniqueData data = dataMap.get(id);
-        if (data != null) {
-            dataManager.removeFromDataWrapperLookupTable(data);
+        if (data == null) {
+            return;
         }
 
+        dataManager.removeFromDataWrapperLookupTable(data);
         dataMap.remove(id);
         dataManager.delete(data, deletionType);
     }

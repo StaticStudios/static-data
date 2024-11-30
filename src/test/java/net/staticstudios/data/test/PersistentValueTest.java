@@ -172,4 +172,6 @@ public class PersistentValueTest extends DataTest {
                     assertEquals(expected, user.getLastNameUpdate(), service.getDataManager().getServerId());
                 }));
     }
+
+    //todo: query the db and ensure the results are correct
 }

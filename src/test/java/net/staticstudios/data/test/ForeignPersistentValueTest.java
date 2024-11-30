@@ -1,5 +1,6 @@
 package net.staticstudios.data.test;
 
+import net.staticstudios.data.DeletionType;
 import net.staticstudios.data.UpdatedValue;
 import net.staticstudios.data.mocks.discord.MockDiscordService;
 import net.staticstudios.data.mocks.discord.MockDiscordUser;
@@ -597,8 +598,58 @@ public class ForeignPersistentValueTest extends DataTest {
     }
 
 
-    //todo: test deletions
-    //todo: add more tests across different types of instances
-    //todo: test to ensure the fpvs are in the lookup table after linked
+    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @DisplayName("Test deleting a data object that contains FPVs")
+    public void testDeletions() {
+        MockDiscordService service0 = discordServices.getFirst();
+        MockDiscordUser user0 = service0.getUserProvider().get(userIds.getFirst());
+        MockDiscordUserStats stats0 = service0.getUserStatsProvider().get(userIds.getFirst());
+
+        String userName = user0.getName();
+        int favoriteNumber = 22;
+        stats0.setFavoriteNumber(favoriteNumber);
+
+        waitForDataPropagation();
+
+        assertEquals(favoriteNumber, stats0.getFavoriteNumber());
+
+        user0.setStatsId(stats0.getId());
+
+        waitForDataPropagation();
+
+        assertAll("data exists", discordServices.stream().map(service -> () -> {
+            MockDiscordUser user = service.getUserProvider().get(userIds.getFirst());
+            MockDiscordUserStats stats = service.getUserStatsProvider().get(userIds.getFirst());
+            assertNotNull(user);
+            assertNotNull(stats);
+            assertEquals(favoriteNumber, user.getStatsFavoriteNumber());
+            assertEquals(userName, stats.getUserName());
+        }));
+//
+//        discordServices.stream().forEach(service -> {
+//            service.getDataManager().dumpLookupTable();
+//        });
+
+        service0.getUserProvider().delete(user0.getId(), DeletionType.ALL);
+
+        waitForDataPropagation();
+        waitForDataPropagation();
+
+//        discordServices.stream().forEach(service -> {
+//            service.getDataManager().dumpLookupTable();
+//        });
+
+        assertAll("data deleted", discordServices.stream().map(service -> () -> {
+            MockDiscordUser user = service.getUserProvider().get(userIds.getFirst());
+            MockDiscordUserStats stats = service.getUserStatsProvider().get(userIds.getFirst());
+            assertNull(user);
+            assertNotNull(stats);
+            assertNull(stats.getUserId(), service.getDataManager().getServerId());
+            assertNull(stats.getUserName());
+        }));
+    }
     //todo: test when multiple fpvs, using different linking tables, are on an object
+
+
+    //todo: query the db and ensure the results are correct
 }

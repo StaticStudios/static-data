@@ -66,6 +66,6 @@ public abstract class UniqueData {
 
     @Override
     public String toString() {
-        return getClass() + "{" + id + "}";
+        return getClass().getName() + "{" + id + "}";
     }
 }

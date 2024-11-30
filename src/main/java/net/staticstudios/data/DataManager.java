@@ -6,6 +6,7 @@ import com.google.common.collect.Multimaps;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import net.staticstudios.data.messaging.DataLookupMessage;
+import net.staticstudios.data.messaging.ForeignLinkDeleteMessage;
 import net.staticstudios.data.messaging.ForeignLinkUpdateMessage;
 import net.staticstudios.data.messaging.handle.*;
 import net.staticstudios.data.meta.CachedValueMetadata;
@@ -239,6 +240,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         messenger.registerHandler(new PersistentCollectionRemoveMessageHandler(this));
         messenger.registerHandler(new PersistentCollectionEntryUpdateMessageHandler(this));
         messenger.registerHandler(new ForeignLinkUpdateMessageHandler(this));
+        messenger.registerHandler(new ForeignLinkDeleteMessageHandler(this));
 
         messenger.addPatternFilter(this::shouldHandleMessage);
 
@@ -1032,6 +1034,7 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
             tablesToMetadata.computeIfAbsent(table, k -> new ArrayList<>()).add(valueMetadata);
         }
 
+        boolean autoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
 
         for (Map.Entry<String, List<PersistentValueMetadata>> entry : tablesToMetadata.entrySet()) {
@@ -1054,7 +1057,17 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
             statement.execute();
         }
 
-        connection.setAutoCommit(true);
+        for (ForeignPersistentValueMetadata fpvMetadata : foreignPersistentValueMetadataList) {
+            ForeignPersistentValue<?> fpv = fpvMetadata.getSharedValue(data);
+            String fpvLinkingTableRemoveSql = "DELETE FROM " + fpvMetadata.getLinkingTable() + " WHERE " + fpvMetadata.getThisLinkingColumn() + " = ? AND " + fpvMetadata.getForeignLinkingColumn() + " = ?";
+            debug("Executing update: " + fpvLinkingTableRemoveSql);
+            PreparedStatement fpvLinkingTableRemoveStatement = connection.prepareStatement(fpvLinkingTableRemoveSql);
+            fpvLinkingTableRemoveStatement.setObject(1, data.getId());
+            fpvLinkingTableRemoveStatement.setObject(2, fpv.getForeignObjectId());
+            fpvLinkingTableRemoveStatement.execute();
+        }
+
+        connection.setAutoCommit(autoCommit);
 
         List<CachedValueMetadata> cachedValueMetadataList = uniqueDataMetadata.getValueMetadata(CachedValueMetadata.class);
         if (!cachedValueMetadataList.isEmpty()) {
@@ -1075,6 +1088,22 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
                         data.getId()
                 )
         );
+
+        //send messages saying the following pvs have been removed, so other instances know to unlink them
+        for (PersistentValueMetadata pvMetadata : persistentValueMetadataList) {
+            PersistentValue<?> pv = pvMetadata.getSharedValue(data);
+            String dataAddress = pv.getDataAddress();
+
+            unlinkForeignPersistentValues(dataAddress);
+
+            getMessenger().broadcastMessageNoPrefix(
+                    getDataChannel(dataAddress),
+                    ForeignLinkDeleteMessageHandler.class,
+                    new ForeignLinkDeleteMessage(
+                            dataAddress
+                    )
+            );
+        }
     }
 
     /**
@@ -1362,6 +1391,18 @@ public class DataManager implements JedisProvider, UniqueServerIdProvider {
         resultSet.next();
         Object value = resultSet.getObject(fpv.getColumn());
         return (T) deserialize(fpv.getType(), value);
+    }
+
+    public void unlinkForeignPersistentValues(String address) {
+        List<DataWrapper> dataWrappers = new ArrayList<>(getDataWrappers(address));
+
+        for (DataWrapper dataWrapper : dataWrappers) {
+            if (!(dataWrapper instanceof ForeignPersistentValue<?> fpv)) {
+                continue;
+            }
+
+            fpv.unlinkForeignObject();
+        }
     }
 
 }
