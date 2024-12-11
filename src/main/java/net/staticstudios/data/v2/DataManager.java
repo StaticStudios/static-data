@@ -10,9 +10,6 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class DataManager {
     private final PersistentDataManager persistentDataManager;
@@ -26,25 +23,25 @@ public class DataManager {
                 .build();
         //todo: think about lists and maps
 
-        dataObjects = new ConcurrentHashMap<>();
+//        dataObjects = new ConcurrentHashMap<>();
         this.persistentDataManager = new PersistentDataManager(this);
 
         this.connectionPool = new HikariPool(poolConfig);
     }
 
-    @SuppressWarnings("unchecked")
-    public <T extends UniqueData> T get(String schemaTable, UUID id) {
-        var map = getAll(schemaTable);
-        if (map == null) {
-            return null;
-        }
+//    @SuppressWarnings("unchecked")
+//    public <T extends UniqueData> T get(String schemaTable, UUID id) {
+//        var map = getAll(schemaTable);
+//        if (map == null) {
+//            return null;
+//        }
+//
+//        return (T) map.get(id);
+//    }
 
-        return (T) map.get(id);
-    }
-
-    public Map<UUID, UniqueData> getAll(String schemaTable) {
-        return dataObjects.get(schemaTable);
-    }
+//    public Map<UUID, UniqueData> getAll(String schemaTable) {
+//        return dataObjects.get(schemaTable);
+//    }
 
     public <I extends InitialData<?>> void insert(UniqueData holder, I... initialData) {
         List<InitialPersistentData> initialPersistentData = new ArrayList<>();
@@ -60,7 +57,7 @@ public class DataManager {
         try {
             persistentDataManager.insertIntoDataSource(holder, initialPersistentData);
             String schemaTable = holder.getSchema() + "." + holder.getTable();
-            dataObjects.computeIfAbsent(schemaTable, k -> new ConcurrentHashMap<>()).put(holder.getId(), holder);
+//            dataObjects.computeIfAbsent(schemaTable, k -> new ConcurrentHashMap<>()).put(holder.getId(), holder);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

@@ -1,9 +1,6 @@
 package net.staticstudios.data;
 
-import net.staticstudios.data.v2.DataManager;
-import net.staticstudios.data.v2.OtherData;
-import net.staticstudios.data.v2.PersistentValue;
-import net.staticstudios.data.v2.UniqueData;
+import net.staticstudios.data.v2.*;
 import org.jetbrains.annotations.Blocking;
 
 import java.util.UUID;
@@ -12,6 +9,7 @@ public class Player extends UniqueData {
     private final PersistentValue<String> name = PersistentValue.of(this, String.class, "name");
     private final PersistentValue<String> nickname = PersistentValue.of(this, String.class, "nickname");
     private final OtherData<Backpack> backpack = OtherData.of(this, Backpack.class, "public", "backpacks", "player_id");
+    private final PersistentList<Integer> numbers = PersistentList.of(this, Integer.class, "public", "numbers", "player_id");
 //    private final OneToOne<Backpack> backpack = OtherData.of(this, Backpack.class, "public", "backpacks", "player_id");
 //    private final OneToMany<Backpack> backpack = OtherData.of(this, Backpack.class, "public", "backpacks", "player_id");
 
