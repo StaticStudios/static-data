@@ -1,11 +1,11 @@
-package net.staticstudios.data.v2;
+package net.staticstudios.data;
 
 import java.util.Arrays;
 
 public class DataKey {
     private final Object[] parts;
 
-    private DataKey(Object... parts) {
+    protected DataKey(Object... parts) {
         this.parts = parts;
     }
 

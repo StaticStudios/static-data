@@ -1,4 +1,7 @@
-package net.staticstudios.data.v2;
+package net.staticstudios.data.data;
+
+import net.staticstudios.data.impl.DataTypeManager;
+import net.staticstudios.data.impl.PersistentDataManager;
 
 public interface PersistentData<T> extends Data<T> {
     String getSchema();
@@ -19,7 +22,7 @@ public interface PersistentData<T> extends Data<T> {
     }
 
     default T get() {
-        return getDataManager().getOrLookupDataValue(this);
+        return getDataManager().get(this);
     }
 
     default void set(T value) {

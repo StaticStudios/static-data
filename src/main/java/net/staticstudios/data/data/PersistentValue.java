@@ -1,4 +1,9 @@
-package net.staticstudios.data.v2;
+package net.staticstudios.data.data;
+
+import net.staticstudios.data.DataKey;
+import net.staticstudios.data.DataManager;
+import net.staticstudios.data.PrimaryKey;
+import net.staticstudios.data.impl.PersistentDataManager;
 
 public class PersistentValue<T> implements PersistentData<T> {
     private final String schema;

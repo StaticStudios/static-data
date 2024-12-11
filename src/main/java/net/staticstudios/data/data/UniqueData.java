@@ -1,5 +1,8 @@
-package net.staticstudios.data.v2;
+package net.staticstudios.data.data;
 
+
+import net.staticstudios.data.DataManager;
+import net.staticstudios.data.PrimaryKey;
 
 import java.util.UUID;
 
@@ -38,5 +41,23 @@ public class UniqueData implements DataHolder {
     @Override
     public DataManager getDataManager() {
         return dataManager;
+    }
+
+    @Override
+    public UniqueData getRootHolder() {
+        return this;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) return true;
+        if (obj == null || getClass() != obj.getClass()) return false;
+        UniqueData that = (UniqueData) obj;
+        return id.equals(that.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return id.hashCode();
     }
 }

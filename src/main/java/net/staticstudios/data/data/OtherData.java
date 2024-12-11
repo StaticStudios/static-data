@@ -1,5 +1,8 @@
-package net.staticstudios.data.v2;
+package net.staticstudios.data.data;
 
+
+import net.staticstudios.data.DataManager;
+import net.staticstudios.data.PrimaryKey;
 
 import java.lang.reflect.Constructor;
 import java.util.UUID;
@@ -10,6 +13,7 @@ public class OtherData<T extends UniqueData> implements DataHolder {
     private final PersistentValue<UUID> id;
     private final PrimaryKey pKey;
 
+    //todo: this class should be redone, this was just a POC
     public OtherData(UniqueData holder, String schema, String table, String col, Class<T> clazz) {
         this.holder = holder;
         this.otherClass = clazz;
@@ -43,5 +47,10 @@ public class OtherData<T extends UniqueData> implements DataHolder {
     @Override
     public DataManager getDataManager() {
         return holder.getDataManager();
+    }
+
+    @Override
+    public UniqueData getRootHolder() {
+        return holder.getRootHolder();
     }
 }

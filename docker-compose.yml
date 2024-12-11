@@ -1,0 +1,36 @@
+name: "static-data-poc"
+services:
+  postgres:
+    container_name: static-database-poc
+    hostname: static-database-poc
+    image: postgres:17.2
+    ports:
+      - "12345:5432"
+    environment:
+      POSTGRES_PASSWORD: password
+    networks:
+      - static-network
+    volumes:
+      - static-pgdata-poc:/var/lib/postgresql/data
+  redis:
+    container_name: "redis-poc"
+    image: redis:7.2.4
+    ports:
+      - "6379:6379"
+    command: redis-server --daemonize no --notify-keyspace-events KEA
+    networks:
+      - static-network
+  redisInsight:
+    image: 'redis/redisinsight:latest'
+    ports:
+      - "5540:5540"
+    networks:
+      - static-network
+      - default
+
+networks:
+  static-network:
+    driver: bridge
+volumes:
+  static-pgdata-poc:
+    driver: local

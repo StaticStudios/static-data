@@ -1,6 +1,6 @@
-package net.staticstudios.data.v2;
+package net.staticstudios.data.data;
 
-public class InitialPersistentData implements InitialData<PersistentData<?>> {
+public class InitialPersistentData implements InitialData<PersistentData<?>, Object> {
     private final PersistentData<?> data;
     private final Object value;
 
@@ -10,7 +10,7 @@ public class InitialPersistentData implements InitialData<PersistentData<?>> {
     }
 
     @Override
-    public PersistentData<?> getData() {
+    public PersistentData<?> getKeyed() {
         return data;
     }
 

@@ -1,8 +1,7 @@
 package net.staticstudios.data;
 
-import net.staticstudios.data.v2.DataManager;
-import net.staticstudios.data.v2.PersistentValue;
-import net.staticstudios.data.v2.UniqueData;
+import net.staticstudios.data.data.PersistentValue;
+import net.staticstudios.data.data.UniqueData;
 import org.jetbrains.annotations.Blocking;
 
 import java.util.UUID;

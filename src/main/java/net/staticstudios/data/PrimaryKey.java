@@ -1,4 +1,4 @@
-package net.staticstudios.data.v2;
+package net.staticstudios.data;
 
 import com.impossibl.postgres.utils.guava.Preconditions;
 

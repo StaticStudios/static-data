@@ -1,11 +1,10 @@
 package net.staticstudios.data;
 
 import com.zaxxer.hikari.HikariConfig;
-import net.staticstudios.data.v2.DataManager;
 import net.staticstudios.utils.ThreadUtils;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class PlayerTest {
 
@@ -21,6 +20,7 @@ public class PlayerTest {
         hikariConfig.setLeakDetectionThreshold(10000);
         hikariConfig.setMaximumPoolSize(10);
 
+
         DataManager dataManager = new DataManager(hikariConfig);
         Player player = Player.create(dataManager, "Test");
 
@@ -28,10 +28,28 @@ public class PlayerTest {
 
         player.setName("Test2");
         assertEquals(player.getName(), "Test2");
+        player.setName(null);
+        assertNull(player.getName());
+        player.setName("Test2");
+        assertEquals(player.getName(), "Test2");
 
-        assertEquals(player.getBackpackSize(), 9);
 
-        Thread.sleep(3000);
+        assertTrue(player.getHomeLocations().isEmpty());
+        assertTrue(player.getFavoriteNumbers().isEmpty());
+
+        player.getHomeLocations().add(HomeLocation.create(dataManager, 1, 2, 3));
+        player.getHomeLocations().add(HomeLocation.create(dataManager, 4, 5, 6));
+
+        assertEquals(player.getHomeLocations().size(), 2);
+
+        player.getFavoriteNumbers().add(1);
+        player.getFavoriteNumbers().add(2);
+
+        assertEquals(player.getFavoriteNumbers().size(), 2);
+
+        Thread.sleep(500);
+
+        //todo: read the db and check the values
 
         ThreadUtils.shutdown();
     }
