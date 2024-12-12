@@ -2,8 +2,12 @@ package net.staticstudios.data.data;
 
 import net.staticstudios.data.impl.DataTypeManager;
 import net.staticstudios.data.impl.PersistentDataManager;
+import net.staticstudios.data.key.ColumnKey;
+import net.staticstudios.data.key.DataKey;
 
-public interface PersistentData<T> extends Data<T> {
+import java.util.List;
+
+public interface PersistentData<T> extends SingleData<T> {
     String getSchema();
 
     String getTable();
@@ -12,6 +16,8 @@ public interface PersistentData<T> extends Data<T> {
 
     Class<T> getDataType();
 
+    String getIdColumn();
+
     @Override
     default Class<? extends DataTypeManager<?, ?>> getDataTypeManagerClass() {
         return PersistentDataManager.class;
@@ -19,6 +25,11 @@ public interface PersistentData<T> extends Data<T> {
 
     default InitialPersistentData initial(T value) {
         return new InitialPersistentData(this, value);
+    }
+
+    @Override
+    default DataKey getKey() {
+        return new ColumnKey(this);
     }
 
     default T get() {
@@ -30,7 +41,7 @@ public interface PersistentData<T> extends Data<T> {
 
         try {
             PersistentDataManager manager = (PersistentDataManager) getDataManager().getDataTypeManager(getDataTypeManagerClass());
-            manager.updateInDataSource(this, value);
+            manager.setInDataSource(List.of(new InitialPersistentData(this, value)));
         } catch (Exception e) {
             e.printStackTrace();
         }

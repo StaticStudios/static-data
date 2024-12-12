@@ -1,18 +1,16 @@
 package net.staticstudios.data.impl;
 
-import net.staticstudios.data.DataKey;
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.PrimaryKey;
 import net.staticstudios.data.data.InitialPersistentData;
 import net.staticstudios.data.data.PersistentData;
 import net.staticstudios.data.data.UniqueData;
+import net.staticstudios.data.key.ColumnKey;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.sql.SQLException;
+import java.util.*;
 
 public class PersistentDataManager implements DataTypeManager<PersistentData<?>, InitialPersistentData> {
 
@@ -28,152 +26,19 @@ public class PersistentDataManager implements DataTypeManager<PersistentData<?>,
         });
     }
 
-    public static DataKey createDataKey(String schema, String table, String column, PrimaryKey holderPkey) {
-        return DataKey.of("sql", schema, table, column, holderPkey);
-    }
-
-
-    @Override
-    public void insertIntoDataSource(UniqueData holder, List<InitialPersistentData> initialData) throws Exception {
+    public void setInDataSource(List<InitialPersistentData> initialData) throws Exception {
         try (Connection connection = dataManager.getConnection()) {
-            pgListener.ensureTableHasTrigger(connection, holder.getTable());
-            StringBuilder sqlBuilder = new StringBuilder("INSERT INTO ").append(holder.getSchema()).append(".").append(holder.getTable()).append(" (");
-
-            List<String> columns = new ArrayList<>(Arrays.asList(holder.getPKey().getColumns()));
-
+            boolean autoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
             for (InitialPersistentData initial : initialData) {
-                PersistentData<?> data = initial.getKeyed();
-                columns.add(data.getColumn());
-            }
-
-
-            for (String column : columns) {
-                sqlBuilder.append(column);
-                if (columns.indexOf(column) < columns.size() - 1) {
-                    sqlBuilder.append(", ");
-                }
-            }
-            sqlBuilder.append(") VALUES (");
-
-            for (int i = 0; i < columns.size(); i++) {
-                sqlBuilder.append("?");
-                if (i < columns.size() - 1) {
-                    sqlBuilder.append(", ");
-                }
-            }
-
-            sqlBuilder.append(") ON CONFLICT (");
-            for (int i = 0; i < holder.getPKey().getColumns().length; i++) {
-                sqlBuilder.append(holder.getPKey().getColumns()[i]);
-                if (i < holder.getPKey().getColumns().length - 1) {
-                    sqlBuilder.append(", ");
-                }
-            }
-            sqlBuilder.append(") DO UPDATE SET ");
-            for (int i = 0; i < columns.size(); i++) {
-                sqlBuilder.append(columns.get(i)).append(" = EXCLUDED.").append(columns.get(i));
-                if (i < columns.size() - 1) {
-                    sqlBuilder.append(", ");
-                }
-            }
-
-            sqlBuilder.append(" RETURNING *");
-
-            String sql = sqlBuilder.toString();
-            System.out.println(sql);
-
-            try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                List<Object> values = new ArrayList<>(Arrays.asList(holder.getPKey().getValues()));
-
-                for (InitialPersistentData initial : initialData) {
-                    Object value = initial.getValue();
-                    Object serialized = value; //todo: this
-                    values.add(serialized);
-                }
-
-                for (int i = 0; i < values.size(); i++) {
-                    statement.setObject(i + 1, values.get(i));
-                }
-
-                ResultSet resultSet = statement.executeQuery();
-                if (resultSet.next()) {
-
-                    //Cache all values
-                    for (String column : columns) {
-                        Object value = resultSet.getObject(column);
-                        dataManager.cache(createDataKey(holder.getSchema(), holder.getTable(), column, holder.getPKey()), value);
-                    }
-                }
-            }
-        }
-    }
-
-//    @Override
-//    public List<Object> loadFromDataSource(List<PersistentData<?>> dataList) throws Exception {
-//        //todo: load all columns, since we will probably need them
-//        List<Object> dataValues = new ArrayList<>();
-//        try (Connection connection = dataManager.getConnection()) {
-//            for (PersistentData<?> data : dataList) {
-//                pgListener.ensureTableHasTrigger(connection, data.getTable());
-//                String schema = data.getSchema();
-//                String table = data.getTable();
-//                String column = data.getColumn();
-//                PrimaryKey holderPkey = data.getHolderPrimaryKey();
-//
-//
-//                StringBuilder sqlBuilder = new StringBuilder("SELECT " + column + " FROM " + schema + "." + table + " WHERE ");
-//                for (int i = 0; i < holderPkey.getColumns().length; i++) {
-//                    sqlBuilder.append(holderPkey.getColumns()[i]).append(" = ?");
-//                    if (i < holderPkey.getColumns().length - 1) {
-//                        sqlBuilder.append(" AND ");
-//                    }
-//                }
-//
-//                String sql = sqlBuilder.toString();
-//                System.out.println(sql);
-//                //todo: log
-//
-//                try (PreparedStatement statement = connection.prepareStatement(sql)) {
-//                    Object[] values = holderPkey.getValues();
-//
-//                    for (int i = 0; i < values.length; i++) {
-//                        statement.setObject(i + 1, values[i]);
-//                    }
-//
-//                    ResultSet resultSet = statement.executeQuery();
-//                    if (resultSet.next()) {
-//                        //todo: use value serializers
-//                        dataValues.add(resultSet.getObject(column));
-//                    } else {
-//                        throw new DataDoesNotExistException("Data does not exist in the database. " + data);
-//                    }
-//                }
-//            }
-//        }
-//
-//        return dataValues;
-//    }
-
-    @Override
-    public void updateInDataSource(List<PersistentData<?>> dataList, Object value) throws Exception {
-        try (Connection connection = dataManager.getConnection()) {
-            for (PersistentData<?> data : dataList) {
+                PersistentData<?> data = initial.getData();
                 pgListener.ensureTableHasTrigger(connection, data.getTable());
                 String schema = data.getSchema();
                 String table = data.getTable();
                 String column = data.getColumn();
-                PrimaryKey holderPkey = data.getHolderPrimaryKey();
+                String idColumn = data.getIdColumn();
 
-                StringBuilder sqlBuilder = new StringBuilder("UPDATE " + schema + "." + table + " SET " + column + " = ? WHERE ");
-
-                for (int i = 0; i < holderPkey.getColumns().length; i++) {
-                    sqlBuilder.append(holderPkey.getColumns()[i]).append(" = ?");
-                    if (i < holderPkey.getColumns().length - 1) {
-                        sqlBuilder.append(" AND ");
-                    }
-                }
-
-                String sql = sqlBuilder.toString();
+                String sql = "INSERT INTO " + schema + "." + table + " (" + column + ", " + idColumn + ") VALUES (?, ?) ON CONFLICT (" + idColumn + ") DO UPDATE SET " + column + " = EXCLUDED." + column;
                 System.out.println(sql);
 
 
@@ -181,15 +46,98 @@ public class PersistentDataManager implements DataTypeManager<PersistentData<?>,
 
                 try (PreparedStatement statement = connection.prepareStatement(sql)) {
                     //todo: use value serializers
-                    statement.setObject(1, value);
-
-                    Object[] pkeyValues = holderPkey.getValues();
-                    for (int i = 0; i < pkeyValues.length; i++) {
-                        statement.setObject(i + 2, pkeyValues[i]);
-                    }
+                    statement.setObject(1, initial.getValue());
+                    statement.setObject(2, data.getHolder().getRootHolder().getId());
 
 
                     statement.executeUpdate();
+                }
+            }
+            connection.commit();
+            connection.setAutoCommit(autoCommit);
+        }
+    }
+
+    /**
+     * Column keys are expected to all be in the same table, AND are expected to all have the same id column
+     *
+     * @param connection
+     * @param dummyHolder
+     * @param columnKeys
+     * @return
+     * @throws SQLException
+     */
+    public void loadAllFromDataSource(Connection connection, UniqueData dummyHolder, Collection<ColumnKey> columnKeys) throws SQLException {
+        if (columnKeys.isEmpty()) {
+            return;
+        }
+
+        ColumnKey firstColumnKey = columnKeys.iterator().next();
+        String idColumn = firstColumnKey.getIdColumn();
+        String schemaTable = firstColumnKey.getSchema() + "." + firstColumnKey.getTable();
+
+        Set<String> dataColumns = new HashSet<>();
+
+        for (ColumnKey columnKey : columnKeys) {
+            dataColumns.add(columnKey.getColumn());
+        }
+
+        dataColumns.remove(idColumn);
+
+        String sql;
+        if (idColumn.equals(dummyHolder.getPKey().getColumn())) {
+            StringBuilder sqlBuilder = new StringBuilder("SELECT ");
+            for (String column : dataColumns) {
+                sqlBuilder.append(column);
+                sqlBuilder.append(", ");
+            }
+            sqlBuilder.append(idColumn);
+
+            sqlBuilder.append(" FROM ");
+            sqlBuilder.append(schemaTable);
+            sql = sqlBuilder.toString();
+        } else {
+            StringBuilder sqlBuilder = new StringBuilder("SELECT ");
+            for (String column : dataColumns) {
+                sqlBuilder.append(column);
+                sqlBuilder.append(", ");
+            }
+            sqlBuilder.append(dummyHolder.getSchema());
+            sqlBuilder.append(".");
+            sqlBuilder.append(dummyHolder.getTable());
+            sqlBuilder.append(".");
+            sqlBuilder.append(dummyHolder.getPKey().getColumn());
+
+            sqlBuilder.append(" FROM ");
+            sqlBuilder.append(schemaTable);
+
+            sqlBuilder.append(" RIGHT JOIN ");
+            sqlBuilder.append(dummyHolder.getSchema());
+            sqlBuilder.append(".");
+            sqlBuilder.append(dummyHolder.getTable());
+            sqlBuilder.append(" ON ");
+            sqlBuilder.append(schemaTable);
+            sqlBuilder.append(".");
+            sqlBuilder.append(idColumn);
+            sqlBuilder.append(" = ");
+            sqlBuilder.append(dummyHolder.getSchema());
+            sqlBuilder.append(".");
+            sqlBuilder.append(dummyHolder.getTable());
+            sqlBuilder.append(".");
+            sqlBuilder.append(dummyHolder.getPKey().getColumn());
+            sql = sqlBuilder.toString();
+        }
+
+        System.out.println(sql);
+
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            ResultSet resultSet = statement.executeQuery();
+            while (resultSet.next()) {
+                UUID id = resultSet.getObject(dummyHolder.getPKey().getColumn(), UUID.class);
+                for (String column : dataColumns) {
+                    Object value = resultSet.getObject(column);
+                    Object deserialized = value; //todo: deserialize
+                    dataManager.cache(new ColumnKey(firstColumnKey.getSchema(), firstColumnKey.getTable(), column, id, idColumn), deserialized);
                 }
             }
         }

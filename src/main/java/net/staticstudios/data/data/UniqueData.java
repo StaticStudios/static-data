@@ -33,7 +33,6 @@ public class UniqueData implements DataHolder {
         return schema;
     }
 
-    @Override
     public PrimaryKey getPKey() {
         return pKey;
     }

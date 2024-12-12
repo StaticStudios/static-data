@@ -75,6 +75,7 @@ public class PostgresListener {
             this.pgConnection = DriverManager.getConnection("jdbc:pgsql://" + hostname + ":" + port + "/postgres", "postgres", password).unwrap(PGConnection.class);
 
             try (Statement statement = pgConnection.createStatement()) {
+                System.out.println("Creating data_notify function");
                 statement.execute(CREATE_DATA_NOTIFY_FUNCTION);
             }
 
@@ -137,12 +138,14 @@ public class PostgresListener {
         }
 
         String sql = CREATE_TRIGGER.formatted(table);
-        System.out.println(sql);
+        System.out.println("Adding propagate_data_update_trigger to table: " + table);
 
         try (Statement statement = connection.createStatement()) {
             statement.execute(sql);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+
+        tablesTriggered.add(table);
     }
 }

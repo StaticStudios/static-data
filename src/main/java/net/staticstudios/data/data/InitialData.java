@@ -1,7 +1,7 @@
 package net.staticstudios.data.data;
 
-public interface InitialData<K extends Keyed, V> {
-    K getKeyed();
+public interface InitialData<D, V> {
+    D getData();
 
     V getValue();
 }

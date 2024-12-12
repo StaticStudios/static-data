@@ -1,15 +1,24 @@
 package net.staticstudios.data.data.collection;
 
 import net.staticstudios.data.data.DataHolder;
+import net.staticstudios.data.impl.DataTypeManager;
 import net.staticstudios.data.impl.PersistentCollectionValueManager;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
+import java.util.function.Consumer;
 
 public class PersistentValueCollection<T> extends PersistentCollection<T> {
+    private final DataHolder holder;
 
-    public PersistentValueCollection(DataHolder holder, String schema, String table, String linkingColumn, String dataColumn) {
-        super(holder, schema, table, linkingColumn, dataColumn);
+    public PersistentValueCollection(DataHolder holder, Class<T> dataType, String schema, String table, String linkingColumn, String dataColumn) {
+        super(holder, dataType, schema, table, linkingColumn, dataColumn);
+        this.holder = holder;
+    }
+
+    @Override
+    public DataHolder getHolder() {
+        return holder;
     }
 
     @Override
@@ -29,8 +38,7 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
 
     @Override
     public @NotNull Iterator<T> iterator() {
-        //todo: this
-        return null;
+        return new Itr(getInternalValues().toArray());
     }
 
     @Override
@@ -129,6 +137,52 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
     private Collection<T> getInternalValues() {
         return (Collection<T>) getManager().getEntries(this);
     }
-    
+
+    @Override
+    public Class<? extends DataTypeManager<?, ?>> getDataTypeManagerClass() {
+        return PersistentCollectionValueManager.class;
+    }
+
     //todo: hashcode and equals
+
+    private class Itr implements Iterator<T> {
+        private final Object[] values;
+        int cursor;       // index of next element to return
+        int lastRet = -1; // index of last element returned; -1 if no such
+
+        public Itr(Object[] values) {
+            this.values = values;
+        }
+
+        public boolean hasNext() {
+            return cursor != values.length;
+        }
+
+        @SuppressWarnings("unchecked")
+        public T next() {
+            int i = cursor;
+            if (!hasNext())
+                throw new NoSuchElementException();
+            cursor = i + 1;
+            return (T) values[lastRet = i];
+        }
+
+        public void remove() {
+            if (lastRet < 0)
+                throw new IllegalStateException();
+            PersistentValueCollection.this.remove(values[lastRet]);
+
+            lastRet = -1;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public void forEachRemaining(Consumer<? super T> action) {
+            Objects.requireNonNull(action);
+            for (int i = cursor; i < values.length; i++) {
+                action.accept((T) values[i]);
+            }
+            cursor = values.length;
+        }
+    }
 }

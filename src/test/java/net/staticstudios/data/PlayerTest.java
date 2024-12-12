@@ -22,6 +22,8 @@ public class PlayerTest {
 
 
         DataManager dataManager = new DataManager(hikariConfig);
+        System.out.println(dataManager.loadAll(Player.class));
+
         Player player = Player.create(dataManager, "Test");
 
         assertEquals(player.getName(), "Test");
@@ -32,6 +34,17 @@ public class PlayerTest {
         assertNull(player.getName());
         player.setName("Test2");
         assertEquals(player.getName(), "Test2");
+
+        player.setNickname("TestNick");
+        assertEquals(player.getNickname(), "TestNick");
+
+        assertNull(player.getBackpack());
+        Backpack backpack = Backpack.create(dataManager, 10);
+        player.setBackpack(backpack);
+        assertEquals(player.getBackpack(), backpack);
+        backpack.setSize(20);
+        assertEquals(backpack.getSize(), 20);
+        assertEquals(player.getBackpack().getSize(), 20);
 
 
         assertTrue(player.getHomeLocations().isEmpty());

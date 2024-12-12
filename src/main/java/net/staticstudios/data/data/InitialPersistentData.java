@@ -10,7 +10,7 @@ public class InitialPersistentData implements InitialData<PersistentData<?>, Obj
     }
 
     @Override
-    public PersistentData<?> getKeyed() {
+    public PersistentData<?> getData() {
         return data;
     }
 

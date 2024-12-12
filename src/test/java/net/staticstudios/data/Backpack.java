@@ -8,7 +8,7 @@ import java.util.UUID;
 
 public class Backpack extends UniqueData {
     private final PersistentValue<Integer> size = PersistentValue.of(this, Integer.class, "size");
-    private final PersistentValue<UUID> playerId = PersistentValue.of(this, UUID.class, "player_id");
+//    private final PersistentValue<UUID> playerId = PersistentValue.of(this, UUID.class, "player_id");
 
     /**
      * Create a new player object
@@ -22,10 +22,9 @@ public class Backpack extends UniqueData {
     }
 
     @Blocking
-    public static Backpack create(DataManager dataManager, int size, UUID playerId) {
+    public static Backpack create(DataManager dataManager, int size) {
         Backpack backpack = new Backpack(dataManager, UUID.randomUUID());
-        dataManager.insert(backpack, backpack.size.initial(size), backpack.playerId.initial(playerId));
-
+        dataManager.insert(backpack, backpack.size.initial(size));
 
         return backpack;
     }

@@ -12,7 +12,7 @@ public class InitialPersistentCollectionValueEntryData implements InitialData<Pe
     }
 
     @Override
-    public PersistentValueCollection<?> getKeyed() {
+    public PersistentValueCollection<?> getData() {
         return keyed;
     }
 

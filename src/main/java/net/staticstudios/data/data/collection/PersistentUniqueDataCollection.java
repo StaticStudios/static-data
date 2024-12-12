@@ -2,16 +2,23 @@ package net.staticstudios.data.data.collection;
 
 import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.data.UniqueData;
+import net.staticstudios.data.impl.DataTypeManager;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
+import java.util.function.Consumer;
 
 public class PersistentUniqueDataCollection<T extends UniqueData> extends PersistentCollection<T> {
     private final PersistentValueCollection<UUID> holderIds;
 
-    public PersistentUniqueDataCollection(DataHolder holder, String schema, String table, String linkingColumn) {
-        super(holder, schema, table, linkingColumn, linkingColumn);
-        holderIds = new PersistentValueCollection<>(holder, schema, table, linkingColumn, linkingColumn);
+    public PersistentUniqueDataCollection(DataHolder holder, Class<T> dataType, String schema, String table, String linkingColumn, String dataColumn) {
+        super(holder, dataType, schema, table, linkingColumn, dataColumn);
+        holderIds = new PersistentValueCollection<>(holder, UUID.class, schema, table, linkingColumn, dataColumn);
+    }
+
+    @Override
+    public DataHolder getHolder() {
+        return holderIds.getHolder();
     }
 
     @Override
@@ -34,8 +41,8 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
     }
 
     @Override
-    public @NotNull Iterator<T> iterator() { //todo: this
-        return null;
+    public @NotNull Iterator<T> iterator() {
+        return new Itr(holderIds.toArray(new UUID[0]));
     }
 
     @Override
@@ -131,5 +138,53 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
     @Override
     public void clear() {
         holderIds.clear();
+    }
+
+    @Override
+    public Class<? extends DataTypeManager<?, ?>> getDataTypeManagerClass() {
+        throw new UnsupportedOperationException("This collection does not have a data type manager");
+    }
+
+    private class Itr implements Iterator<T> {
+        private final UUID[] ids;
+        int cursor;       // index of next element to return
+        int lastRet = -1; // index of last element returned; -1 if no such
+
+        public Itr(UUID[] ids) {
+            this.ids = ids;
+        }
+
+        public boolean hasNext() {
+            return cursor != ids.length;
+        }
+
+        @SuppressWarnings("unchecked")
+        public T next() {
+            int i = cursor;
+            if (!hasNext())
+                throw new NoSuchElementException();
+            cursor = i + 1;
+            UUID id = ids[lastRet = i];
+            return (T) getDataManager().getUniqueData(id);
+        }
+
+        public void remove() {
+            if (lastRet < 0)
+                throw new IllegalStateException();
+            holderIds.remove(ids[lastRet]);
+
+            lastRet = -1;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public void forEachRemaining(Consumer<? super T> action) {
+            Objects.requireNonNull(action);
+            for (int i = cursor; i < ids.length; i++) {
+                UUID id = ids[i];
+                action.accept((T) getDataManager().getUniqueData(id));
+            }
+            cursor = ids.length;
+        }
     }
 }

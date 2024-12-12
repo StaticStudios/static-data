@@ -1,18 +1,18 @@
 package net.staticstudios.data.data;
 
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.PrimaryKey;
 import net.staticstudios.data.impl.DataTypeManager;
+import net.staticstudios.data.key.DataKey;
 
-public interface Data<T> extends Keyed {
+public interface Data<T> {
+
+    Class<T> getDataType();
 
     DataManager getDataManager();
 
-    PrimaryKey getHolderPrimaryKey();
-
     Class<? extends DataTypeManager<?, ?>> getDataTypeManagerClass();
 
-    T get();
+    DataKey getKey();
 
-    void set(T value);
+    DataHolder getHolder();
 }

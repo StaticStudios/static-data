@@ -1,16 +1,12 @@
-package net.staticstudios.data;
+package net.staticstudios.data.key;
 
 import java.util.Arrays;
 
 public class DataKey {
     private final Object[] parts;
 
-    protected DataKey(Object... parts) {
+    public DataKey(Object... parts) {
         this.parts = parts;
-    }
-
-    public static DataKey of(Object... parts) {
-        return new DataKey(parts);
     }
 
     @Override
@@ -34,7 +30,7 @@ public class DataKey {
 
     @Override
     public String toString() {
-        return "DataKey{" +
+        return getClass().getSimpleName() + "{" +
                 "parts=" + Arrays.toString(parts) +
                 '}';
     }

@@ -2,44 +2,28 @@ package net.staticstudios.data;
 
 import com.impossibl.postgres.utils.guava.Preconditions;
 
-import java.util.Arrays;
+import java.util.Objects;
+import java.util.UUID;
 
 public class PrimaryKey {
-    private final String[] columns;
-    private final Object[] values;
+    private final String column;
+    private final UUID id;
 
-    public PrimaryKey(String[] columns, Object[] values) {
-        Preconditions.checkArgument(columns.length == values.length, "Columns and values must have the same length");
-        this.columns = columns;
-        this.values = values;
+    public PrimaryKey(String column, UUID id) {
+        this.column = Preconditions.checkNotNull(column);
+        this.id = Preconditions.checkNotNull(id);
     }
 
-    public static PrimaryKey of(String column, Object value) {
-        return new PrimaryKey(new String[]{column}, new Object[]{value});
+    public static PrimaryKey of(String column, UUID value) {
+        return new PrimaryKey(column, value);
     }
 
-    public static PrimaryKey of(String column1, Object value1, String column2, Object value2) {
-        return new PrimaryKey(new String[]{column1, column2}, new Object[]{value1, value2});
+    public String getColumn() {
+        return column;
     }
 
-    public static PrimaryKey of(String column1, Object value1, String column2, Object value2, String column3, Object value3) {
-        return new PrimaryKey(new String[]{column1, column2, column3}, new Object[]{value1, value2, value3});
-    }
-
-    public static PrimaryKey of(String column1, Object value1, String column2, Object value2, String column3, Object value3, String column4, Object value4) {
-        return new PrimaryKey(new String[]{column1, column2, column3, column4}, new Object[]{value1, value2, value3, value4});
-    }
-
-    public static PrimaryKey of(String column1, Object value1, String column2, Object value2, String column3, Object value3, String column4, Object value4, String column5, Object value5) {
-        return new PrimaryKey(new String[]{column1, column2, column3, column4, column5}, new Object[]{value1, value2, value3, value4, value5});
-    }
-
-    public Object[] getValues() {
-        return values;
-    }
-
-    public String[] getColumns() {
-        return columns;
+    public UUID getId() {
+        return id;
     }
 
     @Override
@@ -53,27 +37,19 @@ public class PrimaryKey {
         }
 
         PrimaryKey primaryKey = (PrimaryKey) obj;
-        return Arrays.equals(columns, primaryKey.columns) && Arrays.equals(values, primaryKey.values);
+        return this.column.equals(primaryKey.column) && this.id.equals(primaryKey.id);
     }
 
     @Override
     public int hashCode() {
-        int result = Arrays.hashCode(columns);
-        result = 31 * result + Arrays.hashCode(values);
-        return result;
+        return Objects.hash(column, id);
     }
 
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder("PrimaryKey{");
-        for (int i = 0; i < columns.length; i++) {
-            sb.append(columns[i]).append("=").append(values[i]);
-            if (i < columns.length - 1) {
-                sb.append(", ");
-            }
-        }
-        sb.append("}");
-
-        return sb.toString();
+        return "PrimaryKey{" +
+                "column='" + column + '\'' +
+                ", id=" + id +
+                '}';
     }
 }

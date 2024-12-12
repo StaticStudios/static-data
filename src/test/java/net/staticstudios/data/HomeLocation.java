@@ -10,6 +10,7 @@ public class HomeLocation extends UniqueData {
     private final PersistentValue<Integer> x = PersistentValue.of(this, Integer.class, "x");
     private final PersistentValue<Integer> y = PersistentValue.of(this, Integer.class, "y");
     private final PersistentValue<Integer> z = PersistentValue.of(this, Integer.class, "z");
+//    private final PersistentValue<Backpack> b = PersistentValue.of(this, Backpack.class, "z");
 
     private HomeLocation(DataManager dataManager, UUID id) {
         super(dataManager, "public", "home_locations", id);
