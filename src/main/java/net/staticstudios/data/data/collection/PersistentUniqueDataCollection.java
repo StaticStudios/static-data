@@ -75,7 +75,8 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
 
     @Override
     public boolean add(T t) {
-        holderIds.getManager().addEntries(holderIds, Collections.singletonList(new CollectionEntry(t.getId(), getRootHolder().getId())));
+        System.out.println("Adding " + t);
+        holderIds.getManager().addEntries(holderIds, Collections.singletonList(new CollectionEntry(t.getId(), t.getId())));
         return true;
     }
 
@@ -143,6 +144,13 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
     @Override
     public Class<? extends DataTypeManager<?, ?>> getDataTypeManagerClass() {
         throw new UnsupportedOperationException("This collection does not have a data type manager");
+    }
+
+    @Override
+    public String toString() {
+        return "PersistentUniqueDataCollection{" +
+                "holderIds=" + holderIds +
+                '}';
     }
 
     private class Itr implements Iterator<T> {

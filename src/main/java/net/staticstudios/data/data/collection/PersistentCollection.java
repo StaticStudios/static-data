@@ -30,14 +30,14 @@ public abstract class PersistentCollection<T> implements DataHolder, java.util.C
         return new PersistentValueCollection<>(holder, data, schema, table, linkingColumn, dataColumn);
     }
 
-    @SuppressWarnings("unchecked")
-    public static <T extends UniqueData> PersistentCollection<T> of(DataHolder holder, Class<T> data, String schema, String table, String linkingColumn) {
-        return (PersistentCollection<T>) new PersistentUniqueDataCollection<>(holder, data, schema, table, linkingColumn, linkingColumn);
-    }
+//    @SuppressWarnings("unchecked")
+//    public static <T extends UniqueData> PersistentCollection<T> of(DataHolder holder, Class<T> data, String schema, String table, String linkingColumn) {
+//        return (PersistentCollection<T>) new PersistentUniqueDataCollection<>(holder, data, schema, table, linkingColumn, linkingColumn);
+//    }
 
     @SuppressWarnings("unchecked")
-    public static <T extends UniqueData> PersistentCollection<T> junction(DataHolder holder, Class<T> data, String schema, String table, String linkingColumn, String dataColumn) {
-        return (PersistentCollection<T>) new PersistentUniqueDataCollection<>(holder, data, schema, table, linkingColumn, dataColumn);
+    public static <T extends UniqueData> PersistentCollection<T> oneToMany(DataHolder holder, Class<T> data, String schema, String table, String linkingColumn) {
+        return (PersistentCollection<T>) new PersistentUniqueDataCollection<>(holder, data, schema, table, linkingColumn, "id");
     }
 
     public String getSchema() {

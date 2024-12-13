@@ -1,7 +1,7 @@
 package net.staticstudios.data;
 
-import net.staticstudios.data.data.OneToOne;
 import net.staticstudios.data.data.PersistentValue;
+import net.staticstudios.data.data.Reference;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.data.collection.PersistentCollection;
 import org.jetbrains.annotations.Blocking;
@@ -12,19 +12,16 @@ import java.util.UUID;
 public class Player extends UniqueData {
     private final PersistentValue<String> name = PersistentValue.of(this, String.class, "name");
     private final PersistentValue<String> nickname = PersistentValue.foreign(this, String.class, "public.players_2.nickname", "player_id");
-    private final OneToOne<Backpack> backpack = OneToOne.of(this, Backpack.class, "backpack_id");
+    private final Reference<Backpack> backpack = Reference.of(this, Backpack.class, "backpack_id");
+    private final Reference<Island> island = Reference.of(this, Island.class, "island_id");
 
 
-    private final PersistentCollection<HomeLocation> homeLocations = PersistentCollection.of(this, HomeLocation.class, "public", "home_locations", "player_id");
+    private final PersistentCollection<HomeLocation> homeLocations = PersistentCollection.oneToMany(this, HomeLocation.class, "public", "home_locations", "player_id");
     private final PersistentCollection<Integer> favoriteNumbers = PersistentCollection.of(this, Integer.class, "public", "favorite_numbers", "player_id", "number");
 
     private Player(DataManager dataManager, UUID id) {
         super(dataManager, "public", "players", id);
     }
-
-//    public static Player get(DataManager dataManager, UUID id) {
-//        return dataManager.get("public.players", id);
-//    }
 
     @Blocking
     public static Player create(DataManager dataManager, String name) {
@@ -66,13 +63,20 @@ public class Player extends UniqueData {
         return favoriteNumbers;
     }
 
+    public Island getIsland() {
+        return this.island.get();
+    }
+
     @Override
     public String toString() {
         return "Player{" +
+                "id=" + getId() +
                 "name=" + name.get() +
                 ", nickname=" + nickname.get() +
-                ", homeHomeLocations=" + homeLocations +
-                ", favoriteNumbers=" + favoriteNumbers +
+                ", backpack=" + backpack.get() +
+//                ", island=" + island.getForeignId() +
+//                ", homeHomeLocations=" + homeLocations +
+//                ", favoriteNumbers=" + favoriteNumbers +
                 '}';
     }
 }

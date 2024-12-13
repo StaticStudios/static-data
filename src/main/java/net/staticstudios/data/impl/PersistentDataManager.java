@@ -4,7 +4,7 @@ import net.staticstudios.data.DataManager;
 import net.staticstudios.data.data.InitialPersistentData;
 import net.staticstudios.data.data.PersistentData;
 import net.staticstudios.data.data.UniqueData;
-import net.staticstudios.data.key.ColumnKey;
+import net.staticstudios.data.key.CellKey;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -63,23 +63,23 @@ public class PersistentDataManager implements DataTypeManager<PersistentData<?>,
      *
      * @param connection
      * @param dummyHolder
-     * @param columnKeys
+     * @param cellKeys
      * @return
      * @throws SQLException
      */
-    public void loadAllFromDataSource(Connection connection, UniqueData dummyHolder, Collection<ColumnKey> columnKeys) throws SQLException {
-        if (columnKeys.isEmpty()) {
+    public void loadAllFromDataSource(Connection connection, UniqueData dummyHolder, Collection<CellKey> cellKeys) throws SQLException {
+        if (cellKeys.isEmpty()) {
             return;
         }
 
-        ColumnKey firstColumnKey = columnKeys.iterator().next();
-        String idColumn = firstColumnKey.getIdColumn();
-        String schemaTable = firstColumnKey.getSchema() + "." + firstColumnKey.getTable();
+        CellKey firstCellKey = cellKeys.iterator().next();
+        String idColumn = firstCellKey.getIdColumn();
+        String schemaTable = firstCellKey.getSchema() + "." + firstCellKey.getTable();
 
         Set<String> dataColumns = new HashSet<>();
 
-        for (ColumnKey columnKey : columnKeys) {
-            dataColumns.add(columnKey.getColumn());
+        for (CellKey cellKey : cellKeys) {
+            dataColumns.add(cellKey.getColumn());
         }
 
         dataColumns.remove(idColumn);
@@ -137,7 +137,7 @@ public class PersistentDataManager implements DataTypeManager<PersistentData<?>,
                 for (String column : dataColumns) {
                     Object value = resultSet.getObject(column);
                     Object deserialized = value; //todo: deserialize
-                    dataManager.cache(new ColumnKey(firstColumnKey.getSchema(), firstColumnKey.getTable(), column, id, idColumn), deserialized);
+                    dataManager.cache(new CellKey(firstCellKey.getSchema(), firstCellKey.getTable(), column, id, idColumn), deserialized);
                 }
             }
         }

@@ -50,15 +50,36 @@ public class PlayerTest {
         assertTrue(player.getHomeLocations().isEmpty());
         assertTrue(player.getFavoriteNumbers().isEmpty());
 
-        player.getHomeLocations().add(HomeLocation.create(dataManager, 1, 2, 3));
-        player.getHomeLocations().add(HomeLocation.create(dataManager, 4, 5, 6));
-
-        assertEquals(player.getHomeLocations().size(), 2);
-
         player.getFavoriteNumbers().add(1);
         player.getFavoriteNumbers().add(2);
 
         assertEquals(player.getFavoriteNumbers().size(), 2);
+        assertEquals(player.getFavoriteNumbers().iterator().next(), 1);
+
+
+        player.getHomeLocations().add(HomeLocation.create(dataManager, 1, 2, 3));
+        player.getHomeLocations().add(HomeLocation.create(dataManager, 4, 5, 6));
+
+
+        assertEquals(player.getHomeLocations().size(), 2);
+
+
+        assertEquals(player.getHomeLocations().iterator().next().getZ(), 3);
+
+
+        Island island = Island.create(dataManager, "TestIsland");
+        assertTrue(island.getMembers().isEmpty());
+        island.getMembers().add(player);
+
+
+        dataManager.dump();
+
+        assertEquals(island.getMembers().size(), 1);
+        assertEquals(player, island.getMembers().iterator().next());
+
+        assertEquals(player.getIsland(), island);
+
+        //todo: when a player has their island id set, the collection should be updated
 
         Thread.sleep(500);
 

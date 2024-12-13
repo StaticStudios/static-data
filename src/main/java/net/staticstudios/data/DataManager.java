@@ -10,10 +10,10 @@ import net.staticstudios.data.data.InitialData;
 import net.staticstudios.data.data.InitialPersistentData;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.impl.DataTypeManager;
-import net.staticstudios.data.impl.PersistentCollectionValueManager;
+import net.staticstudios.data.impl.PersistentCollectionManager;
 import net.staticstudios.data.impl.PersistentDataManager;
 import net.staticstudios.data.impl.PostgresListener;
-import net.staticstudios.data.key.ColumnKey;
+import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.DataKey;
 import net.staticstudios.data.key.DatabaseKey;
 import net.staticstudios.data.util.ReflectionUtils;
@@ -48,7 +48,7 @@ public class DataManager {
 
         PostgresListener pgListener = new PostgresListener();
         this.dataTypeManagers.put(PersistentDataManager.class, new PersistentDataManager(this, pgListener));
-        this.dataTypeManagers.put(PersistentCollectionValueManager.class, new PersistentCollectionValueManager(this, pgListener));
+        this.dataTypeManagers.put(PersistentCollectionManager.class, new PersistentCollectionManager(this, pgListener));
 
         this.connectionPool = new HikariPool(poolConfig);
     }
@@ -183,11 +183,11 @@ public class DataManager {
 
         for (Map.Entry<UniqueData, Collection<DatabaseKey>> entry : databaseKeys.asMap().entrySet()) {
             UniqueData dummyHolder = entry.getKey();
-            Multimap<DataKey, ColumnKey> persistentDataColumns = Multimaps.newListMultimap(new HashMap<>(), ArrayList::new);
+            Multimap<DataKey, CellKey> persistentDataColumns = Multimaps.newListMultimap(new HashMap<>(), ArrayList::new);
 
             for (DatabaseKey key : entry.getValue()) {
-                if (key instanceof ColumnKey columnKey) {
-                    persistentDataColumns.put(new DataKey(columnKey.getSchema(), columnKey.getTable(), columnKey.getColumn(), columnKey.getIdColumn()), columnKey);
+                if (key instanceof CellKey cellKey) {
+                    persistentDataColumns.put(new DataKey(cellKey.getSchema(), cellKey.getTable(), cellKey.getColumn(), cellKey.getIdColumn()), cellKey);
                 }
             }
             try {
@@ -249,6 +249,13 @@ public class DataManager {
 
     }
 
+    public void dump() {
+        //print each cache entry line by line
+        for (Map.Entry<DataKey, Object> entry : cache.entrySet()) {
+            System.out.println(entry.getKey() + " -> " + entry.getValue());
+        }
+    }
+
     private void loadUniqueData(Connection connection, UniqueData dummyHolder) throws SQLException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
         String sql = "SELECT " + dummyHolder.getPKey().getColumn() + " FROM " + dummyHolder.getSchema() + "." + dummyHolder.getTable();
 
@@ -283,7 +290,7 @@ public class DataManager {
             PersistentDataManager persistentDataManager = getDataTypeManager(PersistentDataManager.class);
             persistentDataManager.setInDataSource(initialPersistentData);
             for (InitialPersistentData data : initialPersistentData) {
-                cache(new ColumnKey(data.getData()), data.getValue());
+                cache(new CellKey(data.getData()), data.getValue());
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -305,6 +312,9 @@ public class DataManager {
             }
             //todo: redis values
         }
+        for (InitialPersistentData data : initialPersistentData) {
+            cache(new CellKey(data.getData()), data.getValue());
+        }
 
         ThreadUtils.submit(() -> {
             try {
@@ -314,6 +324,7 @@ public class DataManager {
                 throw new RuntimeException(e);
             }
         });
+
 //        redisDataManager.insertIntoDataSource(holder, initialRedisData);
 
         addUniqueData(holder);
@@ -339,7 +350,7 @@ public class DataManager {
             return (T) value;
         }
 
-        throw new DataDoesNotExistException("Data does not exist: " + key);
+        throw new DataDoesNotExistException("Data does not exist ");
     }
 
     public UniqueData getUniqueData(UUID id) throws DataDoesNotExistException {
@@ -370,7 +381,7 @@ public class DataManager {
     }
 
     public <T> void cache(DataKey key, T value) {
-//        System.out.println("caching " + key + " -> " + value);
+        System.out.println("caching " + key + " -> " + value);
         if (value == null) {
             cache.put(key, NULL_MARKER);
             return;

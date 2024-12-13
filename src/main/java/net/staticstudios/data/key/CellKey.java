@@ -4,13 +4,13 @@ import net.staticstudios.data.data.PersistentData;
 
 import java.util.UUID;
 
-public class ColumnKey extends DatabaseKey {
+public class CellKey extends DatabaseKey {
     private final String schema;
     private final String table;
     private final String column;
     private final String idColumn;
 
-    public ColumnKey(String schema, String table, String column, UUID rootHolderId, String idColumn) {
+    public CellKey(String schema, String table, String column, UUID rootHolderId, String idColumn) {
         super(schema, table, column, rootHolderId, idColumn);
         this.schema = schema;
         this.table = table;
@@ -18,7 +18,7 @@ public class ColumnKey extends DatabaseKey {
         this.idColumn = idColumn;
     }
 
-    public ColumnKey(PersistentData<?> data) {
+    public CellKey(PersistentData<?> data) {
         this(data.getSchema(), data.getTable(), data.getColumn(), data.getHolder().getRootHolder().getId(), data.getIdColumn());
     }
 

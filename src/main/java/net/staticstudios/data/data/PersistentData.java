@@ -2,7 +2,7 @@ package net.staticstudios.data.data;
 
 import net.staticstudios.data.impl.DataTypeManager;
 import net.staticstudios.data.impl.PersistentDataManager;
-import net.staticstudios.data.key.ColumnKey;
+import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.DataKey;
 
 import java.util.List;
@@ -29,7 +29,7 @@ public interface PersistentData<T> extends SingleData<T> {
 
     @Override
     default DataKey getKey() {
-        return new ColumnKey(this);
+        return new CellKey(this);
     }
 
     default T get() {

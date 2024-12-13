@@ -2,7 +2,7 @@ package net.staticstudios.data.data.collection;
 
 import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.impl.DataTypeManager;
-import net.staticstudios.data.impl.PersistentCollectionValueManager;
+import net.staticstudios.data.impl.PersistentCollectionManager;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
@@ -59,7 +59,7 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
 
     @Override
     public boolean remove(Object o) {
-        PersistentCollectionValueManager manager = getManager();
+        PersistentCollectionManager manager = getManager();
         Collection<KeyedEntry> keyedEntries = manager.getKeyedEntries(this);
         for (KeyedEntry keyedEntry : keyedEntries) {
             if (keyedEntry.value().equals(o)) {
@@ -86,7 +86,7 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
     public boolean removeAll(@NotNull Collection<?> c) {
         boolean changed = false;
 
-        PersistentCollectionValueManager manager = getManager();
+        PersistentCollectionManager manager = getManager();
         Collection<KeyedEntry> keyedEntries = manager.getKeyedEntries(this);
         List<KeyedEntry> toRemove = new ArrayList<>();
         for (Object o : c) {
@@ -109,7 +109,7 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
     public boolean retainAll(@NotNull Collection<?> c) {
         boolean changed = false;
 
-        PersistentCollectionValueManager manager = getManager();
+        PersistentCollectionManager manager = getManager();
         Collection<KeyedEntry> keyedEntries = manager.getKeyedEntries(this);
         List<KeyedEntry> toRemove = new ArrayList<>();
         for (KeyedEntry keyedEntry : keyedEntries) {
@@ -129,8 +129,8 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
         getManager().removeEntries(this, getManager().getKeyedEntries(this));
     }
 
-    protected PersistentCollectionValueManager getManager() {
-        return getDataManager().getDataTypeManager(PersistentCollectionValueManager.class);
+    protected PersistentCollectionManager getManager() {
+        return getDataManager().getDataTypeManager(PersistentCollectionManager.class);
     }
 
     @SuppressWarnings("unchecked")
@@ -140,7 +140,7 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
 
     @Override
     public Class<? extends DataTypeManager<?, ?>> getDataTypeManagerClass() {
-        return PersistentCollectionValueManager.class;
+        return PersistentCollectionManager.class;
     }
 
     //todo: hashcode and equals
