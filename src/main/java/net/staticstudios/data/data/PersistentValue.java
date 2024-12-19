@@ -1,8 +1,13 @@
 package net.staticstudios.data.data;
 
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.impl.PersistentValueManager;
+import net.staticstudios.data.key.CellKey;
+import net.staticstudios.data.key.DataKey;
 
-public class PersistentValue<T> implements PersistentData<T> {
+import java.util.List;
+
+public class PersistentValue<T> implements Value<T> {
     private final String schema;
     private final String table;
     private final String column;
@@ -28,15 +33,15 @@ public class PersistentValue<T> implements PersistentData<T> {
             throw new IllegalArgumentException("Invalid schema.table.column format: " + schemaTableColumn);
         }
 
-        return new PersistentValue<>(parts[0], parts[1], parts[2], holder.getRootHolder().getPKey().getColumn(), dataType, holder, holder.getDataManager());
+        return new PersistentValue<>(parts[0], parts[1], parts[2], holder.getRootHolder().getIdentifier().getColumn(), dataType, holder, holder.getDataManager());
     }
 
     public static <T> PersistentValue<T> of(DataHolder holder, Class<T> dataType, String schema, String table, String column) {
-        return new PersistentValue<>(schema, table, column, holder.getRootHolder().getPKey().getColumn(), dataType, holder, holder.getDataManager());
+        return new PersistentValue<>(schema, table, column, holder.getRootHolder().getIdentifier().getColumn(), dataType, holder, holder.getDataManager());
     }
 
     public static <T> PersistentValue<T> of(UniqueData holder, Class<T> dataType, String column) {
-        return new PersistentValue<>(holder.getSchema(), holder.getTable(), column, holder.getRootHolder().getPKey().getColumn(), dataType, holder, holder.getDataManager());
+        return new PersistentValue<>(holder.getSchema(), holder.getTable(), column, holder.getRootHolder().getIdentifier().getColumn(), dataType, holder, holder.getDataManager());
     }
 
     public static <T> PersistentValue<T> foreign(UniqueData holder, Class<T> dataType, String schemaTableColumn, String foreignIdColumn) {
@@ -51,17 +56,38 @@ public class PersistentValue<T> implements PersistentData<T> {
         return new PersistentValue<>(schema, table, column, foreignIdColumn, dataType, holder, holder.getDataManager());
     }
 
+    public InitialPersistentData initial(T value) {
+        return new InitialPersistentData(this, value);
+    }
+
     @Override
+    public DataKey getKey() {
+        return new CellKey(this);
+    }
+
+    public T get() {
+        return getDataManager().get(this);
+    }
+
+    public void set(T value) {
+        PersistentValueManager manager = PersistentValueManager.getInstance();
+        manager.updateCache(this, value);
+
+        try {
+            manager.setInDataSource(List.of(new InitialPersistentData(this, value)));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     public String getSchema() {
         return schema;
     }
 
-    @Override
     public String getTable() {
         return table;
     }
 
-    @Override
     public String getColumn() {
         return column;
     }
@@ -71,7 +97,6 @@ public class PersistentValue<T> implements PersistentData<T> {
         return dataType;
     }
 
-    @Override
     public String getIdColumn() {
         return idColumn;
     }

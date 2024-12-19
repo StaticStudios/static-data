@@ -1,21 +1,19 @@
 package net.staticstudios.data.data;
 
-public class InitialPersistentData implements InitialData<PersistentData<?>, Object> {
-    private final PersistentData<?> data;
+public class InitialPersistentData implements InitialData<PersistentValue<?>, Object> {
+    private final PersistentValue<?> data;
     private final Object value;
 
-    public InitialPersistentData(PersistentData<?> data, Object value) {
+    public InitialPersistentData(PersistentValue<?> data, Object value) {
         this.data = data;
         this.value = value;
     }
 
-    @Override
-    public PersistentData<?> getData() {
+    public PersistentValue<?> getValue() {
         return data;
     }
 
-    @Override
-    public Object getValue() {
+    public Object getDataValue() {
         return value;
     }
 }

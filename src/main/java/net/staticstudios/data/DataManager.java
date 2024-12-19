@@ -9,9 +9,8 @@ import net.staticstudios.data.data.Data;
 import net.staticstudios.data.data.InitialData;
 import net.staticstudios.data.data.InitialPersistentData;
 import net.staticstudios.data.data.UniqueData;
-import net.staticstudios.data.impl.DataTypeManager;
 import net.staticstudios.data.impl.PersistentCollectionManager;
-import net.staticstudios.data.impl.PersistentDataManager;
+import net.staticstudios.data.impl.PersistentValueManager;
 import net.staticstudios.data.impl.PostgresListener;
 import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.DataKey;
@@ -34,10 +33,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class DataManager {
     private static final Object NULL_MARKER = new Object();
-    private final Map<Class<?>, DataTypeManager<?, ?>> dataTypeManagers = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<DataKey, Object> cache;
+    private final Map<DataKey, Object> cache;
     private final Multimap<Class<? extends UniqueData>, UUID> uniqueDataIds;
-    private final ConcurrentHashMap<UUID, UniqueData> uniqueDataCache;
+    private final Map<Class<? extends UniqueData>, Map<UUID, UniqueData>> uniqueDataCache;
     private final HikariPool connectionPool;
     private final Set<Class<? extends UniqueData>> loadedIntoCache = new HashSet<>();
 
@@ -46,11 +44,16 @@ public class DataManager {
         this.uniqueDataCache = new ConcurrentHashMap<>();
         this.uniqueDataIds = Multimaps.synchronizedSetMultimap(HashMultimap.create());
 
-        PostgresListener pgListener = new PostgresListener();
-        this.dataTypeManagers.put(PersistentDataManager.class, new PersistentDataManager(this, pgListener));
-        this.dataTypeManagers.put(PersistentCollectionManager.class, new PersistentCollectionManager(this, pgListener));
+        PostgresListener pgListener = new PostgresListener(poolConfig);
+
+        PersistentCollectionManager.instantiate(this, pgListener);
+        PersistentValueManager.instantiate(this, pgListener);
 
         this.connectionPool = new HikariPool(poolConfig);
+    }
+
+    public void logSQL(String sql) {
+        System.out.println(sql);
     }
 
     @Blocking
@@ -84,11 +87,6 @@ public class DataManager {
             }
 
             loadedIntoCache.addAll(dependencies);
-            //todo: we should have a persistentdata key
-            //todo: we should have a collection data key
-            //todo: with these keys, we can then build select statements to load all data
-            //todo: redis stuff
-
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -191,9 +189,9 @@ public class DataManager {
                 }
             }
             try {
-                PersistentDataManager persistentDataManager = getDataTypeManager(PersistentDataManager.class);
+                PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
                 for (DataKey key : persistentDataColumns.keySet()) {
-                    persistentDataManager.loadAllFromDataSource(connection, dummyHolder, persistentDataColumns.get(key));
+                    persistentValueManager.loadAllFromDataSource(connection, dummyHolder, persistentDataColumns.get(key));
                 }
             } catch (SQLException e) {
                 throw new RuntimeException(e);
@@ -257,12 +255,12 @@ public class DataManager {
     }
 
     private void loadUniqueData(Connection connection, UniqueData dummyHolder) throws SQLException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
-        String sql = "SELECT " + dummyHolder.getPKey().getColumn() + " FROM " + dummyHolder.getSchema() + "." + dummyHolder.getTable();
+        String sql = "SELECT " + dummyHolder.getIdentifier().getColumn() + " FROM " + dummyHolder.getSchema() + "." + dummyHolder.getTable();
 
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             ResultSet resultSet = statement.executeQuery();
             while (resultSet.next()) {
-                UUID id = resultSet.getObject(dummyHolder.getPKey().getColumn(), UUID.class);
+                UUID id = resultSet.getObject(dummyHolder.getIdentifier().getColumn(), UUID.class);
                 Class<? extends UniqueData> clazz = dummyHolder.getClass();
                 Constructor<? extends UniqueData> constructor = clazz.getDeclaredConstructor(DataManager.class, UUID.class);
                 constructor.setAccessible(true);
@@ -287,10 +285,10 @@ public class DataManager {
         }
 
         try {
-            PersistentDataManager persistentDataManager = getDataTypeManager(PersistentDataManager.class);
-            persistentDataManager.setInDataSource(initialPersistentData);
+            PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
+            persistentValueManager.setInDataSource(initialPersistentData);
             for (InitialPersistentData data : initialPersistentData) {
-                cache(new CellKey(data.getData()), data.getValue());
+                persistentValueManager.updateCache(data.getValue(), data.getDataValue());
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -312,14 +310,14 @@ public class DataManager {
             }
             //todo: redis values
         }
+        PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
         for (InitialPersistentData data : initialPersistentData) {
-            cache(new CellKey(data.getData()), data.getValue());
+            persistentValueManager.updateCache(data.getValue(), data.getDataValue());
         }
 
         ThreadUtils.submit(() -> {
             try {
-                PersistentDataManager persistentDataManager = getDataTypeManager(PersistentDataManager.class);
-                persistentDataManager.setInDataSource(initialPersistentData);
+                persistentValueManager.setInDataSource(initialPersistentData);
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -328,11 +326,6 @@ public class DataManager {
 //        redisDataManager.insertIntoDataSource(holder, initialRedisData);
 
         addUniqueData(holder);
-    }
-
-    @SuppressWarnings("unchecked")
-    public <T extends DataTypeManager<?, ?>> T getDataTypeManager(Class<T> clazz) {
-        return (T) dataTypeManagers.get(clazz);
     }
 
     public <T> T get(Data<T> data) throws DataDoesNotExistException {
@@ -353,18 +346,13 @@ public class DataManager {
         throw new DataDoesNotExistException("Data does not exist ");
     }
 
-    public UniqueData getUniqueData(UUID id) throws DataDoesNotExistException {
-        if (uniqueDataCache.containsKey(id)) {
-            return uniqueDataCache.get(id);
-        }
-
-        throw new DataDoesNotExistException("Data does not exist: " + id);
-    }
-
     public <T extends UniqueData> T getUniqueData(Class<T> clazz, UUID id) throws DataDoesNotExistException {
-        UniqueData data = getUniqueData(id);
-        if (clazz.isInstance(data)) {
-            return clazz.cast(data);
+        Map<UUID, UniqueData> uniqueData = uniqueDataCache.get(clazz);
+        if (uniqueData != null) {
+            UniqueData data = uniqueData.get(id);
+            if (data != null) {
+                return clazz.cast(data);
+            }
         }
 
         throw new DataDoesNotExistException("Data does not exist: " + id);
@@ -372,16 +360,16 @@ public class DataManager {
 
     public void addUniqueData(UniqueData data) {
         uniqueDataIds.put(data.getClass(), data.getId());
-        uniqueDataCache.put(data.getId(), data);
+        uniqueDataCache.computeIfAbsent(data.getClass(), k -> new ConcurrentHashMap<>()).put(data.getId(), data);
     }
 
     public void removeUniqueData(UniqueData data) {
         uniqueDataIds.remove(data.getClass(), data.getId());
-        uniqueDataCache.remove(data.getId());
+        uniqueDataCache.get(data.getClass()).remove(data.getId());
     }
 
     public <T> void cache(DataKey key, T value) {
-        System.out.println("caching " + key + " -> " + value);
+//        System.out.println("caching " + key + " -> " + value);
         if (value == null) {
             cache.put(key, NULL_MARKER);
             return;

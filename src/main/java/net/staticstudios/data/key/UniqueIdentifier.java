@@ -1,21 +1,21 @@
-package net.staticstudios.data;
+package net.staticstudios.data.key;
 
 import com.impossibl.postgres.utils.guava.Preconditions;
 
 import java.util.Objects;
 import java.util.UUID;
 
-public class PrimaryKey {
+public class UniqueIdentifier {
     private final String column;
     private final UUID id;
 
-    public PrimaryKey(String column, UUID id) {
+    public UniqueIdentifier(String column, UUID id) {
         this.column = Preconditions.checkNotNull(column);
         this.id = Preconditions.checkNotNull(id);
     }
 
-    public static PrimaryKey of(String column, UUID value) {
-        return new PrimaryKey(column, value);
+    public static UniqueIdentifier of(String column, UUID value) {
+        return new UniqueIdentifier(column, value);
     }
 
     public String getColumn() {
@@ -36,8 +36,8 @@ public class PrimaryKey {
             return false;
         }
 
-        PrimaryKey primaryKey = (PrimaryKey) obj;
-        return this.column.equals(primaryKey.column) && this.id.equals(primaryKey.id);
+        UniqueIdentifier uniqueIdentifier = (UniqueIdentifier) obj;
+        return this.column.equals(uniqueIdentifier.column) && this.id.equals(uniqueIdentifier.id);
     }
 
     @Override
@@ -47,7 +47,7 @@ public class PrimaryKey {
 
     @Override
     public String toString() {
-        return "PrimaryKey{" +
+        return "UniqueIdentifier{" +
                 "column='" + column + '\'' +
                 ", id=" + id +
                 '}';

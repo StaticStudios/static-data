@@ -26,7 +26,7 @@ public class Player extends UniqueData {
     @Blocking
     public static Player create(DataManager dataManager, String name) {
         Player player = new Player(dataManager, UUID.randomUUID());
-        dataManager.insert(player, player.name.initial(name));
+        dataManager.insertAsync(player, player.name.initial(name));
 
         return player;
     }
@@ -65,18 +65,5 @@ public class Player extends UniqueData {
 
     public Island getIsland() {
         return this.island.get();
-    }
-
-    @Override
-    public String toString() {
-        return "Player{" +
-                "id=" + getId() +
-                "name=" + name.get() +
-                ", nickname=" + nickname.get() +
-                ", backpack=" + backpack.get() +
-//                ", island=" + island.getForeignId() +
-//                ", homeHomeLocations=" + homeLocations +
-//                ", favoriteNumbers=" + favoriteNumbers +
-                '}';
     }
 }

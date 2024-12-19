@@ -1,6 +1,6 @@
 package net.staticstudios.data.key;
 
-import net.staticstudios.data.data.PersistentData;
+import net.staticstudios.data.data.PersistentValue;
 
 import java.util.UUID;
 
@@ -18,7 +18,7 @@ public class CellKey extends DatabaseKey {
         this.idColumn = idColumn;
     }
 
-    public CellKey(PersistentData<?> data) {
+    public CellKey(PersistentValue<?> data) {
         this(data.getSchema(), data.getTable(), data.getColumn(), data.getHolder().getRootHolder().getId(), data.getIdColumn());
     }
 

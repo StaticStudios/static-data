@@ -1,7 +1,7 @@
 package net.staticstudios.data.data;
 
-public interface InitialData<D, V> {
-    D getData();
+public interface InitialData<T, V> {
+    T getValue();
 
-    V getValue();
+    V getDataValue();
 }

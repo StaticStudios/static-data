@@ -2,6 +2,7 @@ package net.staticstudios.data.impl;
 
 import com.impossibl.postgres.api.jdbc.PGConnection;
 import com.impossibl.postgres.api.jdbc.PGNotificationListener;
+import com.zaxxer.hikari.HikariConfig;
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
 
@@ -11,6 +12,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.function.Consumer;
@@ -64,15 +66,17 @@ public class PostgresListener {
     private final ConcurrentLinkedDeque<Consumer<PostgresNotification>> notificationHandlers = new ConcurrentLinkedDeque<>();
     private final PGConnection pgConnection;
 
-    public PostgresListener() {
+    public PostgresListener(HikariConfig hikariConfig) {
         try {
             Class.forName("com.impossibl.postgres.jdbc.PGDriver");
 
-            //todo: get the host, and port from datamanager
-            String hostname = "localhost";
-            String password = "password";
-            String port = "12345";
-            this.pgConnection = DriverManager.getConnection("jdbc:pgsql://" + hostname + ":" + port + "/postgres", "postgres", password).unwrap(PGConnection.class);
+            Properties props = hikariConfig.getDataSourceProperties();
+            String hostname = props.getProperty("serverName");
+            int port = (int) props.get("portNumber");
+            String user = props.getProperty("user");
+            String password = props.getProperty("password");
+            String database = props.getProperty("databaseName");
+            this.pgConnection = DriverManager.getConnection("jdbc:pgsql://" + hostname + ":" + port + "/" + database, user, password).unwrap(PGConnection.class);
 
             try (Statement statement = pgConnection.createStatement()) {
                 System.out.println("Creating data_notify function");

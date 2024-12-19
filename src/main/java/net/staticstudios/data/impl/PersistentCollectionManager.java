@@ -4,10 +4,15 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.PrimaryKey;
-import net.staticstudios.data.data.collection.*;
+import net.staticstudios.data.data.UniqueData;
+import net.staticstudios.data.data.collection.CollectionEntry;
+import net.staticstudios.data.data.collection.KeyedCollectionEntry;
+import net.staticstudios.data.data.collection.PersistentCollection;
+import net.staticstudios.data.data.collection.PersistentValueCollection;
 import net.staticstudios.data.key.CellKey;
+import net.staticstudios.data.key.CollectionKey;
 import net.staticstudios.data.key.DataKey;
+import net.staticstudios.data.key.UniqueIdentifier;
 import net.staticstudios.utils.ThreadUtils;
 
 import java.sql.Connection;
@@ -15,16 +20,16 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.*;
 
-public class PersistentCollectionManager implements DataTypeManager<PersistentValueCollection<?>, InitialPersistentCollectionValueEntryData> {
+public class PersistentCollectionManager {
+    private static PersistentCollectionManager instance;
     private final DataManager dataManager;
-    private final PostgresListener pgListener;
-
+    private final PostgresListener pgListener; //todo: update tables on this when a collection is added
     /**
      * Maps a collection key to a list of data keys for each entry in the collection
      */
-    private final Multimap<DataKey, PrimaryKey> entryMap;
+    private final Multimap<CollectionKey, UniqueIdentifier> entryMap; //todo: rename
 
-    public PersistentCollectionManager(DataManager dataManager, PostgresListener pgListener) {
+    protected PersistentCollectionManager(DataManager dataManager, PostgresListener pgListener) {
         this.dataManager = dataManager;
         this.pgListener = pgListener;
         this.entryMap = Multimaps.synchronizedMultimap(ArrayListMultimap.create());
@@ -35,34 +40,37 @@ public class PersistentCollectionManager implements DataTypeManager<PersistentVa
         });
     }
 
-    public CellKey getEntryDataKey(PersistentCollection<?> collection, UUID entryId) {
-        CellKey k = new CellKey(collection.getSchema(), collection.getTable(), collection.getDataColumn(), entryId, "id");
-        System.out.println("Entry data key: " + k);
-        return k;
+    public static void instantiate(DataManager dataManager, PostgresListener pgListener) {
+        instance = new PersistentCollectionManager(dataManager, pgListener);
+    }
+
+    public static PersistentCollectionManager getInstance() {
+        return instance;
     }
 
     public void addEntries(PersistentValueCollection<?> collection, Collection<CollectionEntry> entries) {
-        List<KeyedEntry> keyedEntries = new ArrayList<>();
+        UniqueData holder = collection.getRootHolder();
+        List<KeyedCollectionEntry> keyedEntries = new ArrayList<>();
 
         for (CollectionEntry entry : entries) {
-            PrimaryKey primaryKey = PrimaryKey.of("id", entry.id());
+            UniqueIdentifier uniqueIdentifier = UniqueIdentifier.of(holder.getIdentifier().getColumn(), entry.id());
             System.out.println(collection.getLinkingColumn());
             System.out.println(collection.getDataColumn());
-            CellKey entryDataKey = getEntryDataKey(collection, entry.id());
-            CellKey entryLinkKey = new CellKey(collection.getSchema(), collection.getTable(), collection.getLinkingColumn(), entry.id(), "id");
+            CellKey entryDataKey = getEntryDataKey(collection, entry.id(), holder.getIdentifier());
+            CellKey entryLinkKey = getEntryLinkingKey(collection, entry.id(), holder.getIdentifier());
 
             System.out.println("linking entry: " + entryLinkKey + " -> " + collection.getRootHolder().getId());
 
             dataManager.cache(entryLinkKey, collection.getRootHolder().getId());
 
-            keyedEntries.add(new KeyedEntry(primaryKey, entryDataKey, entry.value()));
+            keyedEntries.add(new KeyedCollectionEntry(entryDataKey, entry.value()));
 
             System.out.println("Adding entry: " + entryDataKey + " -> " + entry.value());
 
             System.out.println(collection.getKey());
-            System.out.println(primaryKey);
+            System.out.println(uniqueIdentifier);
 
-            entryMap.put(collection.getKey(), primaryKey);
+            entryMap.put(collection.getKey(), uniqueIdentifier);
             dataManager.cache(entryDataKey, entry.value());
         }
 
@@ -75,42 +83,51 @@ public class PersistentCollectionManager implements DataTypeManager<PersistentVa
         });
     }
 
-    public void removeEntry(PersistentValueCollection<?> collection, KeyedEntry entry) {
+    public void removeEntry(PersistentValueCollection<?> collection, KeyedCollectionEntry entry) {
         removeEntries(collection, Collections.singletonList(entry));
     }
 
-    public void removeEntries(PersistentValueCollection<?> collection, List<KeyedEntry> entries) {
+    public void removeEntries(PersistentValueCollection<?> collection, List<KeyedCollectionEntry> entries) {
         DataKey collectionKey = collection.getKey();
-        for (KeyedEntry entry : entries) {
-            entryMap.remove(collectionKey, entry.pkey());
+        for (KeyedCollectionEntry entry : entries) {
+            entryMap.remove(collectionKey, collection.getRootHolder().getIdentifier());
             dataManager.uncache(entry.dataKey());
         }
 
         ThreadUtils.submit(() -> removeFromDataSource(collection, entries));
     }
 
+
+    public CellKey getEntryDataKey(PersistentCollection<?> collection, UUID entryId, UniqueIdentifier holderIdentifier) {
+        return new CellKey(collection.getSchema(), collection.getTable(), collection.getDataColumn(), entryId, holderIdentifier.getColumn());
+    }
+
+    public CellKey getEntryLinkingKey(PersistentCollection<?> collection, UUID entryId, UniqueIdentifier holderIdentifier) {
+        return new CellKey(collection.getSchema(), collection.getTable(), collection.getLinkingColumn(), entryId, holderIdentifier.getColumn());
+    }
+
     public List<CellKey> getEntryKeys(PersistentCollection<?> collection) {
-        return entryMap.get(collection.getKey()).stream().map(k -> getEntryDataKey(collection, k.getId())).toList();
+        return entryMap.get(collection.getKey()).stream().map(k -> getEntryDataKey(collection, k.getId(), collection.getRootHolder().getIdentifier())).toList();
     }
 
     public List<Object> getEntries(PersistentCollection<?> collection) {
         return getEntryKeys(collection).stream().map(dataManager::get).toList();
     }
 
-    public List<KeyedEntry> getKeyedEntries(PersistentCollection<?> collection) {
+    public List<KeyedCollectionEntry> getKeyedEntries(PersistentCollection<?> collection) {
         return entryMap.get(collection.getKey()).stream().map(pkey -> {
-            CellKey entryDataKey = getEntryDataKey(collection, pkey.getId());
+            CellKey entryDataKey = getEntryDataKey(collection, pkey.getId(), collection.getRootHolder().getIdentifier());
             Object value = dataManager.get(entryDataKey);
-            return new KeyedEntry(pkey, entryDataKey, value);
+            return new KeyedCollectionEntry(entryDataKey, value);
         }).toList();
     }
 
-    public void addToDataSource(PersistentValueCollection<?> collection, List<KeyedEntry> entries) {
+    public void addToDataSource(PersistentValueCollection<?> collection, List<KeyedCollectionEntry> entries) {
         if (entries.isEmpty()) {
             return;
         }
 
-        PrimaryKey collectionPkey = collection.getRootHolder().getPKey();
+        UniqueIdentifier collectionPkey = collection.getRootHolder().getIdentifier();
 
         try (Connection connection = dataManager.getConnection()) {
             StringBuilder sqlBuilder = new StringBuilder("INSERT INTO ").append(collection.getSchema()).append(".").append(collection.getTable()).append(" (");
@@ -148,7 +165,7 @@ public class PersistentCollectionManager implements DataTypeManager<PersistentVa
             sqlBuilder.append(collection.getLinkingColumn()).append(" = EXCLUDED.").append(collection.getLinkingColumn());
 
             String sql = sqlBuilder.toString();
-            System.out.println(sql);
+            dataManager.logSQL(sql);
 
 
             boolean autoCommit = connection.getAutoCommit();
@@ -156,8 +173,8 @@ public class PersistentCollectionManager implements DataTypeManager<PersistentVa
 
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
 
-                for (KeyedEntry entry : entries) {
-                    PrimaryKey pkey = entry.pkey();
+                for (KeyedCollectionEntry entry : entries) {
+                    UniqueIdentifier pkey = collection.getRootHolder().getIdentifier();
 
                     int i = 1;
                     statement.setObject(i, pkey.getId());
@@ -181,12 +198,12 @@ public class PersistentCollectionManager implements DataTypeManager<PersistentVa
     }
 
 
-    public void removeFromDataSource(PersistentValueCollection<?> collection, List<KeyedEntry> entries) {
+    public void removeFromDataSource(PersistentValueCollection<?> collection, List<KeyedCollectionEntry> entries) {
         if (entries.isEmpty()) {
             return;
         }
 
-        PrimaryKey firstPkey = entries.getFirst().pkey();
+        UniqueIdentifier firstPkey = collection.getRootHolder().getIdentifier();
 
         try (Connection connection = dataManager.getConnection()) {
             StringBuilder sqlBuilder = new StringBuilder("DELETE FROM ").append(collection.getSchema()).append(".").append(collection.getTable()).append(" WHERE (");
@@ -208,14 +225,14 @@ public class PersistentCollectionManager implements DataTypeManager<PersistentVa
 
 
             String sql = sqlBuilder.toString();
-            System.out.println(sql);
+            dataManager.logSQL(sql);
             //todo: log
 
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 int i = 1;
 
-                for (KeyedEntry entry : entries) {
-                    PrimaryKey pkey = entry.pkey();
+                for (KeyedCollectionEntry entry : entries) {
+                    UniqueIdentifier pkey = collection.getRootHolder().getIdentifier();
                     statement.setObject(i++, pkey.getId());
                 }
 

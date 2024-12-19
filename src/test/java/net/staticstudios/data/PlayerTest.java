@@ -17,6 +17,7 @@ public class PlayerTest {
         hikariConfig.addDataSourceProperty("portNumber", 12345);
         hikariConfig.addDataSourceProperty("user", "postgres");
         hikariConfig.addDataSourceProperty("password", "password");
+        hikariConfig.addDataSourceProperty("databaseName", "postgres");
         hikariConfig.setLeakDetectionThreshold(10000);
         hikariConfig.setMaximumPoolSize(10);
 

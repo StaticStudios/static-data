@@ -1,7 +1,6 @@
 package net.staticstudios.data.data.collection;
 
 import net.staticstudios.data.data.DataHolder;
-import net.staticstudios.data.impl.DataTypeManager;
 import net.staticstudios.data.impl.PersistentCollectionManager;
 import org.jetbrains.annotations.NotNull;
 
@@ -60,8 +59,8 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
     @Override
     public boolean remove(Object o) {
         PersistentCollectionManager manager = getManager();
-        Collection<KeyedEntry> keyedEntries = manager.getKeyedEntries(this);
-        for (KeyedEntry keyedEntry : keyedEntries) {
+        Collection<KeyedCollectionEntry> keyedEntries = manager.getKeyedEntries(this);
+        for (KeyedCollectionEntry keyedEntry : keyedEntries) {
             if (keyedEntry.value().equals(o)) {
                 manager.removeEntry(this, keyedEntry);
                 return true;
@@ -87,10 +86,10 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
         boolean changed = false;
 
         PersistentCollectionManager manager = getManager();
-        Collection<KeyedEntry> keyedEntries = manager.getKeyedEntries(this);
-        List<KeyedEntry> toRemove = new ArrayList<>();
+        Collection<KeyedCollectionEntry> keyedEntries = manager.getKeyedEntries(this);
+        List<KeyedCollectionEntry> toRemove = new ArrayList<>();
         for (Object o : c) {
-            for (KeyedEntry keyedEntry : keyedEntries) {
+            for (KeyedCollectionEntry keyedEntry : keyedEntries) {
                 if (keyedEntry.value().equals(o)) {
                     keyedEntries.remove(keyedEntry);
                     toRemove.add(keyedEntry);
@@ -110,9 +109,9 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
         boolean changed = false;
 
         PersistentCollectionManager manager = getManager();
-        Collection<KeyedEntry> keyedEntries = manager.getKeyedEntries(this);
-        List<KeyedEntry> toRemove = new ArrayList<>();
-        for (KeyedEntry keyedEntry : keyedEntries) {
+        Collection<KeyedCollectionEntry> keyedEntries = manager.getKeyedEntries(this);
+        List<KeyedCollectionEntry> toRemove = new ArrayList<>();
+        for (KeyedCollectionEntry keyedEntry : keyedEntries) {
             if (!c.contains(keyedEntry.value())) {
                 toRemove.add(keyedEntry);
                 changed = true;
@@ -130,17 +129,12 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
     }
 
     protected PersistentCollectionManager getManager() {
-        return getDataManager().getDataTypeManager(PersistentCollectionManager.class);
+        return PersistentCollectionManager.getInstance();
     }
 
     @SuppressWarnings("unchecked")
     private Collection<T> getInternalValues() {
         return (Collection<T>) getManager().getEntries(this);
-    }
-
-    @Override
-    public Class<? extends DataTypeManager<?, ?>> getDataTypeManagerClass() {
-        return PersistentCollectionManager.class;
     }
 
     //todo: hashcode and equals

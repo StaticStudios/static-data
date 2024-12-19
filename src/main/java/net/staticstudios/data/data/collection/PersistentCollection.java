@@ -5,7 +5,6 @@ import net.staticstudios.data.data.Data;
 import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.key.CollectionKey;
-import net.staticstudios.data.key.DataKey;
 
 import java.util.Arrays;
 
@@ -27,6 +26,7 @@ public abstract class PersistentCollection<T> implements DataHolder, java.util.C
     }
 
     public static <T> PersistentCollection<T> of(DataHolder holder, Class<T> data, String schema, String table, String linkingColumn, String dataColumn) {
+        //todo: lookup the class and see if its supported or has a serializer, otherwise throw an exception
         return new PersistentValueCollection<>(holder, data, schema, table, linkingColumn, dataColumn);
     }
 
@@ -35,9 +35,12 @@ public abstract class PersistentCollection<T> implements DataHolder, java.util.C
 //        return (PersistentCollection<T>) new PersistentUniqueDataCollection<>(holder, data, schema, table, linkingColumn, linkingColumn);
 //    }
 
-    @SuppressWarnings("unchecked")
     public static <T extends UniqueData> PersistentCollection<T> oneToMany(DataHolder holder, Class<T> data, String schema, String table, String linkingColumn) {
-        return (PersistentCollection<T>) new PersistentUniqueDataCollection<>(holder, data, schema, table, linkingColumn, "id");
+        return new PersistentUniqueDataCollection<>(holder, data, schema, table, linkingColumn, "id");
+    }
+
+    public static <T extends UniqueData> PersistentCollection<T> oneToMany(DataHolder holder, Class<T> data, String schema, String table, String linkingColumn, String dataIdColumn) {
+        return new PersistentUniqueDataCollection<>(holder, data, schema, table, linkingColumn, dataIdColumn);
     }
 
     public String getSchema() {
@@ -67,7 +70,7 @@ public abstract class PersistentCollection<T> implements DataHolder, java.util.C
     }
 
     @Override
-    public DataKey getKey() {
+    public CollectionKey getKey() {
         return new CollectionKey(this);
     }
 

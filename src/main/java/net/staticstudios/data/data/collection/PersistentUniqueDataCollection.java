@@ -2,7 +2,6 @@ package net.staticstudios.data.data.collection;
 
 import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.data.UniqueData;
-import net.staticstudios.data.impl.DataTypeManager;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
@@ -50,7 +49,7 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
         Object[] objects = new Object[size()];
         int i = 0;
         for (UUID id : holderIds) {
-            objects[i] = getDataManager().getUniqueData(id);
+            objects[i] = getDataManager().getUniqueData(getDataType(), id);
             i++;
         }
 
@@ -142,11 +141,6 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
     }
 
     @Override
-    public Class<? extends DataTypeManager<?, ?>> getDataTypeManagerClass() {
-        throw new UnsupportedOperationException("This collection does not have a data type manager");
-    }
-
-    @Override
     public String toString() {
         return "PersistentUniqueDataCollection{" +
                 "holderIds=" + holderIds +
@@ -166,14 +160,13 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
             return cursor != ids.length;
         }
 
-        @SuppressWarnings("unchecked")
         public T next() {
             int i = cursor;
             if (!hasNext())
                 throw new NoSuchElementException();
             cursor = i + 1;
             UUID id = ids[lastRet = i];
-            return (T) getDataManager().getUniqueData(id);
+            return (T) getDataManager().getUniqueData(getDataType(), id);
         }
 
         public void remove() {
@@ -184,13 +177,12 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
             lastRet = -1;
         }
 
-        @SuppressWarnings("unchecked")
         @Override
         public void forEachRemaining(Consumer<? super T> action) {
             Objects.requireNonNull(action);
             for (int i = cursor; i < ids.length; i++) {
                 UUID id = ids[i];
-                action.accept((T) getDataManager().getUniqueData(id));
+                action.accept((T) getDataManager().getUniqueData(getDataType(), id));
             }
             cursor = ids.length;
         }

@@ -2,7 +2,7 @@ package net.staticstudios.data.impl;
 
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.data.InitialPersistentData;
-import net.staticstudios.data.data.PersistentData;
+import net.staticstudios.data.data.PersistentValue;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.key.CellKey;
 
@@ -12,12 +12,12 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
 
-public class PersistentDataManager implements DataTypeManager<PersistentData<?>, InitialPersistentData> {
-
+public class PersistentValueManager {
+    private static PersistentValueManager instance;
     private final DataManager dataManager;
     private final PostgresListener pgListener;
 
-    public PersistentDataManager(DataManager dataManager, PostgresListener pgListener) {
+    public PersistentValueManager(DataManager dataManager, PostgresListener pgListener) {
         this.dataManager = dataManager;
         this.pgListener = pgListener;
 
@@ -26,12 +26,24 @@ public class PersistentDataManager implements DataTypeManager<PersistentData<?>,
         });
     }
 
+    public static PersistentValueManager getInstance() {
+        return instance;
+    }
+
+    public static void instantiate(DataManager dataManager, PostgresListener pgListener) {
+        instance = new PersistentValueManager(dataManager, pgListener);
+    }
+
+    public void updateCache(PersistentValue<?> persistentValue, Object value) {
+        dataManager.cache(new CellKey(persistentValue), value);
+    }
+
     public void setInDataSource(List<InitialPersistentData> initialData) throws Exception {
         try (Connection connection = dataManager.getConnection()) {
             boolean autoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             for (InitialPersistentData initial : initialData) {
-                PersistentData<?> data = initial.getData();
+                PersistentValue<?> data = initial.getValue();
                 pgListener.ensureTableHasTrigger(connection, data.getTable());
                 String schema = data.getSchema();
                 String table = data.getTable();
@@ -46,7 +58,7 @@ public class PersistentDataManager implements DataTypeManager<PersistentData<?>,
 
                 try (PreparedStatement statement = connection.prepareStatement(sql)) {
                     //todo: use value serializers
-                    statement.setObject(1, initial.getValue());
+                    statement.setObject(1, initial.getDataValue());
                     statement.setObject(2, data.getHolder().getRootHolder().getId());
 
 
@@ -85,7 +97,7 @@ public class PersistentDataManager implements DataTypeManager<PersistentData<?>,
         dataColumns.remove(idColumn);
 
         String sql;
-        if (idColumn.equals(dummyHolder.getPKey().getColumn())) {
+        if (idColumn.equals(dummyHolder.getIdentifier().getColumn()) && schemaTable.equals(dummyHolder.getSchema() + "." + dummyHolder.getTable())) {
             StringBuilder sqlBuilder = new StringBuilder("SELECT ");
             for (String column : dataColumns) {
                 sqlBuilder.append(column);
@@ -106,7 +118,7 @@ public class PersistentDataManager implements DataTypeManager<PersistentData<?>,
             sqlBuilder.append(".");
             sqlBuilder.append(dummyHolder.getTable());
             sqlBuilder.append(".");
-            sqlBuilder.append(dummyHolder.getPKey().getColumn());
+            sqlBuilder.append(dummyHolder.getIdentifier().getColumn());
 
             sqlBuilder.append(" FROM ");
             sqlBuilder.append(schemaTable);
@@ -124,7 +136,7 @@ public class PersistentDataManager implements DataTypeManager<PersistentData<?>,
             sqlBuilder.append(".");
             sqlBuilder.append(dummyHolder.getTable());
             sqlBuilder.append(".");
-            sqlBuilder.append(dummyHolder.getPKey().getColumn());
+            sqlBuilder.append(dummyHolder.getIdentifier().getColumn());
             sql = sqlBuilder.toString();
         }
 
@@ -133,11 +145,15 @@ public class PersistentDataManager implements DataTypeManager<PersistentData<?>,
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             ResultSet resultSet = statement.executeQuery();
             while (resultSet.next()) {
-                UUID id = resultSet.getObject(dummyHolder.getPKey().getColumn(), UUID.class);
+                UUID id = resultSet.getObject(dummyHolder.getIdentifier().getColumn(), UUID.class);
                 for (String column : dataColumns) {
                     Object value = resultSet.getObject(column);
                     Object deserialized = value; //todo: deserialize
                     dataManager.cache(new CellKey(firstCellKey.getSchema(), firstCellKey.getTable(), column, id, idColumn), deserialized);
+                }
+
+                if (!dataColumns.contains(idColumn)) {
+                    dataManager.cache(new CellKey(firstCellKey.getSchema(), firstCellKey.getTable(), idColumn, id, idColumn), id);
                 }
             }
         }

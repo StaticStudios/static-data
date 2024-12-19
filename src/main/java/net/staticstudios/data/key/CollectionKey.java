@@ -4,6 +4,9 @@ import net.staticstudios.data.data.collection.PersistentCollection;
 
 import java.util.UUID;
 
+/**
+ * A collection key is unique to a one-to-many relationship instance.
+ */
 public class CollectionKey extends DatabaseKey {
     private final String schema;
     private final String table;
