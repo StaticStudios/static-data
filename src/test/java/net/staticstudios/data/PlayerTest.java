@@ -55,7 +55,6 @@ public class PlayerTest {
         assertEquals("Test", player.getName());
 
         player.setName("Test2");
-        System.out.println("expect");
         assertEquals("Test2", player.getName());
         player.setName(null);
         assertNull(player.getName());

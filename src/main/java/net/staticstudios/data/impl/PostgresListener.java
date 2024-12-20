@@ -7,6 +7,8 @@ import com.impossibl.postgres.api.jdbc.PGNotificationListener;
 import com.zaxxer.hikari.HikariConfig;
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -49,6 +51,7 @@ public class PostgresListener {
             END;
             $$
             """;
+    private final Logger logger = LoggerFactory.getLogger(PostgresListener.class);
     private final Set<String> tablesTriggered = Collections.synchronizedSet(new HashSet<>());
     private final ConcurrentLinkedDeque<Consumer<PostgresNotification>> notificationHandlers = new ConcurrentLinkedDeque<>();
     private final PGConnection pgConnection;
@@ -69,14 +72,14 @@ public class PostgresListener {
             this.pgConnection = DriverManager.getConnection("jdbc:pgsql://" + hostname + ":" + port + "/" + database, user, password).unwrap(PGConnection.class);
 
             try (Statement statement = pgConnection.createStatement()) {
-                System.out.println("Creating data_notify function");
+                logger.trace("Creating data_notify function");
                 statement.execute(CREATE_DATA_NOTIFY_FUNCTION);
             }
 
             pgConnection.addNotificationListener("data_notification", new PGNotificationListener() {
                 @Override
                 public void notification(int processId, String channelName, String payload) {
-                    System.out.printf("PID: %s, Channel: %s, Payload: %s%n", processId, channelName, payload);
+                    logger.trace("Received notification. PID: {}, Channel: {}, Payload: {}", processId, channelName, payload);
                     String[] parts = payload.split(",", 5);
                     String timestamp = parts[0];
                     String schema = parts[1];
@@ -100,8 +103,7 @@ public class PostgresListener {
                         try {
                             handler.accept(notification);
                         } catch (Exception e) {
-                            //todo: better logging
-                            e.printStackTrace();
+                            logger.error("Error handling notification", e);
                         }
                     }
 
@@ -142,7 +144,7 @@ public class PostgresListener {
         }
 
         String sql = CREATE_TRIGGER.formatted(table);
-        System.out.println("Adding propagate_data_update_trigger to table: " + table);
+        logger.debug("Adding propagate_data_update_trigger to table: {}", table);
 
         try (Statement statement = connection.createStatement()) {
             statement.execute(sql);

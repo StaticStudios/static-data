@@ -17,6 +17,8 @@ import net.staticstudios.data.util.ReflectionUtils;
 import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.Blocking;
 import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -32,6 +34,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 public class DataManager {
     private static final Object NULL_MARKER = new Object();
+    private final Logger logger = LoggerFactory.getLogger(DataManager.class);
     private final Map<DataKey, CacheEntry> cache;
     private final Multimap<Class<? extends UniqueData>, UUID> uniqueDataIds;
     private final Map<Class<? extends UniqueData>, Map<UUID, UniqueData>> uniqueDataCache;
@@ -56,7 +59,7 @@ public class DataManager {
     }
 
     public void logSQL(String sql) {
-        System.out.println(sql);
+        logger.debug("Executing SQL: {}", sql);
     }
 
     public Collection<Value<?>> getDummyValues(String schema, String table) {
@@ -172,7 +175,7 @@ public class DataManager {
 
     //todo: this can be named better
     private void loadPersistentDataIntoCache(Connection connection, Multimap<UniqueData, DatabaseKey> databaseKeys) {
-        System.out.println("Loading persistent data into cache");
+//        System.out.println("Loading persistent data into cache");
 //        System.out.println("Keys: " + databaseKeys.entries());
 
 //        Multimap<String, String> valueColumnsToLoad = Multimaps.newListMultimap(new HashMap<>(), ArrayList::new);
@@ -261,7 +264,7 @@ public class DataManager {
     public void dump() {
         //print each cache entry line by line
         for (Map.Entry<DataKey, CacheEntry> entry : cache.entrySet()) {
-            System.out.println(entry.getKey() + " -> " + entry.getValue().value());
+            logger.debug("{} -> {}", entry.getKey(), entry.getValue().value());
         }
     }
 
@@ -391,12 +394,11 @@ public class DataManager {
      * @param instant The instant at which the value was set
      */
     public <T> void cache(DataKey key, T value, Instant instant) {
-//        System.out.println("caching " + key + " -> " + value);
+        logger.trace("Caching value: {} -> {}", key, value);
         CacheEntry existing = cache.get(key);
 
         if (existing != null && existing.instant().isAfter(instant)) {
-            System.out.println("Existing value is newer than the value being cached");
-            //todo: proper debug logging
+            logger.debug("Not caching value: {} -> {}, existing entry is newer. {} vs {} (existing)", key, value, instant, existing.instant());
             return;
         }
 

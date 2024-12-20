@@ -24,7 +24,6 @@ public class PersistentValueManager {
 
         pgListener.addHandler(notification -> {
             //todo: something
-            System.out.println("PersistentValueManager: " + notification);
             switch (notification.getOperation()) {
                 case PostgresOperation.INSERT -> {
                     //todo: create the new unique data objects (there might be multiple)

@@ -14,6 +14,8 @@ import net.staticstudios.data.key.CollectionKey;
 import net.staticstudios.data.key.DataKey;
 import net.staticstudios.data.key.UniqueIdentifier;
 import net.staticstudios.utils.ThreadUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -23,6 +25,7 @@ import java.util.*;
 
 public class PersistentCollectionManager {
     private static PersistentCollectionManager instance;
+    private final Logger logger = LoggerFactory.getLogger(PersistentCollectionManager.class);
     private final DataManager dataManager;
     private final PostgresListener pgListener; //todo: update tables on this when a collection is added
     /**
@@ -55,24 +58,18 @@ public class PersistentCollectionManager {
 
         for (CollectionEntry entry : entries) {
             UniqueIdentifier uniqueIdentifier = UniqueIdentifier.of(holder.getIdentifier().getColumn(), entry.id());
-            System.out.println(collection.getLinkingColumn());
-            System.out.println(collection.getDataColumn());
             CellKey entryDataKey = getEntryDataKey(collection, entry.id(), holder.getIdentifier());
             CellKey entryLinkKey = getEntryLinkingKey(collection, entry.id(), holder.getIdentifier());
 
-            System.out.println("linking entry: " + entryLinkKey + " -> " + collection.getRootHolder().getId());
+            logger.trace("Adding collection entry to {}", collection.getKey());
+            logger.trace("Linking entry: {} -> {}", entryLinkKey, collection.getRootHolder().getId());
+            logger.trace("Adding entry: {} -> {}", entryDataKey, entry.value());
 
             dataManager.cache(entryLinkKey, collection.getRootHolder().getId(), Instant.now());
-
-            keyedEntries.add(new KeyedCollectionEntry(entryDataKey, entry.value()));
-
-            System.out.println("Adding entry: " + entryDataKey + " -> " + entry.value());
-
-            System.out.println(collection.getKey());
-            System.out.println(uniqueIdentifier);
-
             entryMap.put(collection.getKey(), uniqueIdentifier);
             dataManager.cache(entryDataKey, entry.value(), Instant.now());
+
+            keyedEntries.add(new KeyedCollectionEntry(entryDataKey, entry.value()));
         }
 
         ThreadUtils.submit(() -> {
@@ -227,7 +224,6 @@ public class PersistentCollectionManager {
 
             String sql = sqlBuilder.toString();
             dataManager.logSQL(sql);
-            //todo: log
 
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 int i = 1;

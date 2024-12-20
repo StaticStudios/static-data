@@ -74,7 +74,6 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
 
     @Override
     public boolean add(T t) {
-        System.out.println("Adding " + t);
         holderIds.getManager().addEntries(holderIds, Collections.singletonList(new CollectionEntry(t.getId(), t.getId())));
         return true;
     }
