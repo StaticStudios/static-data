@@ -10,8 +10,8 @@ import java.util.function.Consumer;
 public class PersistentValueCollection<T> extends PersistentCollection<T> {
     private final DataHolder holder;
 
-    public PersistentValueCollection(DataHolder holder, Class<T> dataType, String schema, String table, String linkingColumn, String dataColumn) {
-        super(holder, dataType, schema, table, linkingColumn, dataColumn);
+    public PersistentValueCollection(DataHolder holder, Class<T> dataType, String schema, String table, String entryIdColumn, String linkingColumn, String dataColumn) {
+        super(holder, dataType, schema, table, entryIdColumn, linkingColumn, dataColumn);
         if (!holder.getDataManager().isSupportedType(dataType)) {
             throw new IllegalArgumentException("Unsupported data type: " + dataType);
         }

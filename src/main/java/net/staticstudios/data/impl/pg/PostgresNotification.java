@@ -1,21 +1,20 @@
-package net.staticstudios.data.impl;
+package net.staticstudios.data.impl.pg;
 
 import java.time.Instant;
-import java.util.Map;
 
 public class PostgresNotification {
     private final Instant instant;
     private final String schema;
     private final String table;
     private final PostgresOperation operation;
-    private final Map<String, String> data;
+    private final PostgresData data;
 
-    public PostgresNotification(Instant instant, String schema, String table, PostgresOperation operation, Map<String, String> dataValueMap) {
+    public PostgresNotification(Instant instant, String schema, String table, PostgresOperation operation, PostgresData data) {
         this.instant = instant;
         this.schema = schema;
         this.table = table;
         this.operation = operation;
-        this.data = dataValueMap;
+        this.data = data;
     }
 
     public Instant getInstant() {
@@ -34,7 +33,7 @@ public class PostgresNotification {
         return operation;
     }
 
-    public Map<String, String> getDataValueMap() {
+    public PostgresData getData() {
         return data;
     }
 

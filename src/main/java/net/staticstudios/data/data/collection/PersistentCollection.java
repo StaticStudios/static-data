@@ -12,21 +12,27 @@ public abstract class PersistentCollection<T> implements DataHolder, java.util.C
     private final DataHolder holder;
     private final String schema;
     private final String table;
+    private final String entryIdColumn;
     private final String linkingColumn;
     private final String dataColumn;
     private final Class<T> dataType;
 
-    protected PersistentCollection(DataHolder holder, Class<T> dataType, String schema, String table, String linkingColumn, String dataColumn) {
+    protected PersistentCollection(DataHolder holder, Class<T> dataType, String schema, String table, String entryIdColumn, String linkingColumn, String dataColumn) {
         this.holder = holder;
         this.schema = schema;
         this.table = table;
+        this.entryIdColumn = entryIdColumn;
         this.linkingColumn = linkingColumn;
         this.dataColumn = dataColumn;
         this.dataType = dataType;
     }
 
     public static <T> PersistentCollection<T> of(DataHolder holder, Class<T> data, String schema, String table, String linkingColumn, String dataColumn) {
-        return new PersistentValueCollection<>(holder, data, schema, table, linkingColumn, dataColumn);
+        return new PersistentValueCollection<>(holder, data, schema, table, "id", linkingColumn, dataColumn);
+    }
+
+    public static <T> PersistentCollection<T> of(DataHolder holder, Class<T> data, String schema, String table, String entryIdColumn, String linkingColumn, String dataColumn) {
+        return new PersistentValueCollection<>(holder, data, schema, table, entryIdColumn, linkingColumn, dataColumn);
     }
 
 //    @SuppressWarnings("unchecked")
@@ -39,7 +45,7 @@ public abstract class PersistentCollection<T> implements DataHolder, java.util.C
     }
 
     public static <T extends UniqueData> PersistentCollection<T> oneToMany(DataHolder holder, Class<T> data, String schema, String table, String linkingColumn, String dataIdColumn) {
-        return new PersistentUniqueDataCollection<>(holder, data, schema, table, linkingColumn, dataIdColumn);
+        return new PersistentUniqueDataCollection<>(holder, data, schema, table, linkingColumn, dataIdColumn); //todo: is there a possible use case for this??
     }
 
     public String getSchema() {
@@ -48,6 +54,10 @@ public abstract class PersistentCollection<T> implements DataHolder, java.util.C
 
     public String getTable() {
         return table;
+    }
+
+    public String getEntryIdColumn() {
+        return entryIdColumn;
     }
 
     public String getLinkingColumn() {

@@ -1,4 +1,4 @@
-package net.staticstudios.data.impl;
+package net.staticstudios.data.impl.pg;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -28,7 +28,10 @@ public class PostgresListener {
                 notification text;
             begin
                 notification := clock_timestamp() || ',' || tg_table_schema || ',' || TG_TABLE_NAME || ',' || TG_OP || ',' ||
-                                (case when TG_OP = 'DELETE' then row_to_json(OLD) else row_to_json(NEW) end)::text;
+                                json_build_object(
+                                    'old', (case when TG_OP = 'INSERT' then '{}' else row_to_json(OLD) end),
+                                    'new', (case when TG_OP = 'DELETE' then '{}' else row_to_json(NEW) end)
+                                )::text;
             
                 perform pg_notify('data_notification', notification);
             
@@ -81,22 +84,22 @@ public class PostgresListener {
                 public void notification(int processId, String channelName, String payload) {
                     logger.trace("Received notification. PID: {}, Channel: {}, Payload: {}", processId, channelName, payload);
                     String[] parts = payload.split(",", 5);
-                    String timestamp = parts[0];
+                    String encodedTimestamp = parts[0];
                     String schema = parts[1];
                     String table = parts[2];
-                    String operation = parts[3];
-                    String data = parts[4];
-                    Map<String, String> dataMap = gson.fromJson(data, mapType);
+                    String encodedOperation = parts[3];
+                    String encodedData = parts[4];
+                    PostgresData data = gson.fromJson(encodedData, PostgresData.class);
 
-                    //todo: sometimes this doesnt parse and throws errors
-                    OffsetDateTime offsetDateTime = OffsetDateTime.parse(timestamp, DATE_TIME_FORMATTER);
+                    //todo: sometimes this doesnt parse and throws errors example of an invalid timestamp (2024-12-20 05:55:55.01655+00)
+                    OffsetDateTime offsetDateTime = OffsetDateTime.parse(encodedTimestamp, DATE_TIME_FORMATTER);
 
                     PostgresNotification notification = new PostgresNotification(
                             offsetDateTime.toInstant(),
                             schema,
                             table,
-                            PostgresOperation.valueOf(operation),
-                            dataMap
+                            PostgresOperation.valueOf(encodedOperation),
+                            data
                     );
 
                     for (Consumer<PostgresNotification> handler : notificationHandlers) {
@@ -135,16 +138,16 @@ public class PostgresListener {
     /**
      * Whenever we see a new table, make sure the trigger is added to it
      *
-     * @param connection the connection to the database
-     * @param table      the table to add the trigger to
+     * @param connection  the connection to the database
+     * @param schemaTable the table to add the trigger to
      */
-    public void ensureTableHasTrigger(Connection connection, String table) {
-        if (tablesTriggered.contains(table)) {
+    public void ensureTableHasTrigger(Connection connection, String schemaTable) {
+        if (tablesTriggered.contains(schemaTable)) {
             return;
         }
 
-        String sql = CREATE_TRIGGER.formatted(table);
-        logger.debug("Adding propagate_data_update_trigger to table: {}", table);
+        String sql = CREATE_TRIGGER.formatted(schemaTable);
+        logger.debug("Adding propagate_data_update_trigger to table: {}", schemaTable);
 
         try (Statement statement = connection.createStatement()) {
             statement.execute(sql);
@@ -152,6 +155,6 @@ public class PostgresListener {
             throw new RuntimeException(e);
         }
 
-        tablesTriggered.add(table);
+        tablesTriggered.add(schemaTable);
     }
 }

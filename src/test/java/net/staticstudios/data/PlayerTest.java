@@ -1,53 +1,22 @@
 package net.staticstudios.data;
 
-import com.zaxxer.hikari.HikariConfig;
-import net.staticstudios.utils.ThreadUtils;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import net.staticstudios.data.misc.DataTest;
+import net.staticstudios.data.misc.MockEnvironment;
+import net.staticstudios.data.mock.Backpack;
+import net.staticstudios.data.mock.HomeLocation;
+import net.staticstudios.data.mock.Island;
+import net.staticstudios.data.mock.Player;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
-import java.util.LinkedList;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class PlayerTest {
-    public static final int NUM_ENVIRONMENTS = 1;
-    private List<MockEnvironment> mockEnvironments;
-
-    @BeforeEach
-    public void setup() {
-        mockEnvironments = new LinkedList<>();
-        ThreadUtils.setProvider(new MockThreadProvider());
-        for (int i = 0; i < NUM_ENVIRONMENTS; i++) {
-            HikariConfig hikariConfig = new HikariConfig();
-            hikariConfig.setDataSourceClassName("com.impossibl.postgres.jdbc.PGDataSource");
-            hikariConfig.addDataSourceProperty("serverName", "localhost");
-            hikariConfig.addDataSourceProperty("portNumber", 12345);
-            hikariConfig.addDataSourceProperty("user", "postgres");
-            hikariConfig.addDataSourceProperty("password", "password");
-            hikariConfig.addDataSourceProperty("databaseName", "postgres");
-            hikariConfig.setLeakDetectionThreshold(10000);
-            hikariConfig.setMaximumPoolSize(10);
-
-            DataManager dataManager = new DataManager(hikariConfig);
-            dataManager.loadAll(Player.class);
-
-            MockEnvironment mockEnvironment = new MockEnvironment(hikariConfig, dataManager);
-            mockEnvironments.add(mockEnvironment);
-        }
-    }
-
-    @AfterEach
-    public void teardown() {
-        ThreadUtils.shutdown();
-    }
-
+public class PlayerTest extends DataTest {
     @Test
     public void createPlayer() throws InterruptedException {
-        MockEnvironment mockEnvironment = mockEnvironments.getFirst();
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
 
         Player player = Player.createSync(dataManager, "Test");
@@ -114,7 +83,7 @@ public class PlayerTest {
 
     @Test
     public void testUpdatePersistentValue() throws InterruptedException {
-        MockEnvironment mockEnvironment = mockEnvironments.getFirst();
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
 
         Player player = Player.createSync(dataManager, "Test");

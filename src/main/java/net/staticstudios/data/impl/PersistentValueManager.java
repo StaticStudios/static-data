@@ -4,6 +4,8 @@ import net.staticstudios.data.DataManager;
 import net.staticstudios.data.data.InitialPersistentValue;
 import net.staticstudios.data.data.PersistentValue;
 import net.staticstudios.data.data.UniqueData;
+import net.staticstudios.data.impl.pg.PostgresListener;
+import net.staticstudios.data.impl.pg.PostgresOperation;
 import net.staticstudios.data.key.CellKey;
 
 import java.sql.Connection;
@@ -26,7 +28,6 @@ public class PersistentValueManager {
         pgListener.addHandler(notification -> {
             String schema = notification.getSchema();
             String table = notification.getTable();
-            Map<String, String> dataValueMap = notification.getDataValueMap();
             List<PersistentValue> dummyPersistentValues = dataManager.getDummyValues(schema + "." + table).stream()
                     .filter(value -> value.getClass() == PersistentValue.class)
                     .map(value -> (PersistentValue) value)
@@ -34,7 +35,8 @@ public class PersistentValueManager {
 
             switch (notification.getOperation()) {
                 case PostgresOperation.UPDATE, PostgresOperation.INSERT -> {
-                    for (Map.Entry<String, String> entry : dataValueMap.entrySet()) {
+                    Map<String, String> newDataValueMap = notification.getData().newDataValueMap();
+                    for (Map.Entry<String, String> entry : newDataValueMap.entrySet()) {
                         String column = entry.getKey();
                         PersistentValue<?> dummyPV = dummyPersistentValues.stream()
                                 .filter(pv -> pv.getColumn().equals(column))
@@ -46,11 +48,11 @@ public class PersistentValueManager {
                         }
 
                         String idColumn = dummyPV.getIdColumn();
-                        UUID id = UUID.fromString(dataValueMap.get(idColumn));
+                        UUID id = UUID.fromString(newDataValueMap.get(idColumn));
 
                         CellKey key = new CellKey(schema, table, column, id, idColumn);
 
-                        String encodedValue = dataValueMap.get(column); //Raw value as string
+                        String encodedValue = newDataValueMap.get(column); //Raw value as string
                         Object rawValue = dataManager.decode(dummyPV.getDataType(), encodedValue);
                         Object deserialized = dataManager.deserialize(dummyPV.getDataType(), rawValue);
 
@@ -58,7 +60,8 @@ public class PersistentValueManager {
                     }
                 }
                 case PostgresOperation.DELETE -> {
-                    for (Map.Entry<String, String> entry : dataValueMap.entrySet()) {
+                    Map<String, String> oldDataValueMap = notification.getData().oldDataValueMap();
+                    for (Map.Entry<String, String> entry : oldDataValueMap.entrySet()) {
                         String column = entry.getKey();
                         PersistentValue<?> dummyPV = dummyPersistentValues.stream()
                                 .filter(pv -> pv.getColumn().equals(column))
@@ -70,7 +73,7 @@ public class PersistentValueManager {
                         }
 
                         String idColumn = dummyPV.getIdColumn();
-                        UUID id = UUID.fromString(dataValueMap.get(idColumn));
+                        UUID id = UUID.fromString(oldDataValueMap.get(idColumn));
 
                         CellKey key = new CellKey(schema, table, column, id, idColumn);
 
@@ -93,13 +96,12 @@ public class PersistentValueManager {
         dataManager.cache(new CellKey(persistentValue), value, Instant.now());
     }
 
-    public void setInDataSource(List<InitialPersistentValue> initialData) throws Exception {
+    public void setInDatabase(List<InitialPersistentValue> initialData) throws Exception {
         try (Connection connection = dataManager.getConnection()) {
             boolean autoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             for (InitialPersistentValue initial : initialData) {
                 PersistentValue<?> data = initial.getValue();
-                pgListener.ensureTableHasTrigger(connection, data.getTable());
                 String schema = data.getSchema();
                 String table = data.getTable();
                 String column = data.getColumn();
@@ -128,22 +130,24 @@ public class PersistentValueManager {
      *
      * @param connection
      * @param dummyHolder
-     * @param cellKeys
+     * @param dummyCellKeys
      * @return
      * @throws SQLException
      */
-    public void loadAllFromDataSource(Connection connection, UniqueData dummyHolder, Collection<CellKey> cellKeys) throws SQLException {
-        if (cellKeys.isEmpty()) {
+    public void loadAllFromDatabase(Connection connection, UniqueData dummyHolder, Collection<CellKey> dummyCellKeys) throws SQLException {
+        if (dummyCellKeys.isEmpty()) {
             return;
         }
 
-        CellKey firstCellKey = cellKeys.iterator().next();
-        String idColumn = firstCellKey.getIdColumn();
+        CellKey firstCellKey = dummyCellKeys.iterator().next();
         String schemaTable = firstCellKey.getSchema() + "." + firstCellKey.getTable();
+        pgListener.ensureTableHasTrigger(connection, schemaTable);
+        
+        String idColumn = firstCellKey.getIdColumn();
 
         Set<String> dataColumns = new HashSet<>();
 
-        for (CellKey cellKey : cellKeys) {
+        for (CellKey cellKey : dummyCellKeys) {
             dataColumns.add(cellKey.getColumn());
         }
 

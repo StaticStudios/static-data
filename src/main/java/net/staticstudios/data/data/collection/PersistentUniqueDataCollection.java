@@ -11,8 +11,15 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
     private final PersistentValueCollection<UUID> holderIds;
 
     public PersistentUniqueDataCollection(DataHolder holder, Class<T> dataType, String schema, String table, String linkingColumn, String dataColumn) {
-        super(holder, dataType, schema, table, linkingColumn, dataColumn);
-        holderIds = new PersistentValueCollection<>(holder, UUID.class, schema, table, linkingColumn, dataColumn);
+        super(holder,
+                dataType,
+                schema,
+                table,
+                //The entryIdColumn is the id column of the data type, so just create a dummy instance so we can get the id column name
+                holder.getDataManager().createInstance(dataType, UUID.randomUUID()).getIdentifier().getColumn(),
+                linkingColumn,
+                dataColumn);
+        holderIds = new PersistentValueCollection<>(holder, UUID.class, schema, table, getEntryIdColumn(), linkingColumn, dataColumn);
     }
 
     @Override

@@ -1,4 +1,4 @@
-package net.staticstudios.data.impl;
+package net.staticstudios.data.impl.pg;
 
 public enum PostgresOperation {
     INSERT,

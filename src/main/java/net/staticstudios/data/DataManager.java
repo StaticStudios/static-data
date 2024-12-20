@@ -6,10 +6,11 @@ import com.google.common.collect.Multimaps;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.pool.HikariPool;
 import net.staticstudios.data.data.*;
+import net.staticstudios.data.data.collection.PersistentCollection;
 import net.staticstudios.data.impl.PersistentCollectionManager;
 import net.staticstudios.data.impl.PersistentValueManager;
-import net.staticstudios.data.impl.PostgresListener;
-import net.staticstudios.data.impl.PostgresOperation;
+import net.staticstudios.data.impl.pg.PostgresListener;
+import net.staticstudios.data.impl.pg.PostgresOperation;
 import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.DataKey;
 import net.staticstudios.data.key.DatabaseKey;
@@ -41,15 +42,17 @@ public class DataManager {
     private final Multimap<Class<? extends UniqueData>, UUID> uniqueDataIds;
     private final Map<Class<? extends UniqueData>, Map<UUID, UniqueData>> uniqueDataCache;
     private final Multimap<String, Value<?>> dummyValueMap;
+    private final Multimap<String, PersistentCollection<?>> dummyPersistentCollectionMap;
     private final Multimap<String, UniqueData> dummyUniqueDataMap;
     private final HikariPool connectionPool;
-    private final Set<Class<? extends UniqueData>> loadedIntoCache = new HashSet<>();
+    private final Set<Class<? extends UniqueData>> loadedDependencies = new HashSet<>();
     private final List<ValueSerializer<?, ?>> valueSerializers;
 
     public DataManager(HikariConfig poolConfig) {
         this.cache = new ConcurrentHashMap<>();
         this.uniqueDataCache = new ConcurrentHashMap<>();
         this.dummyValueMap = Multimaps.synchronizedSetMultimap(HashMultimap.create());
+        this.dummyPersistentCollectionMap = Multimaps.synchronizedSetMultimap(HashMultimap.create());
         this.dummyUniqueDataMap = Multimaps.synchronizedSetMultimap(HashMultimap.create());
         this.uniqueDataIds = Multimaps.synchronizedSetMultimap(HashMultimap.create());
         this.valueSerializers = new CopyOnWriteArrayList<>();
@@ -68,7 +71,7 @@ public class DataManager {
 
                 for (UniqueData dummy : dummyUniqueData) {
                     String identifierColumn = dummy.getIdentifier().getColumn();
-                    UUID id = UUID.fromString(notification.getDataValueMap().get(identifierColumn));
+                    UUID id = UUID.fromString(notification.getData().newDataValueMap().get(identifierColumn));
 
                     UniqueData instance = createInstance(dummy.getClass(), id);
                     addUniqueData(instance);
@@ -81,7 +84,7 @@ public class DataManager {
 
                 for (UniqueData dummy : dummyUniqueData) {
                     String identifierColumn = dummy.getIdentifier().getColumn();
-                    UUID id = UUID.fromString(notification.getDataValueMap().get(identifierColumn));
+                    UUID id = UUID.fromString(notification.getData().oldDataValueMap().get(identifierColumn));
                     removeUniqueData(getUniqueData(dummy.getClass(), id));
                 }
             }
@@ -108,41 +111,85 @@ public class DataManager {
         return dummyUniqueDataMap.get(schemaTable);
     }
 
+    public Collection<PersistentCollection<?>> getDummyPersistentCollections(String schemaTable) {
+        return dummyPersistentCollectionMap.get(schemaTable);
+    }
+
     @Blocking
     public <T extends UniqueData> List<T> loadAll(Class<T> clazz) {
         try {
+            // A dependency is just another UniqueData that is referenced in some way.
+            // This clazz is also treated as a dependency, these will all be loaded at the same time
             Set<Class<? extends UniqueData>> dependencies = new HashSet<>();
             extractDependencies(clazz, dependencies);
-            dependencies.removeIf(loadedIntoCache::contains);
+            dependencies.removeIf(loadedDependencies::contains);
 
-            Multimap<UniqueData, DatabaseKey> databaseKeys = Multimaps.newSetMultimap(new HashMap<>(), HashSet::new);
+            Multimap<UniqueData, DatabaseKey> dummyDatabaseKeys = Multimaps.newSetMultimap(new HashMap<>(), HashSet::new);
+            Multimap<UniqueData, PersistentCollection<?>> dummyPersistentCollections = Multimaps.newSetMultimap(new HashMap<>(), HashSet::new);
 
             for (Class<? extends UniqueData> dependency : dependencies) {
+                // A data dependency is some data field on one of our dependencies
                 List<Data<?>> dataDependencies = extractDataDependencies(dependency);
-
 
                 for (Data<?> data : dataDependencies) {
                     DataKey key = data.getKey();
                     if (key instanceof DatabaseKey dbKey) {
-                        databaseKeys.put(data.getHolder().getRootHolder(), dbKey);
+                        dummyDatabaseKeys.put(data.getHolder().getRootHolder(), dbKey);
                     }
 
+                    // This is our first time seeing this value, so we add it to the map for later use
                     if (data instanceof Value<?> value) {
                         dummyValueMap.put(data.getHolder().getRootHolder().getSchema() + "." + data.getHolder().getRootHolder().getTable(), value);
+                    }
+
+                    if (data instanceof PersistentCollection<?> collection) {
+                        dummyPersistentCollectionMap.put(data.getHolder().getRootHolder().getSchema() + "." + data.getHolder().getRootHolder().getTable(), collection);
+                        dummyPersistentCollections.put(data.getHolder().getRootHolder(), collection);
                     }
                 }
             }
 
             try (Connection connection = getConnection()) {
-                for (UniqueData dummyHolder : databaseKeys.keySet()) {
+                // Load all the unique data first
+                for (UniqueData dummyHolder : dummyDatabaseKeys.keySet()) {
                     loadUniqueData(connection, dummyHolder);
-                    loadPersistentDataIntoCache(connection, databaseKeys);
                 }
+
+                //Load PersistentValues
+                for (UniqueData dummyHolder : dummyDatabaseKeys.keySet()) {
+                    Collection<DatabaseKey> keys = dummyDatabaseKeys.get(dummyHolder);
+
+                    // Use a multimap so we can easily group CellKeys together
+                    // The actual key (DataKey) for this map is solely used for grouping entries with the same schema, table, data column, and id column
+                    Multimap<DataKey, CellKey> persistentDataColumns = Multimaps.newListMultimap(new HashMap<>(), ArrayList::new);
+
+                    for (DatabaseKey key : keys) {
+                        if (key instanceof CellKey cellKey) {
+                            persistentDataColumns.put(new DataKey(cellKey.getSchema(), cellKey.getTable(), cellKey.getColumn(), cellKey.getIdColumn()), cellKey);
+                        }
+                    }
+
+                    PersistentValueManager manager = PersistentValueManager.getInstance();
+                    for (DataKey key : persistentDataColumns.keySet()) {
+                        manager.loadAllFromDatabase(connection, dummyHolder, persistentDataColumns.get(key));
+                    }
+                }
+
+                //Load PersistentCollections
+                for (UniqueData dummyHolder : dummyPersistentCollections.keySet()) {
+                    Collection<PersistentCollection<?>> dummyCollections = dummyPersistentCollections.get(dummyHolder);
+
+                    PersistentCollectionManager manager = PersistentCollectionManager.getInstance();
+                    for (PersistentCollection<?> dummyCollection : dummyCollections) {
+                        manager.loadAllFromDatabase(connection, dummyHolder, dummyCollection);
+                    }
+                }
+
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
 
-            loadedIntoCache.addAll(dependencies);
+            loadedDependencies.addAll(dependencies);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -155,11 +202,70 @@ public class DataManager {
 //            throw new RuntimeException(e);
 //        }
 
+        // All the entries we either just load or were previously loaded due to them being a dependency are now in the cache, so just return them via getAll()
         return getAll(clazz);
     }
 
+    @Blocking
+    @SafeVarargs
+    public final <I extends InitialValue<?, ?>> void insert(UniqueData holder, I... initialData) {
+        List<InitialPersistentValue> initialPersistentData = new ArrayList<>();
+        //todo: all other Values that are not specified here should be set to NULL_MARKER in the cache. the database may then set a default value
+
+        for (InitialValue<?, ?> data : initialData) {
+            if (data instanceof InitialPersistentValue) {
+                initialPersistentData.add((InitialPersistentValue) data);
+            } else {
+                throw new IllegalArgumentException("Unsupported initial data type: " + data.getClass());
+            }
+            //todo: redis values
+        }
+
+        try {
+            PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
+            persistentValueManager.setInDatabase(initialPersistentData);
+            for (InitialPersistentValue data : initialPersistentData) {
+                persistentValueManager.updateCache(data.getValue(), data.getInitialDataValue());
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        addUniqueData(holder);
+    }
+
+    @SafeVarargs
+    public final <I extends InitialValue<?, ?>> void insertAsync(UniqueData holder, I... initialData) {
+        List<InitialPersistentValue> initialPersistentData = new ArrayList<>();
+
+        for (InitialValue<?, ?> data : initialData) {
+            if (data instanceof InitialPersistentValue) {
+                initialPersistentData.add((InitialPersistentValue) data);
+            } else {
+                throw new IllegalArgumentException("Unsupported initial data type: " + data.getClass());
+            }
+            //todo: redis values
+        }
+        PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
+        for (InitialPersistentValue data : initialPersistentData) {
+            persistentValueManager.updateCache(data.getValue(), data.getInitialDataValue());
+        }
+
+        ThreadUtils.submit(() -> {
+            try {
+                persistentValueManager.setInDatabase(initialPersistentData);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+//        redisDataManager.insertIntoDataSource(holder, initialRedisData);
+
+        addUniqueData(holder);
+    }
+
     public <T extends UniqueData> List<T> getAll(Class<T> clazz) {
-        return uniqueDataIds.get(clazz).stream().map(uniqueDataCache::get).map(clazz::cast).toList();
+        return uniqueDataIds.get(clazz).stream().map(id -> getUniqueData(clazz, id)).toList();
     }
 
     private void extractDependencies(Class<? extends UniqueData> clazz, @NotNull Set<Class<? extends UniqueData>> dependencies) throws Exception {
@@ -232,25 +338,6 @@ public class DataManager {
 //            }
 //        }
 
-        for (Map.Entry<UniqueData, Collection<DatabaseKey>> entry : databaseKeys.asMap().entrySet()) {
-            UniqueData dummyHolder = entry.getKey();
-            Multimap<DataKey, CellKey> persistentDataColumns = Multimaps.newListMultimap(new HashMap<>(), ArrayList::new);
-
-            for (DatabaseKey key : entry.getValue()) {
-                if (key instanceof CellKey cellKey) {
-                    persistentDataColumns.put(new DataKey(cellKey.getSchema(), cellKey.getTable(), cellKey.getColumn(), cellKey.getIdColumn()), cellKey);
-                }
-            }
-            try {
-                PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
-                for (DataKey key : persistentDataColumns.keySet()) {
-                    persistentValueManager.loadAllFromDataSource(connection, dummyHolder, persistentDataColumns.get(key));
-                }
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
-            }
-        }
-
 
         //todo: pull this out and load based on a join on the holder's primary key column
 //        for (Map.Entry<String, Collection<Pair<String, CollectionKey>>> entry : collectionColumnsToLoad.asMap().entrySet()) {
@@ -307,7 +394,7 @@ public class DataManager {
         }
     }
 
-    private void loadUniqueData(Connection connection, UniqueData dummyHolder) throws SQLException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
+    private void loadUniqueData(Connection connection, UniqueData dummyHolder) throws SQLException {
         String sql = "SELECT " + dummyHolder.getIdentifier().getColumn() + " FROM " + dummyHolder.getSchema() + "." + dummyHolder.getTable();
 
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -318,64 +405,6 @@ public class DataManager {
                 addUniqueData(instance);
             }
         }
-    }
-
-
-    @SafeVarargs
-    public final <I extends InitialValue<?, ?>> void insert(UniqueData holder, I... initialData) {
-        List<InitialPersistentValue> initialPersistentData = new ArrayList<>();
-        //todo: all other Values that are not specified here should be set to NULL_MARKER in the cache. the database may then set a default value
-
-        for (InitialValue<?, ?> data : initialData) {
-            if (data instanceof InitialPersistentValue) {
-                initialPersistentData.add((InitialPersistentValue) data);
-            } else {
-                throw new IllegalArgumentException("Unsupported initial data type: " + data.getClass());
-            }
-            //todo: redis values
-        }
-
-        try {
-            PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
-            persistentValueManager.setInDataSource(initialPersistentData);
-            for (InitialPersistentValue data : initialPersistentData) {
-                persistentValueManager.updateCache(data.getValue(), data.getInitialDataValue());
-            }
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-
-        addUniqueData(holder);
-    }
-
-    @SafeVarargs
-    public final <I extends InitialValue<?, ?>> void insertAsync(UniqueData holder, I... initialData) {
-        List<InitialPersistentValue> initialPersistentData = new ArrayList<>();
-
-        for (InitialValue<?, ?> data : initialData) {
-            if (data instanceof InitialPersistentValue) {
-                initialPersistentData.add((InitialPersistentValue) data);
-            } else {
-                throw new IllegalArgumentException("Unsupported initial data type: " + data.getClass());
-            }
-            //todo: redis values
-        }
-        PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
-        for (InitialPersistentValue data : initialPersistentData) {
-            persistentValueManager.updateCache(data.getValue(), data.getInitialDataValue());
-        }
-
-        ThreadUtils.submit(() -> {
-            try {
-                persistentValueManager.setInDataSource(initialPersistentData);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        });
-
-//        redisDataManager.insertIntoDataSource(holder, initialRedisData);
-
-        addUniqueData(holder);
     }
 
     public <T> T get(Data<T> data) throws DataDoesNotExistException {
@@ -411,13 +440,13 @@ public class DataManager {
     }
 
     public void addUniqueData(UniqueData data) {
-        logger.trace("Adding unique dat to cache: {}", data);
+        logger.trace("Adding unique dat to cache: {}({})", data.getClass(), data.getId());
         uniqueDataIds.put(data.getClass(), data.getId());
         uniqueDataCache.computeIfAbsent(data.getClass(), k -> new ConcurrentHashMap<>()).put(data.getId(), data);
     }
 
     public void removeUniqueData(UniqueData data) {
-        logger.trace("Removing unique data from cache: {}", data);
+        logger.trace("Removing unique data from cache: {}({})", data.getClass(), data.getId());
         uniqueDataIds.remove(data.getClass(), data.getId());
         uniqueDataCache.get(data.getClass()).remove(data.getId());
     }
@@ -538,7 +567,7 @@ public class DataManager {
         return Primitives.decode(serializedType, value);
     }
 
-    private UniqueData createInstance(Class<? extends UniqueData> clazz, UUID id) {
+    public UniqueData createInstance(Class<? extends UniqueData> clazz, UUID id) {
         logger.trace("Creating instance of {} with id {}", clazz, id);
         try {
             Constructor<? extends UniqueData> constructor = clazz.getDeclaredConstructor(DataManager.class, UUID.class);

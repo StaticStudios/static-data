@@ -1,5 +1,6 @@
-package net.staticstudios.data;
+package net.staticstudios.data.mock;
 
+import net.staticstudios.data.DataManager;
 import net.staticstudios.data.data.PersistentValue;
 import net.staticstudios.data.data.UniqueData;
 import org.jetbrains.annotations.Blocking;

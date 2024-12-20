@@ -1,4 +1,4 @@
-package net.staticstudios.data;
+package net.staticstudios.data.misc;
 
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ShutdownTask;

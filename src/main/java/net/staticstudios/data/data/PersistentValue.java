@@ -77,7 +77,7 @@ public class PersistentValue<T> implements Value<T> {
         manager.updateCache(this, value);
 
         try {
-            manager.setInDataSource(List.of(new InitialPersistentValue(this, value)));
+            manager.setInDatabase(List.of(new InitialPersistentValue(this, value)));
         } catch (Exception e) {
             e.printStackTrace();
         }
