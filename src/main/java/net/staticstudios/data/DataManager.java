@@ -9,11 +9,13 @@ import net.staticstudios.data.data.*;
 import net.staticstudios.data.impl.PersistentCollectionManager;
 import net.staticstudios.data.impl.PersistentValueManager;
 import net.staticstudios.data.impl.PostgresListener;
+import net.staticstudios.data.impl.PostgresOperation;
 import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.DataKey;
 import net.staticstudios.data.key.DatabaseKey;
 import net.staticstudios.data.primative.Primitives;
 import net.staticstudios.data.util.ReflectionUtils;
+import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.Blocking;
 import org.jetbrains.annotations.NotNull;
@@ -38,7 +40,8 @@ public class DataManager {
     private final Map<DataKey, CacheEntry> cache;
     private final Multimap<Class<? extends UniqueData>, UUID> uniqueDataIds;
     private final Map<Class<? extends UniqueData>, Map<UUID, UniqueData>> uniqueDataCache;
-    private final Multimap<String, Value<?>> dummyValueCache;
+    private final Multimap<String, Value<?>> dummyValueMap;
+    private final Multimap<String, UniqueData> dummyUniqueDataMap;
     private final HikariPool connectionPool;
     private final Set<Class<? extends UniqueData>> loadedIntoCache = new HashSet<>();
     private final List<ValueSerializer<?, ?>> valueSerializers;
@@ -46,7 +49,8 @@ public class DataManager {
     public DataManager(HikariConfig poolConfig) {
         this.cache = new ConcurrentHashMap<>();
         this.uniqueDataCache = new ConcurrentHashMap<>();
-        this.dummyValueCache = Multimaps.synchronizedSetMultimap(HashMultimap.create());
+        this.dummyValueMap = Multimaps.synchronizedSetMultimap(HashMultimap.create());
+        this.dummyUniqueDataMap = Multimaps.synchronizedSetMultimap(HashMultimap.create());
         this.uniqueDataIds = Multimaps.synchronizedSetMultimap(HashMultimap.create());
         this.valueSerializers = new CopyOnWriteArrayList<>();
 
@@ -56,14 +60,52 @@ public class DataManager {
         PersistentValueManager.instantiate(this, pgListener);
 
         this.connectionPool = new HikariPool(poolConfig);
+
+        pgListener.addHandler(notification -> {
+            if (notification.getOperation() == PostgresOperation.INSERT) {
+                logger.trace("Handing INSERT operation");
+                Collection<? extends UniqueData> dummyUniqueData = dummyUniqueDataMap.get(notification.getSchema() + "." + notification.getTable());
+
+                for (UniqueData dummy : dummyUniqueData) {
+                    String identifierColumn = dummy.getIdentifier().getColumn();
+                    UUID id = UUID.fromString(notification.getDataValueMap().get(identifierColumn));
+
+                    UniqueData instance = createInstance(dummy.getClass(), id);
+                    addUniqueData(instance);
+                }
+            }
+
+            if (notification.getOperation() == PostgresOperation.DELETE) {
+                logger.trace("Handling DELETE operation");
+                Collection<? extends UniqueData> dummyUniqueData = dummyUniqueDataMap.get(notification.getSchema() + "." + notification.getTable());
+
+                for (UniqueData dummy : dummyUniqueData) {
+                    String identifierColumn = dummy.getIdentifier().getColumn();
+                    UUID id = UUID.fromString(notification.getDataValueMap().get(identifierColumn));
+                    removeUniqueData(getUniqueData(dummy.getClass(), id));
+                }
+            }
+        });
+
+        ThreadUtils.onShutdownRunSync(ShutdownStage.EARLY, () -> {
+            try {
+                connectionPool.shutdown();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 
     public void logSQL(String sql) {
         logger.debug("Executing SQL: {}", sql);
     }
 
-    public Collection<Value<?>> getDummyValues(String schema, String table) {
-        return dummyValueCache.get(schema + "." + table);
+    public Collection<Value<?>> getDummyValues(String schemaTable) {
+        return dummyValueMap.get(schemaTable);
+    }
+
+    public Collection<UniqueData> getDummyUniqueData(String schemaTable) {
+        return dummyUniqueDataMap.get(schemaTable);
     }
 
     @Blocking
@@ -86,7 +128,7 @@ public class DataManager {
                     }
 
                     if (data instanceof Value<?> value) {
-                        dummyValueCache.put(data.getHolder().getRootHolder().getSchema() + "." + data.getHolder().getRootHolder().getTable(), value);
+                        dummyValueMap.put(data.getHolder().getRootHolder().getSchema() + "." + data.getHolder().getRootHolder().getTable(), value);
                     }
                 }
             }
@@ -122,14 +164,12 @@ public class DataManager {
 
     private void extractDependencies(Class<? extends UniqueData> clazz, @NotNull Set<Class<? extends UniqueData>> dependencies) throws Exception {
         dependencies.add(clazz);
-        Constructor<?> constructor = clazz.getDeclaredConstructor(DataManager.class, UUID.class);
-        constructor.setAccessible(true);
 
         if (!UniqueData.class.isAssignableFrom(clazz)) {
             return;
         }
 
-        UniqueData dummy = (UniqueData) constructor.newInstance(this, UUID.randomUUID());
+        UniqueData dummy = createInstance(clazz, UUID.randomUUID());
 
         for (Field field : ReflectionUtils.getFields(clazz)) {
             field.setAccessible(true);
@@ -148,14 +188,11 @@ public class DataManager {
     }
 
     private List<Data<?>> extractDataDependencies(Class<? extends UniqueData> clazz) throws Exception {
-        Constructor<?> constructor = clazz.getDeclaredConstructor(DataManager.class, UUID.class);
-        constructor.setAccessible(true);
-
-        UniqueData dummy = (UniqueData) constructor.newInstance(this, UUID.randomUUID());
+        UniqueData dummy = createInstance(clazz, UUID.randomUUID());
 
         List<Data<?>> dependencies = new ArrayList<>();
 
-        for (Field field : dummy.getClass().getDeclaredFields()) { //todo: we need to use some utility to support superclasses
+        for (Field field : ReflectionUtils.getFields(clazz)) {
             field.setAccessible(true);
 
             Class<?> type = field.getType();
@@ -169,6 +206,8 @@ public class DataManager {
                 }
             }
         }
+
+        dummyUniqueDataMap.put(dummy.getSchema() + "." + dummy.getTable(), dummy);
 
         return dependencies;
     }
@@ -275,10 +314,7 @@ public class DataManager {
             ResultSet resultSet = statement.executeQuery();
             while (resultSet.next()) {
                 UUID id = resultSet.getObject(dummyHolder.getIdentifier().getColumn(), UUID.class);
-                Class<? extends UniqueData> clazz = dummyHolder.getClass();
-                Constructor<? extends UniqueData> constructor = clazz.getDeclaredConstructor(DataManager.class, UUID.class);
-                constructor.setAccessible(true);
-                UniqueData instance = constructor.newInstance(this, id);
+                UniqueData instance = createInstance(dummyHolder.getClass(), id);
                 addUniqueData(instance);
             }
         }
@@ -375,11 +411,13 @@ public class DataManager {
     }
 
     public void addUniqueData(UniqueData data) {
+        logger.trace("Adding unique dat to cache: {}", data);
         uniqueDataIds.put(data.getClass(), data.getId());
         uniqueDataCache.computeIfAbsent(data.getClass(), k -> new ConcurrentHashMap<>()).put(data.getId(), data);
     }
 
     public void removeUniqueData(UniqueData data) {
+        logger.trace("Removing unique data from cache: {}", data);
         uniqueDataIds.remove(data.getClass(), data.getId());
         uniqueDataCache.get(data.getClass()).remove(data.getId());
     }
@@ -498,5 +536,17 @@ public class DataManager {
         Class<?> serializedType = serializer.getSerializedType();
 
         return Primitives.decode(serializedType, value);
+    }
+
+    private UniqueData createInstance(Class<? extends UniqueData> clazz, UUID id) {
+        logger.trace("Creating instance of {} with id {}", clazz, id);
+        try {
+            Constructor<? extends UniqueData> constructor = clazz.getDeclaredConstructor(DataManager.class, UUID.class);
+            constructor.setAccessible(true);
+            return constructor.newInstance(this, id);
+        } catch (NoSuchMethodException | InstantiationException | IllegalAccessException |
+                 InvocationTargetException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

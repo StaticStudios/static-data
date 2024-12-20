@@ -18,23 +18,64 @@ public class PersistentValueManager {
     private final DataManager dataManager;
     private final PostgresListener pgListener;
 
+    @SuppressWarnings("rawtypes")
     public PersistentValueManager(DataManager dataManager, PostgresListener pgListener) {
         this.dataManager = dataManager;
         this.pgListener = pgListener;
 
         pgListener.addHandler(notification -> {
-            //todo: something
+            String schema = notification.getSchema();
+            String table = notification.getTable();
+            Map<String, String> dataValueMap = notification.getDataValueMap();
+            List<PersistentValue> dummyPersistentValues = dataManager.getDummyValues(schema + "." + table).stream()
+                    .filter(value -> value.getClass() == PersistentValue.class)
+                    .map(value -> (PersistentValue) value)
+                    .toList();
+
             switch (notification.getOperation()) {
-                case PostgresOperation.INSERT -> {
-                    //todo: create the new unique data objects (there might be multiple)
-                    updateValueCache(notification.getSchema(), notification.getTable(), notification.getDataValueMap(), notification.getInstant());
-                }
-                case PostgresOperation.UPDATE -> {
-                    updateValueCache(notification.getSchema(), notification.getTable(), notification.getDataValueMap(), notification.getInstant());
+                case PostgresOperation.UPDATE, PostgresOperation.INSERT -> {
+                    for (Map.Entry<String, String> entry : dataValueMap.entrySet()) {
+                        String column = entry.getKey();
+                        PersistentValue<?> dummyPV = dummyPersistentValues.stream()
+                                .filter(pv -> pv.getColumn().equals(column))
+                                .findFirst()
+                                .orElse(null);
+
+                        if (dummyPV == null) {
+                            continue;
+                        }
+
+                        String idColumn = dummyPV.getIdColumn();
+                        UUID id = UUID.fromString(dataValueMap.get(idColumn));
+
+                        CellKey key = new CellKey(schema, table, column, id, idColumn);
+
+                        String encodedValue = dataValueMap.get(column); //Raw value as string
+                        Object rawValue = dataManager.decode(dummyPV.getDataType(), encodedValue);
+                        Object deserialized = dataManager.deserialize(dummyPV.getDataType(), rawValue);
+
+                        dataManager.cache(key, deserialized, notification.getInstant());
+                    }
                 }
                 case PostgresOperation.DELETE -> {
-                    //todo: remove the unique data objects (there might be multiple)
-                    //todo: remove values from the cache
+                    for (Map.Entry<String, String> entry : dataValueMap.entrySet()) {
+                        String column = entry.getKey();
+                        PersistentValue<?> dummyPV = dummyPersistentValues.stream()
+                                .filter(pv -> pv.getColumn().equals(column))
+                                .findFirst()
+                                .orElse(null);
+
+                        if (dummyPV == null) {
+                            continue;
+                        }
+
+                        String idColumn = dummyPV.getIdColumn();
+                        UUID id = UUID.fromString(dataValueMap.get(idColumn));
+
+                        CellKey key = new CellKey(schema, table, column, id, idColumn);
+
+                        dataManager.uncache(key);
+                    }
                 }
             }
         });
@@ -46,37 +87,6 @@ public class PersistentValueManager {
 
     public static void instantiate(DataManager dataManager, PostgresListener pgListener) {
         instance = new PersistentValueManager(dataManager, pgListener);
-    }
-
-    @SuppressWarnings("rawtypes")
-    private void updateValueCache(String schema, String table, Map<String, String> dataValueMap, Instant instant) {
-        List<PersistentValue> dummyPersistentValues = dataManager.getDummyValues(schema, table).stream()
-                .filter(value -> value.getClass() == PersistentValue.class)
-                .map(value -> (PersistentValue) value)
-                .toList();
-
-        for (Map.Entry<String, String> entry : dataValueMap.entrySet()) {
-            String column = entry.getKey();
-            PersistentValue<?> dummyPV = dummyPersistentValues.stream()
-                    .filter(pv -> pv.getColumn().equals(column))
-                    .findFirst()
-                    .orElse(null);
-
-            if (dummyPV == null) {
-                continue;
-            }
-
-            String idColumn = dummyPV.getIdColumn();
-            UUID id = UUID.fromString(dataValueMap.get(idColumn));
-
-            CellKey key = new CellKey(schema, table, column, id, idColumn);
-
-            String encodedValue = dataValueMap.get(column); //Raw value as string
-            Object rawValue = dataManager.decode(dummyPV.getDataType(), encodedValue);
-            Object deserialized = dataManager.deserialize(dummyPV.getDataType(), rawValue);
-
-            dataManager.cache(key, deserialized, instant);
-        }
     }
 
     public void updateCache(PersistentValue<?> persistentValue, Object value) {
@@ -185,7 +195,7 @@ public class PersistentValueManager {
 
         dataManager.logSQL(sql);
 
-        List<PersistentValue> dummyPersistentValues = dataManager.getDummyValues(firstCellKey.getSchema(), firstCellKey.getTable()).stream()
+        List<PersistentValue> dummyPersistentValues = dataManager.getDummyValues(schemaTable).stream()
                 .filter(value -> value.getClass() == PersistentValue.class)
                 .map(value -> (PersistentValue) value)
                 .toList();
