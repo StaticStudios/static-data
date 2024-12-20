@@ -1,7 +1,7 @@
 package net.staticstudios.data.impl;
 
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.data.InitialPersistentData;
+import net.staticstudios.data.data.InitialPersistentValue;
 import net.staticstudios.data.data.PersistentValue;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.key.CellKey;
@@ -10,6 +10,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.*;
 
 public class PersistentValueManager {
@@ -23,6 +24,20 @@ public class PersistentValueManager {
 
         pgListener.addHandler(notification -> {
             //todo: something
+            System.out.println("PersistentValueManager: " + notification);
+            switch (notification.getOperation()) {
+                case PostgresOperation.INSERT -> {
+                    //todo: create the new unique data objects (there might be multiple)
+                    updateValueCache(notification.getSchema(), notification.getTable(), notification.getDataValueMap(), notification.getInstant());
+                }
+                case PostgresOperation.UPDATE -> {
+                    updateValueCache(notification.getSchema(), notification.getTable(), notification.getDataValueMap(), notification.getInstant());
+                }
+                case PostgresOperation.DELETE -> {
+                    //todo: remove the unique data objects (there might be multiple)
+                    //todo: remove values from the cache
+                }
+            }
         });
     }
 
@@ -34,15 +49,46 @@ public class PersistentValueManager {
         instance = new PersistentValueManager(dataManager, pgListener);
     }
 
-    public void updateCache(PersistentValue<?> persistentValue, Object value) {
-        dataManager.cache(new CellKey(persistentValue), value);
+    @SuppressWarnings("rawtypes")
+    private void updateValueCache(String schema, String table, Map<String, String> dataValueMap, Instant instant) {
+        List<PersistentValue> dummyPersistentValues = dataManager.getDummyValues(schema, table).stream()
+                .filter(value -> value.getClass() == PersistentValue.class)
+                .map(value -> (PersistentValue) value)
+                .toList();
+
+        for (Map.Entry<String, String> entry : dataValueMap.entrySet()) {
+            String column = entry.getKey();
+            PersistentValue<?> dummyPV = dummyPersistentValues.stream()
+                    .filter(pv -> pv.getColumn().equals(column))
+                    .findFirst()
+                    .orElse(null);
+
+            if (dummyPV == null) {
+                continue;
+            }
+
+            String idColumn = dummyPV.getIdColumn();
+            UUID id = UUID.fromString(dataValueMap.get(idColumn));
+
+            CellKey key = new CellKey(schema, table, column, id, idColumn);
+
+            String encodedValue = dataValueMap.get(column); //Raw value as string
+            Object rawValue = dataManager.decode(dummyPV.getDataType(), encodedValue);
+            Object deserialized = dataManager.deserialize(dummyPV.getDataType(), rawValue);
+
+            dataManager.cache(key, deserialized, instant);
+        }
     }
 
-    public void setInDataSource(List<InitialPersistentData> initialData) throws Exception {
+    public void updateCache(PersistentValue<?> persistentValue, Object value) {
+        dataManager.cache(new CellKey(persistentValue), value, Instant.now());
+    }
+
+    public void setInDataSource(List<InitialPersistentValue> initialData) throws Exception {
         try (Connection connection = dataManager.getConnection()) {
             boolean autoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
-            for (InitialPersistentData initial : initialData) {
+            for (InitialPersistentValue initial : initialData) {
                 PersistentValue<?> data = initial.getValue();
                 pgListener.ensureTableHasTrigger(connection, data.getTable());
                 String schema = data.getSchema();
@@ -51,14 +97,12 @@ public class PersistentValueManager {
                 String idColumn = data.getIdColumn();
 
                 String sql = "INSERT INTO " + schema + "." + table + " (" + column + ", " + idColumn + ") VALUES (?, ?) ON CONFLICT (" + idColumn + ") DO UPDATE SET " + column + " = EXCLUDED." + column;
-                System.out.println(sql);
-
-
-                //todo: log
+                dataManager.logSQL(sql);
 
                 try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                    //todo: use value serializers
-                    statement.setObject(1, initial.getDataValue());
+                    Object serialized = dataManager.serialize(initial.getInitialDataValue());
+
+                    statement.setObject(1, serialized);
                     statement.setObject(2, data.getHolder().getRootHolder().getId());
 
 
@@ -140,20 +184,34 @@ public class PersistentValueManager {
             sql = sqlBuilder.toString();
         }
 
-        System.out.println(sql);
+        dataManager.logSQL(sql);
+
+        List<PersistentValue> dummyPersistentValues = dataManager.getDummyValues(firstCellKey.getSchema(), firstCellKey.getTable()).stream()
+                .filter(value -> value.getClass() == PersistentValue.class)
+                .map(value -> (PersistentValue) value)
+                .toList();
 
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             ResultSet resultSet = statement.executeQuery();
             while (resultSet.next()) {
                 UUID id = resultSet.getObject(dummyHolder.getIdentifier().getColumn(), UUID.class);
                 for (String column : dataColumns) {
+                    PersistentValue<?> dummyPV = dummyPersistentValues.stream()
+                            .filter(pv -> pv.getColumn().equals(column))
+                            .findFirst()
+                            .orElse(null);
+
+                    if (dummyPV == null) {
+                        continue;
+                    }
+
                     Object value = resultSet.getObject(column);
-                    Object deserialized = value; //todo: deserialize
-                    dataManager.cache(new CellKey(firstCellKey.getSchema(), firstCellKey.getTable(), column, id, idColumn), deserialized);
+                    Object deserialized = dataManager.deserialize(dummyPV.getDataType(), value);
+                    dataManager.cache(new CellKey(firstCellKey.getSchema(), firstCellKey.getTable(), column, id, idColumn), deserialized, Instant.now());
                 }
 
                 if (!dataColumns.contains(idColumn)) {
-                    dataManager.cache(new CellKey(firstCellKey.getSchema(), firstCellKey.getTable(), idColumn, id, idColumn), id);
+                    dataManager.cache(new CellKey(firstCellKey.getSchema(), firstCellKey.getTable(), idColumn, id, idColumn), id, Instant.now());
                 }
             }
         }

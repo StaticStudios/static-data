@@ -1,5 +1,7 @@
 package net.staticstudios.data.impl;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import com.impossibl.postgres.api.jdbc.PGConnection;
 import com.impossibl.postgres.api.jdbc.PGNotificationListener;
 import com.zaxxer.hikari.HikariConfig;
@@ -10,35 +12,22 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Properties;
-import java.util.Set;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.function.Consumer;
 
 public class PostgresListener {
+    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSSX");
     public static String CREATE_DATA_NOTIFY_FUNCTION = """
             create or replace function propagate_data_update() returns trigger as $$
             declare
-                pkey_cols text[];
                 notification text;
             begin
-                -- Fetch the primary key column names for the table
-                select array_agg(a.attname)
-                into pkey_cols
-                from pg_index i
-                         join pg_attribute a on a.attrelid = i.indrelid
-                    AND a.attnum = ANY(i.indkey)
-                where i.indrelid = TG_TABLE_NAME::regclass
-                  and i.indisprimary;
+                notification := clock_timestamp() || ',' || tg_table_schema || ',' || TG_TABLE_NAME || ',' || TG_OP || ',' ||
+                                (case when TG_OP = 'DELETE' then row_to_json(OLD) else row_to_json(NEW) end)::text;
             
-                -- Construct the notification message
-                notification := current_timestamp || ',' || tg_table_schema || ',' || TG_TABLE_NAME || ',' || TG_OP || ',' ||
-                                json_build_object('pkey_cols', pkey_cols,
-                                                  'data', case when TG_OP = 'DELETE' then row_to_json(OLD) else row_to_json(NEW) end)::text;
-            
-                -- Send the notification
                 perform pg_notify('data_notification', notification);
             
                 return new;
@@ -60,11 +49,12 @@ public class PostgresListener {
             END;
             $$
             """;
-
-
     private final Set<String> tablesTriggered = Collections.synchronizedSet(new HashSet<>());
     private final ConcurrentLinkedDeque<Consumer<PostgresNotification>> notificationHandlers = new ConcurrentLinkedDeque<>();
     private final PGConnection pgConnection;
+    private final Gson gson = new Gson();
+    private final TypeToken<Map<String, String>> mapType = new TypeToken<>() {
+    };
 
     public PostgresListener(HikariConfig hikariConfig) {
         try {
@@ -93,8 +83,18 @@ public class PostgresListener {
                     String table = parts[2];
                     String operation = parts[3];
                     String data = parts[4];
+                    Map<String, String> dataMap = gson.fromJson(data, mapType);
 
-                    PostgresNotification notification = null;
+                    //todo: sometimes this doesnt parse and throws errors
+                    OffsetDateTime offsetDateTime = OffsetDateTime.parse(timestamp, DATE_TIME_FORMATTER);
+
+                    PostgresNotification notification = new PostgresNotification(
+                            offsetDateTime.toInstant(),
+                            schema,
+                            table,
+                            PostgresOperation.valueOf(operation),
+                            dataMap
+                    );
 
                     for (Consumer<PostgresNotification> handler : notificationHandlers) {
                         try {

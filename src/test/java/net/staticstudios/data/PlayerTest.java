@@ -2,42 +2,68 @@ package net.staticstudios.data;
 
 import com.zaxxer.hikari.HikariConfig;
 import net.staticstudios.utils.ThreadUtils;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.util.LinkedList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 public class PlayerTest {
+    public static final int NUM_ENVIRONMENTS = 1;
+    private List<MockEnvironment> mockEnvironments;
+
+    @BeforeEach
+    public void setup() {
+        mockEnvironments = new LinkedList<>();
+        ThreadUtils.setProvider(new MockThreadProvider());
+        for (int i = 0; i < NUM_ENVIRONMENTS; i++) {
+            HikariConfig hikariConfig = new HikariConfig();
+            hikariConfig.setDataSourceClassName("com.impossibl.postgres.jdbc.PGDataSource");
+            hikariConfig.addDataSourceProperty("serverName", "localhost");
+            hikariConfig.addDataSourceProperty("portNumber", 12345);
+            hikariConfig.addDataSourceProperty("user", "postgres");
+            hikariConfig.addDataSourceProperty("password", "password");
+            hikariConfig.addDataSourceProperty("databaseName", "postgres");
+            hikariConfig.setLeakDetectionThreshold(10000);
+            hikariConfig.setMaximumPoolSize(10);
+
+            DataManager dataManager = new DataManager(hikariConfig);
+            dataManager.loadAll(Player.class);
+
+            MockEnvironment mockEnvironment = new MockEnvironment(hikariConfig, dataManager);
+            mockEnvironments.add(mockEnvironment);
+        }
+    }
+
+    @AfterEach
+    public void teardown() {
+        ThreadUtils.shutdown();
+    }
 
     @Test
     public void createPlayer() throws InterruptedException {
-        ThreadUtils.setProvider(new MockThreadProvider());
-        HikariConfig hikariConfig = new HikariConfig();
-        hikariConfig.setDataSourceClassName("com.impossibl.postgres.jdbc.PGDataSource");
-        hikariConfig.addDataSourceProperty("serverName", "localhost");
-        hikariConfig.addDataSourceProperty("portNumber", 12345);
-        hikariConfig.addDataSourceProperty("user", "postgres");
-        hikariConfig.addDataSourceProperty("password", "password");
-        hikariConfig.addDataSourceProperty("databaseName", "postgres");
-        hikariConfig.setLeakDetectionThreshold(10000);
-        hikariConfig.setMaximumPoolSize(10);
+        MockEnvironment mockEnvironment = mockEnvironments.getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
 
+        Player player = Player.createSync(dataManager, "Test");
 
-        DataManager dataManager = new DataManager(hikariConfig);
-        System.out.println(dataManager.loadAll(Player.class));
-
-        Player player = Player.create(dataManager, "Test");
-
-        assertEquals(player.getName(), "Test");
+        assertEquals("Test", player.getName());
 
         player.setName("Test2");
-        assertEquals(player.getName(), "Test2");
+        System.out.println("expect");
+        assertEquals("Test2", player.getName());
         player.setName(null);
         assertNull(player.getName());
         player.setName("Test2");
-        assertEquals(player.getName(), "Test2");
+        assertEquals("Test2", player.getName());
 
         player.setNickname("TestNick");
-        assertEquals(player.getNickname(), "TestNick");
+        assertEquals("TestNick", player.getNickname());
 
         assertNull(player.getBackpack());
         Backpack backpack = Backpack.create(dataManager, 10);
@@ -85,7 +111,27 @@ public class PlayerTest {
         Thread.sleep(500);
 
         //todo: read the db and check the values
+    }
 
-        ThreadUtils.shutdown();
+    @Test
+    public void testUpdatePersistentValue() throws InterruptedException {
+        MockEnvironment mockEnvironment = mockEnvironments.getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        Player player = Player.createSync(dataManager, "Test");
+
+        try (Connection connection = dataManager.getConnection()) {
+            String sql = "UPDATE public.players SET name = ? WHERE id = ?";
+            PreparedStatement statement = connection.prepareStatement(sql);
+            statement.setString(1, "NewName");
+            statement.setObject(2, player.getId());
+            statement.executeUpdate();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        Thread.sleep(500);
+
+        assertEquals(player.getName(), "NewName");
     }
 }

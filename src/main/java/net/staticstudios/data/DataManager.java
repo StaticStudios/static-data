@@ -5,21 +5,18 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.pool.HikariPool;
-import net.staticstudios.data.data.Data;
-import net.staticstudios.data.data.InitialData;
-import net.staticstudios.data.data.InitialPersistentData;
-import net.staticstudios.data.data.UniqueData;
+import net.staticstudios.data.data.*;
 import net.staticstudios.data.impl.PersistentCollectionManager;
 import net.staticstudios.data.impl.PersistentValueManager;
 import net.staticstudios.data.impl.PostgresListener;
 import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.DataKey;
 import net.staticstudios.data.key.DatabaseKey;
+import net.staticstudios.data.primative.Primitives;
 import net.staticstudios.data.util.ReflectionUtils;
 import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.Blocking;
 import org.jetbrains.annotations.NotNull;
-import redis.clients.jedis.Jedis;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -28,21 +25,27 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class DataManager {
     private static final Object NULL_MARKER = new Object();
-    private final Map<DataKey, Object> cache;
+    private final Map<DataKey, CacheEntry> cache;
     private final Multimap<Class<? extends UniqueData>, UUID> uniqueDataIds;
     private final Map<Class<? extends UniqueData>, Map<UUID, UniqueData>> uniqueDataCache;
+    private final Multimap<String, Value<?>> dummyValueCache;
     private final HikariPool connectionPool;
     private final Set<Class<? extends UniqueData>> loadedIntoCache = new HashSet<>();
+    private final List<ValueSerializer<?, ?>> valueSerializers;
 
     public DataManager(HikariConfig poolConfig) {
         this.cache = new ConcurrentHashMap<>();
         this.uniqueDataCache = new ConcurrentHashMap<>();
+        this.dummyValueCache = Multimaps.synchronizedSetMultimap(HashMultimap.create());
         this.uniqueDataIds = Multimaps.synchronizedSetMultimap(HashMultimap.create());
+        this.valueSerializers = new CopyOnWriteArrayList<>();
 
         PostgresListener pgListener = new PostgresListener(poolConfig);
 
@@ -54,6 +57,10 @@ public class DataManager {
 
     public void logSQL(String sql) {
         System.out.println(sql);
+    }
+
+    public Collection<Value<?>> getDummyValues(String schema, String table) {
+        return dummyValueCache.get(schema + "." + table);
     }
 
     @Blocking
@@ -73,6 +80,10 @@ public class DataManager {
                     DataKey key = data.getKey();
                     if (key instanceof DatabaseKey dbKey) {
                         databaseKeys.put(data.getHolder().getRootHolder(), dbKey);
+                    }
+
+                    if (data instanceof Value<?> value) {
+                        dummyValueCache.put(data.getHolder().getRootHolder().getSchema() + "." + data.getHolder().getRootHolder().getTable(), value);
                     }
                 }
             }
@@ -249,8 +260,8 @@ public class DataManager {
 
     public void dump() {
         //print each cache entry line by line
-        for (Map.Entry<DataKey, Object> entry : cache.entrySet()) {
-            System.out.println(entry.getKey() + " -> " + entry.getValue());
+        for (Map.Entry<DataKey, CacheEntry> entry : cache.entrySet()) {
+            System.out.println(entry.getKey() + " -> " + entry.getValue().value());
         }
     }
 
@@ -272,12 +283,13 @@ public class DataManager {
 
 
     @SafeVarargs
-    public final <I extends InitialData<?, ?>> void insert(UniqueData holder, I... initialData) {
-        List<InitialPersistentData> initialPersistentData = new ArrayList<>();
+    public final <I extends InitialValue<?, ?>> void insert(UniqueData holder, I... initialData) {
+        List<InitialPersistentValue> initialPersistentData = new ArrayList<>();
+        //todo: all other Values that are not specified here should be set to NULL_MARKER in the cache. the database may then set a default value
 
-        for (InitialData<?, ?> data : initialData) {
-            if (data instanceof InitialPersistentData) {
-                initialPersistentData.add((InitialPersistentData) data);
+        for (InitialValue<?, ?> data : initialData) {
+            if (data instanceof InitialPersistentValue) {
+                initialPersistentData.add((InitialPersistentValue) data);
             } else {
                 throw new IllegalArgumentException("Unsupported initial data type: " + data.getClass());
             }
@@ -287,32 +299,31 @@ public class DataManager {
         try {
             PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
             persistentValueManager.setInDataSource(initialPersistentData);
-            for (InitialPersistentData data : initialPersistentData) {
-                persistentValueManager.updateCache(data.getValue(), data.getDataValue());
+            for (InitialPersistentValue data : initialPersistentData) {
+                persistentValueManager.updateCache(data.getValue(), data.getInitialDataValue());
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-//        redisDataManager.insertIntoDataSource(holder, initialRedisData);
 
         addUniqueData(holder);
     }
 
     @SafeVarargs
-    public final <I extends InitialData<?, ?>> void insertAsync(UniqueData holder, I... initialData) {
-        List<InitialPersistentData> initialPersistentData = new ArrayList<>();
+    public final <I extends InitialValue<?, ?>> void insertAsync(UniqueData holder, I... initialData) {
+        List<InitialPersistentValue> initialPersistentData = new ArrayList<>();
 
-        for (InitialData<?, ?> data : initialData) {
-            if (data instanceof InitialPersistentData) {
-                initialPersistentData.add((InitialPersistentData) data);
+        for (InitialValue<?, ?> data : initialData) {
+            if (data instanceof InitialPersistentValue) {
+                initialPersistentData.add((InitialPersistentValue) data);
             } else {
                 throw new IllegalArgumentException("Unsupported initial data type: " + data.getClass());
             }
             //todo: redis values
         }
         PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
-        for (InitialPersistentData data : initialPersistentData) {
-            persistentValueManager.updateCache(data.getValue(), data.getDataValue());
+        for (InitialPersistentValue data : initialPersistentData) {
+            persistentValueManager.updateCache(data.getValue(), data.getInitialDataValue());
         }
 
         ThreadUtils.submit(() -> {
@@ -334,16 +345,18 @@ public class DataManager {
 
     @SuppressWarnings("unchecked")
     public <T> T get(DataKey key) throws DataDoesNotExistException {
-        Object value = cache.get(key);
+        CacheEntry cacheEntry = cache.get(key);
+
+        if (cacheEntry == null) {
+            throw new DataDoesNotExistException("Data does not exist ");
+        }
+
+        Object value = cacheEntry.value();
         if (value == NULL_MARKER) {
             return null;
         }
 
-        if (value != null) {
-            return (T) value;
-        }
-
-        throw new DataDoesNotExistException("Data does not exist ");
+        return (T) value;
     }
 
     public <T extends UniqueData> T getUniqueData(Class<T> clazz, UUID id) throws DataDoesNotExistException {
@@ -368,13 +381,30 @@ public class DataManager {
         uniqueDataCache.get(data.getClass()).remove(data.getId());
     }
 
-    public <T> void cache(DataKey key, T value) {
+    /**
+     * Add an object to the cache. Null values are permitted.
+     * If an entry with the given key already exists in the cache,
+     * it will only be replaced if this value's instant is newer than the existing entry's instant.
+     *
+     * @param key     The key to cache the value under
+     * @param value   The value to cache
+     * @param instant The instant at which the value was set
+     */
+    public <T> void cache(DataKey key, T value, Instant instant) {
 //        System.out.println("caching " + key + " -> " + value);
-        if (value == null) {
-            cache.put(key, NULL_MARKER);
+        CacheEntry existing = cache.get(key);
+
+        if (existing != null && existing.instant().isAfter(instant)) {
+            System.out.println("Existing value is newer than the value being cached");
+            //todo: proper debug logging
             return;
         }
-        cache.put(key, value);
+
+        if (value == null) {
+            cache.put(key, CacheEntry.of(NULL_MARKER, instant));
+            return;
+        }
+        cache.put(key, CacheEntry.of(value, instant));
     }
 
     public void uncache(DataKey key) {
@@ -385,7 +415,86 @@ public class DataManager {
         return connectionPool.getConnection();
     }
 
-    public Jedis getRedisConnection() {
-        throw new UnsupportedOperationException("Not implemented");
+    public void registerSerializer(ValueSerializer<?, ?> serializer) {
+        if (Primitives.isPrimitive(serializer.getDeserializedType())) {
+            throw new IllegalArgumentException("Cannot register a serializer for a primitive type");
+        }
+
+        if (!Primitives.isPrimitive(serializer.getSerializedType())) {
+            throw new IllegalArgumentException("Cannot register a ValueSerializer that serializes to a non-primitive type");
+        }
+
+
+        for (ValueSerializer<?, ?> v : valueSerializers) {
+            if (v.getDeserializedType().isAssignableFrom(serializer.getDeserializedType())) {
+                throw new IllegalArgumentException("A serializer for " + serializer.getDeserializedType() + " is already registered! (" + v.getClass() + ")");
+            }
+        }
+
+        valueSerializers.add(serializer);
+    }
+
+    public boolean isSupportedType(Class<?> type) {
+        if (Primitives.isPrimitive(type)) {
+            return true;
+        }
+
+        for (ValueSerializer<?, ?> serializer : valueSerializers) {
+            if (serializer.getDeserializedType().isAssignableFrom(type)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public <T> T deserialize(Class<T> type, Object serialized) {
+        if (serialized == null) {
+            return null;
+        }
+        if (Primitives.isPrimitive(type)) {
+            return (T) serialized;
+        }
+
+        for (ValueSerializer<?, ?> serializer : valueSerializers) {
+            if (serializer.getDeserializedType().isAssignableFrom(type)) {
+                return (T) serializer.unsafeDeserialize(serialized);
+            }
+        }
+
+        throw new IllegalArgumentException("No serializer found for type: " + type);
+    }
+
+    public <T> Object serialize(T deserialized) {
+        if (deserialized == null) {
+            return null;
+        }
+
+        if (Primitives.isPrimitive(deserialized.getClass())) {
+            return deserialized;
+        }
+
+        for (ValueSerializer<?, ?> serializer : valueSerializers) {
+            if (serializer.getDeserializedType().isAssignableFrom(deserialized.getClass())) {
+                return serializer.unsafeSerialize(deserialized);
+            }
+        }
+
+        throw new IllegalArgumentException("No serializer found for type: " + deserialized.getClass());
+    }
+
+    public Object decode(Class<?> type, String value) {
+        if (Primitives.isPrimitive(type)) {
+            return Primitives.decode(type, value);
+        }
+
+        ValueSerializer<?, ?> serializer = valueSerializers.stream()
+                .filter(s -> s.getDeserializedType().isAssignableFrom(type))
+                .findFirst()
+                .orElseThrow();
+
+        Class<?> serializedType = serializer.getSerializedType();
+
+        return Primitives.decode(serializedType, value);
     }
 }

@@ -12,6 +12,10 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
 
     public PersistentValueCollection(DataHolder holder, Class<T> dataType, String schema, String table, String linkingColumn, String dataColumn) {
         super(holder, dataType, schema, table, linkingColumn, dataColumn);
+        if (!holder.getDataManager().isSupportedType(dataType)) {
+            throw new IllegalArgumentException("Unsupported data type: " + dataType);
+        }
+
         this.holder = holder;
     }
 

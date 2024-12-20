@@ -4,7 +4,6 @@ import net.staticstudios.data.data.PersistentValue;
 import net.staticstudios.data.data.Reference;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.data.collection.PersistentCollection;
-import org.jetbrains.annotations.Blocking;
 
 import java.util.Collection;
 import java.util.UUID;
@@ -23,10 +22,16 @@ public class Player extends UniqueData {
         super(dataManager, "public", "players", id);
     }
 
-    @Blocking
-    public static Player create(DataManager dataManager, String name) {
+    public static Player createAsync(DataManager dataManager, String name) {
         Player player = new Player(dataManager, UUID.randomUUID());
         dataManager.insertAsync(player, player.name.initial(name));
+
+        return player;
+    }
+
+    public static Player createSync(DataManager dataManager, String name) {
+        Player player = new Player(dataManager, UUID.randomUUID());
+        dataManager.insert(player, player.name.initial(name));
 
         return player;
     }

@@ -17,7 +17,10 @@ public class PersistentValue<T> implements Value<T> {
     private final DataManager dataManager;
 
     public PersistentValue(String schema, String table, String column, String idColumn, Class<T> dataType, DataHolder holder, DataManager dataManager) {
-        //todo: validate that the dataType is supported or has a serializer
+        if (!holder.getDataManager().isSupportedType(dataType)) {
+            throw new IllegalArgumentException("Unsupported data type: " + dataType);
+        }
+
         this.schema = schema;
         this.table = table;
         this.column = column;
@@ -56,8 +59,8 @@ public class PersistentValue<T> implements Value<T> {
         return new PersistentValue<>(schema, table, column, foreignIdColumn, dataType, holder, holder.getDataManager());
     }
 
-    public InitialPersistentData initial(T value) {
-        return new InitialPersistentData(this, value);
+    public InitialPersistentValue initial(T value) {
+        return new InitialPersistentValue(this, value);
     }
 
     @Override
@@ -74,7 +77,7 @@ public class PersistentValue<T> implements Value<T> {
         manager.updateCache(this, value);
 
         try {
-            manager.setInDataSource(List.of(new InitialPersistentData(this, value)));
+            manager.setInDataSource(List.of(new InitialPersistentValue(this, value)));
         } catch (Exception e) {
             e.printStackTrace();
         }

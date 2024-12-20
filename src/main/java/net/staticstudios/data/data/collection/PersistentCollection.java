@@ -26,7 +26,6 @@ public abstract class PersistentCollection<T> implements DataHolder, java.util.C
     }
 
     public static <T> PersistentCollection<T> of(DataHolder holder, Class<T> data, String schema, String table, String linkingColumn, String dataColumn) {
-        //todo: lookup the class and see if its supported or has a serializer, otherwise throw an exception
         return new PersistentValueCollection<>(holder, data, schema, table, linkingColumn, dataColumn);
     }
 

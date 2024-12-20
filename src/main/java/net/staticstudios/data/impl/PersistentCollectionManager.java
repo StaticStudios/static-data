@@ -18,6 +18,7 @@ import net.staticstudios.utils.ThreadUtils;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.*;
 
 public class PersistentCollectionManager {
@@ -61,7 +62,7 @@ public class PersistentCollectionManager {
 
             System.out.println("linking entry: " + entryLinkKey + " -> " + collection.getRootHolder().getId());
 
-            dataManager.cache(entryLinkKey, collection.getRootHolder().getId());
+            dataManager.cache(entryLinkKey, collection.getRootHolder().getId(), Instant.now());
 
             keyedEntries.add(new KeyedCollectionEntry(entryDataKey, entry.value()));
 
@@ -71,7 +72,7 @@ public class PersistentCollectionManager {
             System.out.println(uniqueIdentifier);
 
             entryMap.put(collection.getKey(), uniqueIdentifier);
-            dataManager.cache(entryDataKey, entry.value());
+            dataManager.cache(entryDataKey, entry.value(), Instant.now());
         }
 
         ThreadUtils.submit(() -> {
@@ -179,7 +180,7 @@ public class PersistentCollectionManager {
                     int i = 1;
                     statement.setObject(i, pkey.getId());
                     if (!collection.getDataColumn().equals(collectionPkey.getColumn())) { //todo: idk about this line
-                        statement.setObject(++i, entry.value());
+                        statement.setObject(++i, dataManager.serialize(entry.value()));
                     }
                     statement.setObject(++i, collection.getRootHolder().getId());
 
