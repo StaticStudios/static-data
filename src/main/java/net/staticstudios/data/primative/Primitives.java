@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 //todo: these need an encoder for use in redis
+//todo: we need to enforce non null values for certain types, such as ints.
 public class Primitives {
     private static Map<Class<?>, Primitive<?>> primitives;
     public static final Primitive<String> STRING = Primitive.builder(String.class)

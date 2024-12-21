@@ -63,10 +63,10 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
     @Override
     public boolean remove(Object o) {
         PersistentCollectionManager manager = getManager();
-        Collection<KeyedCollectionEntry> keyedEntries = manager.getKeyedEntries(this);
-        for (KeyedCollectionEntry keyedEntry : keyedEntries) {
-            if (keyedEntry.value().equals(o)) {
-                manager.removeEntry(this, keyedEntry);
+
+        for (CollectionEntry entry : manager.getCollectionEntries(this)) {
+            if (entry.value().equals(o)) {
+                manager.removeEntries(this, Collections.singletonList(entry));
                 return true;
             }
         }
@@ -90,13 +90,13 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
         boolean changed = false;
 
         PersistentCollectionManager manager = getManager();
-        Collection<KeyedCollectionEntry> keyedEntries = manager.getKeyedEntries(this);
-        List<KeyedCollectionEntry> toRemove = new ArrayList<>();
+        Collection<CollectionEntry> entries = new ArrayList<>(manager.getCollectionEntries(this));
+        List<CollectionEntry> toRemove = new ArrayList<>();
         for (Object o : c) {
-            for (KeyedCollectionEntry keyedEntry : keyedEntries) {
-                if (keyedEntry.value().equals(o)) {
-                    keyedEntries.remove(keyedEntry);
-                    toRemove.add(keyedEntry);
+            for (CollectionEntry entry : entries) {
+                if (entry.value().equals(o)) {
+                    entries.remove(entry);
+                    toRemove.add(entry);
                     changed = true;
                     break;
                 }
@@ -113,11 +113,11 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
         boolean changed = false;
 
         PersistentCollectionManager manager = getManager();
-        Collection<KeyedCollectionEntry> keyedEntries = manager.getKeyedEntries(this);
-        List<KeyedCollectionEntry> toRemove = new ArrayList<>();
-        for (KeyedCollectionEntry keyedEntry : keyedEntries) {
-            if (!c.contains(keyedEntry.value())) {
-                toRemove.add(keyedEntry);
+        Collection<CollectionEntry> entries = manager.getCollectionEntries(this);
+        List<CollectionEntry> toRemove = new ArrayList<>();
+        for (CollectionEntry entry : entries) {
+            if (!c.contains(entry.value())) {
+                toRemove.add(entry);
                 changed = true;
             }
         }
@@ -129,7 +129,7 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
 
     @Override
     public void clear() {
-        getManager().removeEntries(this, getManager().getKeyedEntries(this));
+        getManager().removeEntries(this, getManager().getCollectionEntries(this));
     }
 
     protected PersistentCollectionManager getManager() {
@@ -141,7 +141,46 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
         return (Collection<T>) getManager().getEntries(this);
     }
 
-    //todo: hashcode and equals
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        PersistentValueCollection<?> that = (PersistentValueCollection<?>) o;
+        List<?> values = new ArrayList<>(getInternalValues());
+        List<?> thatValues = new ArrayList<>(that.getInternalValues());
+        if (values.size() != thatValues.size()) {
+            return false;
+        }
+
+        for (Object value : values) {
+            if (!thatValues.contains(value)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(holder);
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder(this.getClass().getSimpleName());
+        sb.append("{");
+        for (T value : getInternalValues()) {
+            sb.append(value).append(", ");
+        }
+
+        if (!getInternalValues().isEmpty()) {
+            sb.delete(sb.length() - 2, sb.length());
+        }
+
+        sb.append("}");
+
+        return sb.toString();
+    }
 
     private class Itr implements Iterator<T> {
         private final Object[] values;

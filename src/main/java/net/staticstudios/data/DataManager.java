@@ -47,6 +47,7 @@ public class DataManager {
     private final HikariPool connectionPool;
     private final Set<Class<? extends UniqueData>> loadedDependencies = new HashSet<>();
     private final List<ValueSerializer<?, ?>> valueSerializers;
+    private final PostgresListener pgListener;
 
     public DataManager(HikariConfig poolConfig) {
         this.cache = new ConcurrentHashMap<>();
@@ -57,7 +58,7 @@ public class DataManager {
         this.uniqueDataIds = Multimaps.synchronizedSetMultimap(HashMultimap.create());
         this.valueSerializers = new CopyOnWriteArrayList<>();
 
-        PostgresListener pgListener = new PostgresListener(poolConfig);
+        pgListener = new PostgresListener(poolConfig);
 
         PersistentCollectionManager.instantiate(this, pgListener);
         PersistentValueManager.instantiate(this, pgListener);
@@ -85,12 +86,12 @@ public class DataManager {
                 for (UniqueData dummy : dummyUniqueData) {
                     String identifierColumn = dummy.getIdentifier().getColumn();
                     UUID id = UUID.fromString(notification.getData().oldDataValueMap().get(identifierColumn));
-                    removeUniqueData(getUniqueData(dummy.getClass(), id));
+                    removeUniqueData(dummy.getClass(), id);
                 }
             }
         });
 
-        ThreadUtils.onShutdownRunSync(ShutdownStage.EARLY, () -> {
+        ThreadUtils.onShutdownRunSync(ShutdownStage.CLEANUP, () -> {
             try {
                 connectionPool.shutdown();
             } catch (InterruptedException e) {
@@ -143,7 +144,7 @@ public class DataManager {
                     }
 
                     if (data instanceof PersistentCollection<?> collection) {
-                        dummyPersistentCollectionMap.put(data.getHolder().getRootHolder().getSchema() + "." + data.getHolder().getRootHolder().getTable(), collection);
+                        dummyPersistentCollectionMap.put(collection.getSchema() + "." + collection.getTable(), collection);
                         dummyPersistentCollections.put(data.getHolder().getRootHolder(), collection);
                     }
                 }
@@ -221,12 +222,26 @@ public class DataManager {
             //todo: redis values
         }
 
+        //todo: tell the collection manager we inserted data to see if it wants to track it
+
         try {
             PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
             persistentValueManager.setInDatabase(initialPersistentData);
             for (InitialPersistentValue data : initialPersistentData) {
                 persistentValueManager.updateCache(data.getValue(), data.getInitialDataValue());
+
+                UniqueData pvHolder = data.getValue().getHolder().getRootHolder();
+                //update the id column too
+                persistentValueManager.updateCache(
+                        pvHolder.getSchema(),
+                        pvHolder.getTable(),
+                        pvHolder.getIdentifier().getColumn(),
+                        pvHolder.getId(),
+                        pvHolder.getIdentifier().getColumn(),
+                        pvHolder.getId()
+                );
             }
+
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -249,6 +264,17 @@ public class DataManager {
         PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
         for (InitialPersistentValue data : initialPersistentData) {
             persistentValueManager.updateCache(data.getValue(), data.getInitialDataValue());
+
+            UniqueData pvHolder = data.getValue().getHolder().getRootHolder();
+            //update the id column too
+            persistentValueManager.updateCache(
+                    pvHolder.getSchema(),
+                    pvHolder.getTable(),
+                    pvHolder.getIdentifier().getColumn(),
+                    pvHolder.getId(),
+                    pvHolder.getIdentifier().getColumn(),
+                    pvHolder.getId()
+            );
         }
 
         ThreadUtils.submit(() -> {
@@ -264,6 +290,50 @@ public class DataManager {
         addUniqueData(holder);
     }
 
+    public <T extends UniqueData> void delete(T holder) {
+        //todo: we need to delete collections as well
+        PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
+
+        for (Field field : ReflectionUtils.getFields(holder.getClass())) {
+            field.setAccessible(true);
+
+            if (Data.class.isAssignableFrom(field.getType())) {
+                try {
+                    Data<?> data = (Data<?>) field.get(holder);
+                    if (data instanceof PersistentValue<?> value) {
+                        persistentValueManager.uncache(value);
+                        persistentValueManager.uncache(
+                                value.getSchema(),
+                                value.getTable(),
+                                value.getIdColumn(),
+                                holder.getId(),
+                                value.getIdColumn()
+                        );
+                    }
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
+
+        removeUniqueData(holder.getClass(), holder.getId());
+
+        ThreadUtils.submit(() -> {
+            try (Connection connection = getConnection()) {
+                String sql = "DELETE FROM " + holder.getSchema() + "." + holder.getTable() + " WHERE " + holder.getIdentifier().getColumn() + " = ?";
+                logSQL(sql);
+
+                try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                    statement.setObject(1, holder.getId());
+                    statement.execute();
+                }
+
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
     public <T extends UniqueData> List<T> getAll(Class<T> clazz) {
         return uniqueDataIds.get(clazz).stream().map(id -> getUniqueData(clazz, id)).toList();
     }
@@ -275,7 +345,7 @@ public class DataManager {
             return;
         }
 
-        UniqueData dummy = createInstance(clazz, UUID.randomUUID());
+        UniqueData dummy = createInstance(clazz, null);
 
         for (Field field : ReflectionUtils.getFields(clazz)) {
             field.setAccessible(true);
@@ -294,7 +364,7 @@ public class DataManager {
     }
 
     private List<Data<?>> extractDataDependencies(Class<? extends UniqueData> clazz) throws Exception {
-        UniqueData dummy = createInstance(clazz, UUID.randomUUID());
+        UniqueData dummy = createInstance(clazz, null);
 
         List<Data<?>> dependencies = new ArrayList<>();
 
@@ -416,7 +486,7 @@ public class DataManager {
         CacheEntry cacheEntry = cache.get(key);
 
         if (cacheEntry == null) {
-            throw new DataDoesNotExistException("Data does not exist ");
+            throw new DataDoesNotExistException("Data does not exist in cache: " + key);
         }
 
         Object value = cacheEntry.value();
@@ -440,15 +510,19 @@ public class DataManager {
     }
 
     public void addUniqueData(UniqueData data) {
-        logger.trace("Adding unique dat to cache: {}({})", data.getClass(), data.getId());
+        logger.trace("Adding unique data to cache: {}({})", data.getClass(), data.getId());
         uniqueDataIds.put(data.getClass(), data.getId());
         uniqueDataCache.computeIfAbsent(data.getClass(), k -> new ConcurrentHashMap<>()).put(data.getId(), data);
     }
 
-    public void removeUniqueData(UniqueData data) {
-        logger.trace("Removing unique data from cache: {}({})", data.getClass(), data.getId());
-        uniqueDataIds.remove(data.getClass(), data.getId());
-        uniqueDataCache.get(data.getClass()).remove(data.getId());
+    public void removeUniqueData(Class<? extends UniqueData> clazz, UUID id) {
+        try {
+            logger.trace("Removing unique data from cache: {}({})", clazz, id);
+            uniqueDataIds.remove(clazz, id);
+            uniqueDataCache.get(clazz).remove(id);
+        } catch (DataDoesNotExistException e) {
+            logger.trace("Data does not exist in cache: {}({})", clazz, id);
+        }
     }
 
     /**
@@ -577,5 +651,9 @@ public class DataManager {
                  InvocationTargetException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public PostgresListener getPostgresListener() {
+        return pgListener;
     }
 }

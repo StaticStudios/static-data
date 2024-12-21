@@ -3,7 +3,7 @@ services:
   postgres:
     container_name: static-database-poc
     hostname: static-database-poc
-    image: postgres:17.2
+    image: postgres:16
     ports:
       - "12345:5432"
     environment:

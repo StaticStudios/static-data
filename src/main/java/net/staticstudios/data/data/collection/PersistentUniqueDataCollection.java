@@ -16,7 +16,7 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
                 schema,
                 table,
                 //The entryIdColumn is the id column of the data type, so just create a dummy instance so we can get the id column name
-                holder.getDataManager().createInstance(dataType, UUID.randomUUID()).getIdentifier().getColumn(),
+                holder.getDataManager().createInstance(dataType, null).getIdentifier().getColumn(),
                 linkingColumn,
                 dataColumn);
         holderIds = new PersistentValueCollection<>(holder, UUID.class, schema, table, getEntryIdColumn(), linkingColumn, dataColumn);
@@ -39,8 +39,8 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
 
     @Override
     public boolean contains(Object o) {
-        if (o instanceof DataHolder) {
-            return holderIds.contains(((DataHolder) o).getRootHolder().getId());
+        if (o instanceof DataHolder holder) {
+            return holderIds.contains(holder.getRootHolder().getId());
         }
 
         return false;
@@ -87,8 +87,12 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
 
     @Override
     public boolean remove(Object o) {
-        if (o instanceof DataHolder) {
-            return holderIds.remove(((DataHolder) o).getRootHolder().getId());
+        if (o instanceof DataHolder holder) {
+            UUID id = holder.getRootHolder().getId();
+            if (holderIds.contains(id)) {
+                holderIds.getManager().removeFromUniqueDataCollection(holderIds, Collections.singletonList(id));
+                return true;
+            }
         }
 
         return false;
@@ -96,21 +100,25 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
 
     @Override
     public boolean containsAll(@NotNull Collection<?> c) {
+        boolean containsAll = true;
         List<UUID> ids = new ArrayList<>();
         for (Object o : c) {
             if (o instanceof DataHolder) {
                 ids.add(((DataHolder) o).getRootHolder().getId());
+            } else {
+                containsAll = false;
+                break;
             }
         }
 
-        return holderIds.containsAll(ids);
+        return containsAll && holderIds.containsAll(ids);
     }
 
     @Override
     public boolean addAll(@NotNull Collection<? extends T> c) {
         List<CollectionEntry> entries = new ArrayList<>();
         for (T t : c) {
-            entries.add(new CollectionEntry(t.getId(), getRootHolder().getId()));
+            entries.add(new CollectionEntry(t.getId(), t.getId()));
         }
 
         holderIds.getManager().addEntries(holderIds, entries);
@@ -122,11 +130,15 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
         List<UUID> ids = new ArrayList<>();
         for (Object o : c) {
             if (o instanceof DataHolder) {
-                ids.add(((DataHolder) o).getRootHolder().getId());
+                if (holderIds.contains(((DataHolder) o).getRootHolder().getId())) {
+                    ids.add(((DataHolder) o).getRootHolder().getId());
+                }
             }
         }
 
-        return holderIds.removeAll(ids);
+        holderIds.getManager().removeFromUniqueDataCollection(holderIds, ids);
+
+        return !ids.isEmpty();
     }
 
     @Override
@@ -134,23 +146,50 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
         List<UUID> ids = new ArrayList<>();
         for (Object o : c) {
             if (o instanceof DataHolder) {
-                ids.add(((DataHolder) o).getRootHolder().getId());
+                if (holderIds.contains(((DataHolder) o).getRootHolder().getId())) {
+                    ids.add(((DataHolder) o).getRootHolder().getId());
+                }
             }
         }
 
-        return holderIds.retainAll(ids);
+        List<UUID> toRemove = new ArrayList<>();
+        for (UUID id : holderIds) {
+            if (!ids.contains(id)) {
+                toRemove.add(id);
+            }
+        }
+
+        holderIds.getManager().removeFromUniqueDataCollection(holderIds, toRemove);
+
+        return !toRemove.isEmpty();
     }
 
     @Override
     public void clear() {
-        holderIds.clear();
+        List<UUID> ids = new ArrayList<>(holderIds);
+        holderIds.getManager().removeFromUniqueDataCollection(holderIds, ids);
     }
 
     @Override
     public String toString() {
-        return "PersistentUniqueDataCollection{" +
-                "holderIds=" + holderIds +
+        return getClass().getSimpleName() + "{" +
+                "dataType=" + getDataType() +
+                ", holderIds=" + holderIds +
                 '}';
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) return true;
+        if (obj == null || getClass() != obj.getClass()) return false;
+        if (!super.equals(obj)) return false;
+        PersistentUniqueDataCollection<?> that = (PersistentUniqueDataCollection<?>) obj;
+        return holderIds.equals(that.holderIds);
+    }
+
+    @Override
+    public int hashCode() {
+        return holderIds.hashCode();
     }
 
     private class Itr implements Iterator<T> {
@@ -172,13 +211,14 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
                 throw new NoSuchElementException();
             cursor = i + 1;
             UUID id = ids[lastRet = i];
-            return (T) getDataManager().getUniqueData(getDataType(), id);
+            return getDataManager().getUniqueData(getDataType(), id);
         }
 
         public void remove() {
             if (lastRet < 0)
                 throw new IllegalStateException();
-            holderIds.remove(ids[lastRet]);
+            UUID id = ids[lastRet];
+            holderIds.getManager().removeFromUniqueDataCollection(holderIds, Collections.singletonList(id));
 
             lastRet = -1;
         }
@@ -188,7 +228,7 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
             Objects.requireNonNull(action);
             for (int i = cursor; i < ids.length; i++) {
                 UUID id = ids[i];
-                action.accept((T) getDataManager().getUniqueData(getDataType(), id));
+                action.accept(getDataManager().getUniqueData(getDataType(), id));
             }
             cursor = ids.length;
         }

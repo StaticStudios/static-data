@@ -14,17 +14,18 @@ import java.util.function.Supplier;
 import java.util.logging.Logger;
 
 public class MockThreadProvider implements ThreadUtilProvider {
-    private final ExecutorService executorService = Executors.newCachedThreadPool();
     private final ExecutorService mainThreadExecutorService;
     private final List<Runnable> syncOnDisableTasksRunNext = Collections.synchronizedList(new ArrayList<>());
     private final List<ShutdownTask> shutdownTasks = Collections.synchronizedList(new ArrayList<>());
     private final Logger logger = Logger.getLogger(MockThreadProvider.class.getName());
+    private ExecutorService executorService;
     private boolean isShuttingDown = false;
     private boolean doneShuttingDown = false;
 
 
     public MockThreadProvider() {
         this.mainThreadExecutorService = Executors.newSingleThreadExecutor();
+        this.executorService = Executors.newCachedThreadPool((r) -> new Thread(r, "MockThreadProvider"));
     }
 
     @Override
@@ -73,6 +74,13 @@ public class MockThreadProvider implements ThreadUtilProvider {
     public void shutdown() {
         isShuttingDown = true;
 
+        executorService.shutdown();
+        try {
+            executorService.awaitTermination(30, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
         Map<ShutdownStage, List<ShutdownTask>> tasks = new HashMap<>();
         shutdownTasks.forEach(task -> tasks.computeIfAbsent(task.stage(), k -> new ArrayList<>()).add(task));
 
@@ -109,14 +117,6 @@ public class MockThreadProvider implements ThreadUtilProvider {
                 });
 
         doneShuttingDown = true;
-
-        //Finish all tasks that are currently running
-        executorService.shutdown();
-        try {
-            executorService.awaitTermination(30, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     private Logger getLogger() {

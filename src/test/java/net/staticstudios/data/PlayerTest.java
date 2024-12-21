@@ -14,6 +14,7 @@ import java.sql.PreparedStatement;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class PlayerTest extends DataTest {
+
     @Test
     public void createPlayer() throws InterruptedException {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();

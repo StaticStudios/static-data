@@ -33,6 +33,17 @@ public class Reference<T extends UniqueData> implements DataHolder {
         }
     }
 
+    public InitialPersistentValue initial(T data) {
+        if (data == null) {
+            return id.initial(null);
+        }
+        return id.initial(data.getId());
+    }
+
+    public InitialPersistentValue initial(UUID id) {
+        return this.id.initial(id);
+    }
+
     public void set(T data) {
         if (data == null) {
             id.set(null);

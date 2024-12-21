@@ -1,12 +1,11 @@
 package net.staticstudios.data.impl;
 
-import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.data.collection.CollectionEntry;
-import net.staticstudios.data.data.collection.KeyedCollectionEntry;
 import net.staticstudios.data.data.collection.PersistentCollection;
 import net.staticstudios.data.data.collection.PersistentValueCollection;
 import net.staticstudios.data.impl.pg.PostgresListener;
@@ -39,7 +38,7 @@ public class PersistentCollectionManager {
     protected PersistentCollectionManager(DataManager dataManager, PostgresListener pgListener) {
         this.dataManager = dataManager;
         this.pgListener = pgListener;
-        this.collectionEntryHolders = Multimaps.synchronizedMultimap(ArrayListMultimap.create());
+        this.collectionEntryHolders = Multimaps.synchronizedSetMultimap(HashMultimap.create());
 
 
         pgListener.addHandler(notification -> {
@@ -49,8 +48,25 @@ public class PersistentCollectionManager {
 
             Collection<PersistentCollection<?>> dummyCollections = dataManager.getDummyPersistentCollections(notification.getSchema() + "." + notification.getTable());
             switch (notification.getOperation()) {
-                case INSERT -> dummyCollections.forEach(dummyCollection ->
-                        collectionEntryHolders.put(dummyCollection.getKey(), dummyCollection.getRootHolder().getIdentifier()));
+                case INSERT -> dummyCollections.forEach(dummyCollection -> {
+                    String encodedLinkingId = notification.getData().newDataValueMap().get(dummyCollection.getLinkingColumn());
+                    if (encodedLinkingId == null) {
+                        return;
+                    }
+
+                    CollectionKey collectionKey = new CollectionKey(
+                            dummyCollection.getSchema(),
+                            dummyCollection.getTable(),
+                            dummyCollection.getLinkingColumn(),
+                            dummyCollection.getDataColumn(),
+                            UUID.fromString(encodedLinkingId)
+                    );
+
+                    collectionEntryHolders.put(collectionKey, UniqueIdentifier.of(
+                            dummyCollection.getRootHolder().getIdentifier().getColumn(),
+                            UUID.fromString(notification.getData().newDataValueMap().get(dummyCollection.getEntryIdColumn()))
+                    ));
+                });
                 case UPDATE -> dummyCollections.forEach(dummyCollection -> {
                     String linkingColumn = dummyCollection.getLinkingColumn();
 
@@ -61,19 +77,59 @@ public class PersistentCollectionManager {
                         return;
                     }
 
+
+                    UUID entryId = UUID.fromString(notification.getData().newDataValueMap().get(dummyCollection.getEntryIdColumn()));
+
+
                     UUID oldLinkingId = oldLinkingValue == null ? null : UUID.fromString(oldLinkingValue);
                     UUID newLinkingId = newLinkingValue == null ? null : UUID.fromString(newLinkingValue);
+                    if (oldLinkingId != null) {
+                        CollectionKey collectionKey = new CollectionKey(
+                                dummyCollection.getSchema(),
+                                dummyCollection.getTable(),
+                                linkingColumn,
+                                dummyCollection.getDataColumn(),
+                                UUID.fromString(oldLinkingValue)
+                        );
 
-                    UniqueIdentifier oldIdentifier = UniqueIdentifier.of(dummyCollection.getRootHolder().getIdentifier().getColumn(), oldLinkingId);
-                    UniqueIdentifier newIdentifier = UniqueIdentifier.of(dummyCollection.getRootHolder().getIdentifier().getColumn(), newLinkingId);
+                        UniqueIdentifier oldIdentifier = UniqueIdentifier.of(dummyCollection.getRootHolder().getIdentifier().getColumn(), entryId);
+                        logger.trace("Removed collection entry holder from map: {} -> {}", collectionKey, oldIdentifier);
+                    }
 
-                    collectionEntryHolders.remove(dummyCollection.getKey(), oldIdentifier);
-                    collectionEntryHolders.put(dummyCollection.getKey(), newIdentifier);
+                    if (newLinkingId != null) {
+                        CollectionKey collectionKey = new CollectionKey(
+                                dummyCollection.getSchema(),
+                                dummyCollection.getTable(),
+                                linkingColumn,
+                                dummyCollection.getDataColumn(),
+                                UUID.fromString(newLinkingValue)
+                        );
 
-                    logger.trace("Updated collection entry holder in map: {} -> {} to {} -> {}", dummyCollection.getKey(), oldIdentifier, dummyCollection.getKey(), newIdentifier);
+                        UniqueIdentifier newIdentifier = UniqueIdentifier.of(dummyCollection.getRootHolder().getIdentifier().getColumn(), entryId);
+                        collectionEntryHolders.put(collectionKey, newIdentifier);
+                        logger.trace("Added collection entry holder to map: {} -> {}", collectionKey, newIdentifier);
+                    }
+
                 });
-                case DELETE -> dummyCollections.forEach(dummyCollection ->
-                        collectionEntryHolders.remove(dummyCollection.getKey(), dummyCollection.getRootHolder().getIdentifier()));
+                case DELETE -> dummyCollections.forEach(dummyCollection -> {
+                    String encodedLinkingId = notification.getData().oldDataValueMap().get(dummyCollection.getLinkingColumn());
+                    if (encodedLinkingId == null) {
+                        return;
+                    }
+
+                    CollectionKey collectionKey = new CollectionKey(
+                            dummyCollection.getSchema(),
+                            dummyCollection.getTable(),
+                            dummyCollection.getLinkingColumn(),
+                            dummyCollection.getDataColumn(),
+                            UUID.fromString(encodedLinkingId)
+                    );
+
+                    collectionEntryHolders.remove(collectionKey, UniqueIdentifier.of(
+                            dummyCollection.getRootHolder().getIdentifier().getColumn(),
+                            UUID.fromString(notification.getData().oldDataValueMap().get(dummyCollection.getEntryIdColumn()))
+                    ));
+                });
             }
         });
     }
@@ -84,6 +140,102 @@ public class PersistentCollectionManager {
 
     public static PersistentCollectionManager getInstance() {
         return instance;
+    }
+
+    public void handlePersistentValueUncache(String schema, String table, String column, UUID holderId, String idColumn, Object oldValue) {
+        // This will look at the linking column, and if it's been removed, then we need to remove the entry from the collection
+        if (oldValue == null || !oldValue.getClass().equals(UUID.class)) {
+            return;
+        }
+
+        logger.trace("Handling PersistentValue uncache: ({}.{}.{}) {}", schema, table, column, oldValue);
+        UUID oldEntryId = (UUID) oldValue;
+
+
+        dataManager.getDummyPersistentCollections(schema + "." + table).stream()
+                .filter(dummyCollection -> dummyCollection.getEntryIdColumn().equals(column))
+                .forEach(dummyCollection -> {
+
+                    UniqueIdentifier oldIdentifier = UniqueIdentifier.of(dummyCollection.getRootHolder().getIdentifier().getColumn(), oldEntryId);
+                    CellKey linkingKey = getEntryLinkingKey(dummyCollection, oldEntryId, oldIdentifier);
+
+                    CollectionKey oldCollectionKey = new CollectionKey(
+                            schema,
+                            table,
+                            dummyCollection.getLinkingColumn(),
+                            dummyCollection.getDataColumn(),
+                            dataManager.get(linkingKey)
+                    );
+
+                    collectionEntryHolders.remove(oldCollectionKey, oldIdentifier);
+                    logger.trace("Removed collection entry holder from map: {} -> {}", oldCollectionKey, oldIdentifier);
+                });
+    }
+
+    public void handlePersistentValueCacheUpdated(String schema, String table, String column, UUID holderId, String idColumn, Object oldValue, Object newValue) {
+        if (Objects.equals(oldValue, newValue)) {
+            return;
+        }
+        if (oldValue != null && !oldValue.getClass().equals(UUID.class)) {
+            return;
+        }
+
+        if (newValue != null && !newValue.getClass().equals(UUID.class)) {
+            return;
+        }
+
+        logger.trace("Handling PersistentValue cache update: ({}.{}.{}) {} -> {}", schema, table, column, oldValue, newValue);
+
+        UUID newLinkingId = (UUID) newValue;
+        UUID oldLinkingId = (UUID) oldValue;
+
+        // We need to check if a collection exists for this pv and this pv is the linking column, if so then we need to update the collection entry holder
+        // This will add or remove the entry from the collection
+
+        dataManager.getDummyPersistentCollections(schema + "." + table).stream()
+                .filter(dummyCollection -> dummyCollection.getLinkingColumn().equals(column))
+                .forEach(dummyCollection -> {
+
+                    CellKey entryIdKey = new CellKey(
+                            schema,
+                            table,
+                            dummyCollection.getEntryIdColumn(),
+                            holderId,
+                            idColumn
+                    );
+
+                    if (oldLinkingId != null) {
+                        CollectionKey oldCollectionKey = new CollectionKey(
+                                dummyCollection.getSchema(),
+                                dummyCollection.getTable(),
+                                dummyCollection.getLinkingColumn(),
+                                dummyCollection.getDataColumn(),
+                                oldLinkingId
+                        );
+
+                        UUID oldEntryId = dataManager.get(entryIdKey);
+
+                        UniqueIdentifier oldIdentifier = UniqueIdentifier.of(dummyCollection.getRootHolder().getIdentifier().getColumn(), oldEntryId);
+                        collectionEntryHolders.remove(oldCollectionKey, oldIdentifier);
+                        logger.trace("Removed collection entry holder from map: {} -> {}", dummyCollection.getKey(), oldIdentifier);
+                    }
+
+                    if (newLinkingId != null) {
+                        CollectionKey newCollectionKey = new CollectionKey(
+                                dummyCollection.getSchema(),
+                                dummyCollection.getTable(),
+                                dummyCollection.getLinkingColumn(),
+                                dummyCollection.getDataColumn(),
+                                newLinkingId
+                        );
+
+                        UUID newEntryId = dataManager.get(entryIdKey);
+
+                        UniqueIdentifier newIdentifier = UniqueIdentifier.of(dummyCollection.getRootHolder().getIdentifier().getColumn(), newEntryId);
+                        collectionEntryHolders.put(newCollectionKey, newIdentifier);
+                        logger.trace("Added collection entry holder to map: {} -> {}", newCollectionKey, newIdentifier);
+                    }
+                });
     }
 
     @Blocking
@@ -158,7 +310,6 @@ public class PersistentCollectionManager {
 
     public void addEntries(PersistentValueCollection<?> collection, Collection<CollectionEntry> entries) {
         UniqueData holder = collection.getRootHolder();
-        List<KeyedCollectionEntry> keyedEntries = new ArrayList<>();
 
         for (CollectionEntry entry : entries) {
             UniqueIdentifier uniqueIdentifier = UniqueIdentifier.of(holder.getIdentifier().getColumn(), entry.id());
@@ -173,28 +324,22 @@ public class PersistentCollectionManager {
             dataManager.cache(entryLinkKey, collection.getRootHolder().getId(), Instant.now());
             dataManager.cache(entryDataKey, entry.value(), Instant.now());
             collectionEntryHolders.put(collection.getKey(), uniqueIdentifier);
-
-            keyedEntries.add(new KeyedCollectionEntry(entryDataKey, entry.value()));
         }
 
         ThreadUtils.submit(() -> {
             try {
-                addToDatabase(collection, keyedEntries);
+                addToDatabase(collection, entries);
             } catch (Exception e) {
                 e.printStackTrace();
             }
         });
     }
 
-    public void removeEntry(PersistentValueCollection<?> collection, KeyedCollectionEntry entry) {
-        removeEntries(collection, Collections.singletonList(entry));
-    }
-
-    public void removeEntries(PersistentValueCollection<?> collection, List<KeyedCollectionEntry> entries) {
+    public void removeEntries(PersistentValueCollection<?> collection, List<CollectionEntry> entries) {
         DataKey collectionKey = collection.getKey();
-        for (KeyedCollectionEntry entry : entries) {
-            collectionEntryHolders.remove(collectionKey, collection.getRootHolder().getIdentifier());
-            dataManager.uncache(entry.dataKey());
+        for (CollectionEntry entry : entries) {
+            collectionEntryHolders.remove(collectionKey, UniqueIdentifier.of(collection.getRootHolder().getIdentifier().getColumn(), entry.id()));
+            dataManager.uncache(getEntryDataKey(collection, entry.id(), collection.getRootHolder().getIdentifier()));
         }
 
         ThreadUtils.submit(() -> removeFromDatabase(collection, entries));
@@ -217,15 +362,15 @@ public class PersistentCollectionManager {
         return getEntryKeys(collection).stream().map(dataManager::get).toList();
     }
 
-    public List<KeyedCollectionEntry> getKeyedEntries(PersistentCollection<?> collection) {
-        return collectionEntryHolders.get(collection.getKey()).stream().map(pkey -> {
-            CellKey entryDataKey = getEntryDataKey(collection, pkey.getId(), collection.getRootHolder().getIdentifier());
+    public List<CollectionEntry> getCollectionEntries(PersistentCollection<?> collection) {
+        return collectionEntryHolders.get(collection.getKey()).stream().map(identifier -> {
+            CellKey entryDataKey = getEntryDataKey(collection, identifier.getId(), collection.getRootHolder().getIdentifier());
             Object value = dataManager.get(entryDataKey);
-            return new KeyedCollectionEntry(entryDataKey, value);
+            return new CollectionEntry(identifier.getId(), value);
         }).toList();
     }
 
-    public void addToDatabase(PersistentValueCollection<?> collection, List<KeyedCollectionEntry> entries) {
+    public void addToDatabase(PersistentValueCollection<?> collection, Collection<CollectionEntry> entries) {
         if (entries.isEmpty()) {
             return;
         }
@@ -233,6 +378,8 @@ public class PersistentCollectionManager {
         String entryIdColumn = collection.getEntryIdColumn();
 
         try (Connection connection = dataManager.getConnection()) {
+            //todo: this insert thing is wrong, since it will fail if there is a not null constraint on some other column not specified
+            //todo: change this to a function or something where we try to update an existing entry, if its not there, then we fallback to insert. this case is when were using a uniquedatacollection
             StringBuilder sqlBuilder = new StringBuilder("INSERT INTO ").append(collection.getSchema()).append(".").append(collection.getTable()).append(" (");
 
             List<String> columns = new ArrayList<>();
@@ -276,11 +423,10 @@ public class PersistentCollectionManager {
 
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
 
-                for (KeyedCollectionEntry entry : entries) {
-                    UniqueIdentifier pkey = collection.getRootHolder().getIdentifier();
+                for (CollectionEntry entry : entries) {
 
                     int i = 1;
-                    statement.setObject(i, pkey.getId());
+                    statement.setObject(i, entry.id());
                     if (!collection.getDataColumn().equals(entryIdColumn)) {
                         // For PersistentUniqueDataCollection the entry id will be the data, since that's what we're interested in
                         statement.setObject(++i, dataManager.serialize(entry.value()));
@@ -291,7 +437,9 @@ public class PersistentCollectionManager {
                 }
 
             } finally {
-                connection.commit();
+                if (!autoCommit) {
+                    connection.commit();
+                }
                 connection.setAutoCommit(autoCommit);
             }
 
@@ -302,7 +450,7 @@ public class PersistentCollectionManager {
     }
 
 
-    public void removeFromDatabase(PersistentValueCollection<?> collection, List<KeyedCollectionEntry> entries) {
+    public void removeFromDatabase(PersistentValueCollection<?> collection, List<CollectionEntry> entries) {
         if (entries.isEmpty()) {
             return;
         }
@@ -334,9 +482,8 @@ public class PersistentCollectionManager {
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 int i = 1;
 
-                for (KeyedCollectionEntry entry : entries) {
-                    UniqueIdentifier pkey = collection.getRootHolder().getIdentifier();
-                    statement.setObject(i++, pkey.getId());
+                for (CollectionEntry entry : entries) {
+                    statement.setObject(i++, entry.id());
                 }
 
                 statement.executeUpdate();
@@ -346,5 +493,52 @@ public class PersistentCollectionManager {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public void removeFromUniqueDataCollection(PersistentValueCollection<?> idsCollection, List<UUID> entryIds) {
+        if (entryIds.isEmpty()) {
+            return;
+        }
+
+        for (UUID entry : entryIds) {
+            UniqueIdentifier pkey = UniqueIdentifier.of(idsCollection.getRootHolder().getIdentifier().getColumn(), entry);
+            collectionEntryHolders.remove(idsCollection.getKey(), pkey);
+        }
+
+
+        ThreadUtils.submit(() -> {
+            try (Connection connection = dataManager.getConnection()) {
+                StringBuilder sqlBuilder = new StringBuilder("UPDATE ").append(idsCollection.getSchema()).append(".").append(idsCollection.getTable()).append(" SET ");
+                sqlBuilder.append(idsCollection.getLinkingColumn()).append(" = NULL WHERE ");
+                sqlBuilder.append(idsCollection.getEntryIdColumn()).append(" IN (");
+
+                int totalValues = entryIds.size();
+
+                for (int i = 0; i < totalValues; i++) {
+                    sqlBuilder.append("?");
+                    if (i < totalValues - 1) {
+                        sqlBuilder.append(", ");
+                    }
+                }
+
+                sqlBuilder.append(")");
+
+                String sql = sqlBuilder.toString();
+                dataManager.logSQL(sql);
+
+                try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                    int i = 1;
+
+                    for (UUID entry : entryIds) {
+                        statement.setObject(i++, entry);
+                    }
+
+                    statement.executeUpdate();
+                }
+
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 }

@@ -21,13 +21,13 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.function.Consumer;
 
 public class PostgresListener {
-    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSSX");
+    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSSX");
     public static String CREATE_DATA_NOTIFY_FUNCTION = """
             create or replace function propagate_data_update() returns trigger as $$
             declare
                 notification text;
             begin
-                notification := clock_timestamp() || ',' || tg_table_schema || ',' || TG_TABLE_NAME || ',' || TG_OP || ',' ||
+                notification := to_char(current_timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.FF6"Z"') || ',' || tg_table_schema || ',' || TG_TABLE_NAME || ',' || TG_OP || ',' ||
                                 json_build_object(
                                     'old', (case when TG_OP = 'INSERT' then '{}' else row_to_json(OLD) end),
                                     'new', (case when TG_OP = 'DELETE' then '{}' else row_to_json(NEW) end)
@@ -91,7 +91,6 @@ public class PostgresListener {
                     String encodedData = parts[4];
                     PostgresData data = gson.fromJson(encodedData, PostgresData.class);
 
-                    //todo: sometimes this doesnt parse and throws errors example of an invalid timestamp (2024-12-20 05:55:55.01655+00)
                     OffsetDateTime offsetDateTime = OffsetDateTime.parse(encodedTimestamp, DATE_TIME_FORMATTER);
 
                     PostgresNotification notification = new PostgresNotification(
@@ -121,7 +120,7 @@ public class PostgresListener {
             throw new RuntimeException(e);
         }
 
-        ThreadUtils.onShutdownRunSync(ShutdownStage.EARLY, () -> {
+        ThreadUtils.onShutdownRunSync(ShutdownStage.CLEANUP, () -> {
             try {
                 pgConnection.close();
             } catch (SQLException e) {

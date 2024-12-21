@@ -11,7 +11,7 @@ public class UniqueIdentifier {
 
     public UniqueIdentifier(String column, UUID id) {
         this.column = Preconditions.checkNotNull(column);
-        this.id = Preconditions.checkNotNull(id);
+        this.id = id; //can be null for dummy instances
     }
 
     public static UniqueIdentifier of(String column, UUID value) {

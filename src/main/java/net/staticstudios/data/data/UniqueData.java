@@ -7,6 +7,7 @@ import net.staticstudios.data.key.UniqueIdentifier;
 import net.staticstudios.data.util.ReflectionUtils;
 
 import java.lang.reflect.Field;
+import java.util.Objects;
 import java.util.UUID;
 
 public class UniqueData implements DataHolder {
@@ -53,12 +54,13 @@ public class UniqueData implements DataHolder {
         if (this == obj) return true;
         if (obj == null || getClass() != obj.getClass()) return false;
         UniqueData that = (UniqueData) obj;
-        return identifier.equals(that.identifier);
+        return Objects.equals(getId(), that.getId());
     }
 
     @Override
     public int hashCode() {
-        return getId().hashCode();
+        UUID id = getId();
+        return id != null ? id.hashCode() : 0;
     }
 
     @Override
