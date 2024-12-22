@@ -158,6 +158,15 @@ public class DataTest {
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
+
+        if (System.getenv("GITHUB_ACTIONS").equals("true")) {
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
 //        dataPropogationlogger.info("Data propagation complete (callback id: {}) in {}ms", callbackId, end - start);
     }
 
