@@ -9,7 +9,11 @@ import java.util.UUID;
 public class DiscordUser extends UniqueData {
     private final PersistentValue<String> name = PersistentValue.of(this, String.class, "name");
     private final PersistentValue<Boolean> enableFriendRequests = PersistentValue.foreign(this, Boolean.class, "discord", "user_settings", "enable_friend_requests", "user_id")
-            .withDefault(true);
+            .withDefault(true)
+            .onUpdate(update -> {
+                //todo: test this update handler
+                //todo: also ensure with dummy PVs this doesnt break anything.
+            });
 
     private DiscordUser(DataManager dataManager, UUID id) {
         super(dataManager, "discord", "users", id);

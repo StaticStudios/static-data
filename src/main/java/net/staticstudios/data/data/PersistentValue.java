@@ -1,6 +1,7 @@
 package net.staticstudios.data.data;
 
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.ValueUpdateHandler;
 import net.staticstudios.data.impl.PersistentValueManager;
 import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.DataKey;
@@ -63,6 +64,11 @@ public class PersistentValue<T> implements Value<T> {
 
     public InitialPersistentValue initial(T value) {
         return new InitialPersistentValue(this, value);
+    }
+
+    public PersistentValue<T> onUpdate(ValueUpdateHandler<T> updateHandler) {
+        dataManager.registerValueUpdateHandler(this.getKey(), updateHandler);
+        return this;
     }
 
     public PersistentValue<T> withDefault(T defaultValue) {

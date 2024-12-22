@@ -39,6 +39,7 @@ public class DataManager {
     private static final Object NULL_MARKER = new Object();
     private final Logger logger = LoggerFactory.getLogger(DataManager.class);
     private final Map<DataKey, CacheEntry> cache;
+    private final Map<DataKey, ValueUpdateHandler<?>> valueUpdateHandlers;
     private final Multimap<Class<? extends UniqueData>, UUID> uniqueDataIds;
     private final Map<Class<? extends UniqueData>, Map<UUID, UniqueData>> uniqueDataCache;
     private final Multimap<String, Value<?>> dummyValueMap;
@@ -51,6 +52,7 @@ public class DataManager {
 
     public DataManager(HikariConfig poolConfig) {
         this.cache = new ConcurrentHashMap<>();
+        this.valueUpdateHandlers = new ConcurrentHashMap<>();
         this.uniqueDataCache = new ConcurrentHashMap<>();
         this.dummyValueMap = Multimaps.synchronizedSetMultimap(HashMultimap.create());
         this.dummyPersistentCollectionMap = Multimaps.synchronizedSetMultimap(HashMultimap.create());
@@ -558,15 +560,28 @@ public class DataManager {
             return;
         }
 
-        if (value == null) {
-            cache.put(key, CacheEntry.of(NULL_MARKER, instant));
-            return;
+        cache.put(key, CacheEntry.of(Objects.requireNonNullElse(value, NULL_MARKER), instant));
+
+        ValueUpdateHandler<?> updateHandler = valueUpdateHandlers.get(key);
+        if (updateHandler != null) {
+            Object oldValue = existing == null || existing.value() == NULL_MARKER ? null : existing.value();
+            Object newValue = value == NULL_MARKER ? null : value;
+
+            try {
+                updateHandler.unsafeHandle(oldValue, newValue);
+            } catch (Exception e) {
+                logger.error("Error handling value update. Key: {}", key, e);
+            }
         }
-        cache.put(key, CacheEntry.of(value, instant));
     }
 
     public void uncache(DataKey key) {
         cache.remove(key);
+        valueUpdateHandlers.remove(key);
+    }
+
+    public void registerValueUpdateHandler(DataKey key, ValueUpdateHandler<?> handler) {
+        valueUpdateHandlers.put(key, handler);
     }
 
     public Connection getConnection() throws SQLException {
