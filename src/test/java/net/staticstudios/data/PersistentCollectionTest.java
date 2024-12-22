@@ -53,7 +53,7 @@ public class PersistentCollectionTest extends DataTest {
         });
     }
 
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @RetryingTest(5)
     public void testAddToUniqueDataCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -103,7 +103,7 @@ public class PersistentCollectionTest extends DataTest {
         }
     }
 
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @RetryingTest(5)
     public void testAddAllToUniqueDataCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -139,7 +139,7 @@ public class PersistentCollectionTest extends DataTest {
         }
     }
 
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @RetryingTest(5)
     public void testRemoveFromUniqueDataCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -195,7 +195,7 @@ public class PersistentCollectionTest extends DataTest {
         }
     }
 
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @RetryingTest(5)
     public void testRemoveAllFromUniqueDataCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -234,7 +234,7 @@ public class PersistentCollectionTest extends DataTest {
         }
     }
 
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @RetryingTest(5)
     public void testContainsInUniqueDataCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -258,7 +258,7 @@ public class PersistentCollectionTest extends DataTest {
         assertFalse(facebookUser.getPosts().contains(null));
     }
 
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @RetryingTest(5)
     public void testContainsAllInUniqueDataCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -286,7 +286,7 @@ public class PersistentCollectionTest extends DataTest {
         assertTrue(facebookUser.getPosts().containsAll(List.of()));
     }
 
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @RetryingTest(5)
     public void testRetainAllInUniqueDataCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -315,7 +315,7 @@ public class PersistentCollectionTest extends DataTest {
         assertFalse(facebookUser.getPosts().contains(post3));
     }
 
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @RetryingTest(5)
     public void testToArrayInUniqueDataCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -360,7 +360,7 @@ public class PersistentCollectionTest extends DataTest {
         assertTrue(containsPost2Object);
     }
 
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @RetryingTest(5)
     public void testIteratorInUniqueDataCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -410,7 +410,7 @@ public class PersistentCollectionTest extends DataTest {
 
     // ----- Test PersistentValueCollections ----- //
 
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @RetryingTest(5)
     public void testAddToValueCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -445,7 +445,7 @@ public class PersistentCollectionTest extends DataTest {
         }
     }
 
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @RetryingTest(5)
     public void testAddAllToValueCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -478,7 +478,7 @@ public class PersistentCollectionTest extends DataTest {
         }
     }
 
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @RetryingTest(5)
     public void testRemoveFromValueCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -525,7 +525,7 @@ public class PersistentCollectionTest extends DataTest {
         }
     }
 
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @RetryingTest(5)
     public void testRemoveAllFromValueCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -564,7 +564,7 @@ public class PersistentCollectionTest extends DataTest {
         }
     }
 
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @RetryingTest(5)
     public void testContainsInValueCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -584,7 +584,7 @@ public class PersistentCollectionTest extends DataTest {
         assertFalse(facebookUser.getFavoriteQuotes().contains(null));
     }
 
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @RetryingTest(5)
     public void testContainsAllInValueCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -610,7 +610,7 @@ public class PersistentCollectionTest extends DataTest {
         assertTrue(facebookUser.getFavoriteQuotes().containsAll(List.of()));
     }
 
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @RetryingTest(5)
     public void testRetainAllInValueCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -639,7 +639,7 @@ public class PersistentCollectionTest extends DataTest {
         assertFalse(facebookUser.getFavoriteQuotes().contains("Here's another quote"));
     }
 
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @RetryingTest(5)
     public void testToArrayInValueCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -686,7 +686,7 @@ public class PersistentCollectionTest extends DataTest {
         assertTrue(containsQuote2Object);
     }
 
-    @RetryingTest(maxAttempts = 5, suspendForMs = 100)
+    @RetryingTest(5)
     public void testIteratorInValueCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();

@@ -46,6 +46,7 @@ public class PostgresListener {
                     SELECT 1
                     FROM pg_trigger
                     WHERE tgname = 'propagate_data_update_trigger'
+                    AND tgrelid = '%s'::regclass
                 ) THEN
                     CREATE TRIGGER propagate_data_update_trigger
                     AFTER INSERT OR UPDATE OR DELETE ON %s
@@ -108,8 +109,6 @@ public class PostgresListener {
                             logger.error("Error handling notification", e);
                         }
                     }
-
-
                 }
             });
 
@@ -119,6 +118,7 @@ public class PostgresListener {
         } catch (SQLException | ClassNotFoundException e) {
             throw new RuntimeException(e);
         }
+        logger.debug("Notification listener started");
 
         ThreadUtils.onShutdownRunSync(ShutdownStage.CLEANUP, () -> {
             try {
@@ -145,7 +145,7 @@ public class PostgresListener {
             return;
         }
 
-        String sql = CREATE_TRIGGER.formatted(schemaTable);
+        String sql = CREATE_TRIGGER.formatted(schemaTable, schemaTable);
         logger.debug("Adding propagate_data_update_trigger to table: {}", schemaTable);
 
         try (Statement statement = connection.createStatement()) {

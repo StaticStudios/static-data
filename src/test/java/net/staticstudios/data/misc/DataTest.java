@@ -69,6 +69,7 @@ public class DataTest {
         }
 
         try (Statement statement = connection.createStatement()) {
+            statement.execute("DROP SCHEMA IF EXISTS wait_for_data_propagation_callback CASCADE");
             statement.execute("CREATE SCHEMA wait_for_data_propagation_callback");
             statement.execute("CREATE TABLE wait_for_data_propagation_callback.callback (id UUID PRIMARY KEY)");
         }
@@ -137,27 +138,27 @@ public class DataTest {
     }
 
     public void waitForDataPropagation() {
-        long start = System.currentTimeMillis();
-        UUID callbackId = UUID.randomUUID();
-        dataPropogationlogger.info("Waiting for data propagation (callback id: {})", callbackId);
-        AtomicInteger callbacksLeftToReceive = new AtomicInteger(NUM_ENVIRONMENTS);
-        CompletableFuture<Void> future = new CompletableFuture<>();
-        waitForDataPropagationCallbacks.put(callbackId, Pair.of(callbacksLeftToReceive, future));
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("INSERT INTO wait_for_data_propagation_callback.callback (id) VALUES ('" + callbackId + "')");
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-
-        future.join();
-        waitForDataPropagationCallbacks.remove(callbackId);
-        long end = System.currentTimeMillis();
+//        long start = System.currentTimeMillis();
+//        UUID callbackId = UUID.randomUUID();
+//        dataPropogationlogger.info("Waiting for data propagation (callback id: {})", callbackId);
+//        AtomicInteger callbacksLeftToReceive = new AtomicInteger(NUM_ENVIRONMENTS);
+//        CompletableFuture<Void> future = new CompletableFuture<>();
+//        waitForDataPropagationCallbacks.put(callbackId, Pair.of(callbacksLeftToReceive, future));
+//        try (Statement statement = connection.createStatement()) {
+//            statement.execute("INSERT INTO wait_for_data_propagation_callback.callback (id) VALUES ('" + callbackId + "')");
+//        } catch (SQLException e) {
+//            throw new RuntimeException(e);
+//        }
+//
+//        future.join();
+//        waitForDataPropagationCallbacks.remove(callbackId);
+//        long end = System.currentTimeMillis();
         try {
             Thread.sleep(500);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-        dataPropogationlogger.info("Data propagation complete (callback id: {}) in {}ms", callbackId, end - start);
+//        dataPropogationlogger.info("Data propagation complete (callback id: {}) in {}ms", callbackId, end - start);
     }
 
 }

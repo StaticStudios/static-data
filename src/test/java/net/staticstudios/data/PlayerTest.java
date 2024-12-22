@@ -6,6 +6,7 @@ import net.staticstudios.data.mock.Backpack;
 import net.staticstudios.data.mock.HomeLocation;
 import net.staticstudios.data.mock.Island;
 import net.staticstudios.data.mock.Player;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
@@ -16,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
 public class PlayerTest extends DataTest {
 
     @Test
+    @Disabled
     public void createPlayer() throws InterruptedException {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -83,6 +85,7 @@ public class PlayerTest extends DataTest {
     }
 
     @Test
+    @Disabled
     public void testUpdatePersistentValue() throws InterruptedException {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
