@@ -6,6 +6,7 @@ import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.DataKey;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 public class PersistentValue<T> implements Value<T> {
     private final String schema;
@@ -15,6 +16,7 @@ public class PersistentValue<T> implements Value<T> {
     private final DataHolder holder;
     private final String idColumn;
     private final DataManager dataManager;
+    private Supplier<T> defaultValueSupplier;
 
     public PersistentValue(String schema, String table, String column, String idColumn, Class<T> dataType, DataHolder holder, DataManager dataManager) {
         if (!holder.getDataManager().isSupportedType(dataType)) {
@@ -61,6 +63,23 @@ public class PersistentValue<T> implements Value<T> {
 
     public InitialPersistentValue initial(T value) {
         return new InitialPersistentValue(this, value);
+    }
+
+    public PersistentValue<T> withDefault(T defaultValue) {
+        //todo: id like to validate that if this is a primative, that the value cant be null for certain entries. for example, an int.
+        // further more, id like to ensure even if with default isnt called, that the value is never null. we can probably do this by checking
+        // #getDefaultValue and in #set and in #initital
+        this.defaultValueSupplier = () -> defaultValue;
+        return this;
+    }
+
+    public PersistentValue<T> withDefault(Supplier<T> defaultValueSupplier) {
+        this.defaultValueSupplier = defaultValueSupplier;
+        return this;
+    }
+
+    public T getDefaultValue() {
+        return defaultValueSupplier == null ? null : defaultValueSupplier.get();
     }
 
     @Override

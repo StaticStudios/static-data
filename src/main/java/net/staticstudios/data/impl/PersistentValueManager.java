@@ -37,6 +37,8 @@ public class PersistentValueManager {
                     .map(value -> (PersistentValue) value)
                     .toList();
 
+            System.out.println(dummyPersistentValues);
+
             switch (notification.getOperation()) {
                 case PostgresOperation.UPDATE, PostgresOperation.INSERT -> {
                     Map<String, String> newDataValueMap = notification.getData().newDataValueMap();
@@ -48,6 +50,7 @@ public class PersistentValueManager {
                                 .orElse(null);
 
                         if (dummyPV == null) {
+                            System.out.println("No dummyPV found for column: " + column);
                             continue;
                         }
 
@@ -60,6 +63,7 @@ public class PersistentValueManager {
                         Object rawValue = dataManager.decode(dummyPV.getDataType(), encodedValue);
                         Object deserialized = dataManager.deserialize(dummyPV.getDataType(), rawValue);
 
+                        System.out.println("Caching " + key + " with value " + deserialized);
                         dataManager.cache(key, deserialized, notification.getInstant());
                     }
                 }

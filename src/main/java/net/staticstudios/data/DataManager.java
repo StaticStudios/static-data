@@ -139,8 +139,8 @@ public class DataManager {
                     }
 
                     // This is our first time seeing this value, so we add it to the map for later use
-                    if (data instanceof Value<?> value) {
-                        dummyValueMap.put(data.getHolder().getRootHolder().getSchema() + "." + data.getHolder().getRootHolder().getTable(), value);
+                    if (data instanceof PersistentValue<?> value) {
+                        dummyValueMap.put(value.getSchema() + "." + value.getTable(), value);
                     }
 
                     if (data instanceof PersistentCollection<?> collection) {
@@ -210,12 +210,27 @@ public class DataManager {
     @Blocking
     @SafeVarargs
     public final <I extends InitialValue<?, ?>> void insert(UniqueData holder, I... initialData) {
-        List<InitialPersistentValue> initialPersistentData = new ArrayList<>();
         //todo: all other Values that are not specified here should be set to NULL_MARKER in the cache. the database may then set a default value
+        Map<PersistentValue<?>, InitialPersistentValue> initialValues = new HashMap<>();
+
+        for (Field field : ReflectionUtils.getFields(holder.getClass())) {
+            field.setAccessible(true);
+
+            if (Data.class.isAssignableFrom(field.getType())) {
+                try {
+                    Data<?> data = (Data<?>) field.get(holder);
+                    if (data instanceof PersistentValue<?> pv) {
+                        initialValues.put(pv, new InitialPersistentValue(pv, pv.getDefaultValue()));
+                    }
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
 
         for (InitialValue<?, ?> data : initialData) {
-            if (data instanceof InitialPersistentValue) {
-                initialPersistentData.add((InitialPersistentValue) data);
+            if (data instanceof InitialPersistentValue initial) {
+                initialValues.put(initial.getValue(), initial);
             } else {
                 throw new IllegalArgumentException("Unsupported initial data type: " + data.getClass());
             }
@@ -226,8 +241,8 @@ public class DataManager {
 
         try {
             PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
-            persistentValueManager.setInDatabase(initialPersistentData);
-            for (InitialPersistentValue data : initialPersistentData) {
+            persistentValueManager.setInDatabase(new ArrayList<>(initialValues.values()));
+            for (InitialPersistentValue data : initialValues.values()) {
                 persistentValueManager.updateCache(data.getValue(), data.getInitialDataValue());
 
                 UniqueData pvHolder = data.getValue().getHolder().getRootHolder();
