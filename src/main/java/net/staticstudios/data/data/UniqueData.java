@@ -17,10 +17,14 @@ public class UniqueData implements DataHolder {
     private final UniqueIdentifier identifier;
 
     public UniqueData(DataManager dataManager, String schema, String table, UUID id) {
+        this(dataManager, schema, table, "id", id);
+    }
+
+    public UniqueData(DataManager dataManager, String schema, String table, String idColumn, UUID id) {
         this.dataManager = dataManager;
         this.schema = schema;
         this.table = table;
-        this.identifier = UniqueIdentifier.of("id", id);
+        this.identifier = UniqueIdentifier.of(idColumn, id);
     }
 
     public UUID getId() {

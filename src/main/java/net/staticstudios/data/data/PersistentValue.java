@@ -73,8 +73,8 @@ public class PersistentValue<T> implements Value<T> {
 
     public PersistentValue<T> withDefault(T defaultValue) {
         //todo: id like to validate that if this is a primative, that the value cant be null for certain entries. for example, an int.
-        // further more, id like to ensure even if with default isnt called, that the value is never null. we can probably do this by checking
-        // #getDefaultValue and in #set and in #initital
+        // further more, id like to ensure even if with default isnt called, that the value is never null. we can probably add this check in the
+        // initial persistent value constructor, and in #set.
         this.defaultValueSupplier = () -> defaultValue;
         return this;
     }

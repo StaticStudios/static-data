@@ -39,7 +39,7 @@ public class DataManager {
     private static final Object NULL_MARKER = new Object();
     private final Logger logger = LoggerFactory.getLogger(DataManager.class);
     private final Map<DataKey, CacheEntry> cache;
-    private final Map<DataKey, ValueUpdateHandler<?>> valueUpdateHandlers;
+    private final Multimap<DataKey, ValueUpdateHandler<?>> valueUpdateHandlers;
     private final Multimap<Class<? extends UniqueData>, UUID> uniqueDataIds;
     private final Map<Class<? extends UniqueData>, Map<UUID, UniqueData>> uniqueDataCache;
     private final Multimap<String, Value<?>> dummyValueMap;
@@ -49,10 +49,12 @@ public class DataManager {
     private final Set<Class<? extends UniqueData>> loadedDependencies = new HashSet<>();
     private final List<ValueSerializer<?, ?>> valueSerializers;
     private final PostgresListener pgListener;
+    private final String applicationName;
 
     public DataManager(HikariConfig poolConfig) {
+        this.applicationName = "static_data_manager-" + UUID.randomUUID();
         this.cache = new ConcurrentHashMap<>();
-        this.valueUpdateHandlers = new ConcurrentHashMap<>();
+        this.valueUpdateHandlers = Multimaps.synchronizedSetMultimap(HashMultimap.create());
         this.uniqueDataCache = new ConcurrentHashMap<>();
         this.dummyValueMap = Multimaps.synchronizedSetMultimap(HashMultimap.create());
         this.dummyPersistentCollectionMap = Multimaps.synchronizedSetMultimap(HashMultimap.create());
@@ -60,12 +62,16 @@ public class DataManager {
         this.uniqueDataIds = Multimaps.synchronizedSetMultimap(HashMultimap.create());
         this.valueSerializers = new CopyOnWriteArrayList<>();
 
-        pgListener = new PostgresListener(poolConfig);
+        pgListener = new PostgresListener(this, poolConfig);
 
         PersistentCollectionManager.instantiate(this, pgListener);
         PersistentValueManager.instantiate(this, pgListener);
 
-        this.connectionPool = new HikariPool(poolConfig);
+        HikariConfig customizedPoolConfig = new HikariConfig();
+        poolConfig.copyStateTo(customizedPoolConfig);
+        customizedPoolConfig.addDataSourceProperty("ApplicationName", applicationName);
+
+        this.connectionPool = new HikariPool(customizedPoolConfig);
 
         pgListener.addHandler(notification -> {
             if (notification.getOperation() == PostgresOperation.INSERT) {
@@ -100,6 +106,10 @@ public class DataManager {
                 throw new RuntimeException(e);
             }
         });
+    }
+
+    public String getApplicationName() {
+        return applicationName;
     }
 
     public void logSQL(String sql) {
@@ -245,18 +255,40 @@ public class DataManager {
             PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
             persistentValueManager.setInDatabase(new ArrayList<>(initialValues.values()));
             for (InitialPersistentValue data : initialValues.values()) {
-                persistentValueManager.updateCache(data.getValue(), data.getInitialDataValue());
 
                 UniqueData pvHolder = data.getValue().getHolder().getRootHolder();
-                //update the id column too
-                persistentValueManager.updateCache(
+                CellKey idColumn = new CellKey(
                         pvHolder.getSchema(),
                         pvHolder.getTable(),
                         pvHolder.getIdentifier().getColumn(),
                         pvHolder.getId(),
-                        pvHolder.getIdentifier().getColumn(),
+                        pvHolder.getIdentifier().getColumn()
+                );
+
+                //do not call PersistenValueManager#updateCache since we need to cache both values
+                //before PersistentCollectionManager#handlePersistentValueCacheUpdated is called, otherwise we get unexpected behavior
+                cache(data.getValue().getKey(), data.getInitialDataValue(), Instant.now());
+                cache(idColumn, holder.getId(), Instant.now());
+                PersistentCollectionManager.getInstance().handlePersistentValueCacheUpdated(
+                        data.getValue().getSchema(),
+                        data.getValue().getTable(),
+                        data.getValue().getColumn(),
+                        holder.getId(),
+                        data.getValue().getIdColumn(),
+                        null,
+                        data.getInitialDataValue()
+                );
+
+                PersistentCollectionManager.getInstance().handlePersistentValueCacheUpdated(
+                        idColumn.getSchema(),
+                        idColumn.getTable(),
+                        idColumn.getColumn(),
+                        pvHolder.getId(),
+                        idColumn.getIdColumn(),
+                        null,
                         pvHolder.getId()
                 );
+
             }
 
         } catch (Exception e) {
@@ -552,32 +584,39 @@ public class DataManager {
      * @param instant The instant at which the value was set
      */
     public <T> void cache(DataKey key, T value, Instant instant) {
-        logger.trace("Caching value: {} -> {}", key, value);
         CacheEntry existing = cache.get(key);
 
         if (existing != null && existing.instant().isAfter(instant)) {
-            logger.debug("Not caching value: {} -> {}, existing entry is newer. {} vs {} (existing)", key, value, instant, existing.instant());
+            logger.trace("Not caching value: {} -> {}, existing entry is newer. {} vs {} (existing)", key, value, instant, existing.instant());
             return;
+        } else {
+            logger.trace("Caching value: {} -> {}", key, value);
+        }
+
+        if (existing != null) {
+            logger.debug("Caching value to replace existing entry. Difference in instants: {} vs {} (existing)", instant, existing.instant());
         }
 
         cache.put(key, CacheEntry.of(Objects.requireNonNullElse(value, NULL_MARKER), instant));
 
-        ValueUpdateHandler<?> updateHandler = valueUpdateHandlers.get(key);
-        if (updateHandler != null) {
-            Object oldValue = existing == null || existing.value() == NULL_MARKER ? null : existing.value();
+        Collection<ValueUpdateHandler<?>> updateHandlers = valueUpdateHandlers.get(key);
+        if (existing != null) {
+            Object oldValue = existing.value() == NULL_MARKER ? null : existing.value();
             Object newValue = value == NULL_MARKER ? null : value;
 
-            try {
-                updateHandler.unsafeHandle(oldValue, newValue);
-            } catch (Exception e) {
-                logger.error("Error handling value update. Key: {}", key, e);
+            for (ValueUpdateHandler<?> updateHandler : updateHandlers) {
+                try {
+                    updateHandler.unsafeHandle(oldValue, newValue);
+                } catch (Exception e) {
+                    logger.error("Error handling value update. Key: {}", key, e);
+                }
             }
         }
     }
 
     public void uncache(DataKey key) {
         cache.remove(key);
-        valueUpdateHandlers.remove(key);
+        valueUpdateHandlers.removeAll(key);
     }
 
     public void registerValueUpdateHandler(DataKey key, ValueUpdateHandler<?> handler) {

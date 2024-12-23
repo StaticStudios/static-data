@@ -18,10 +18,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -45,7 +42,7 @@ public class DataTest {
 
         hikariConfig = new HikariConfig();
         if (USE_MOCK_DATABASE) {
-            hikariConfig.setDataSourceClassName("org.postgresql.ds.PGSimpleDataSource");
+            hikariConfig.setDataSourceClassName("com.impossibl.postgres.jdbc.PGDataSource");
             hikariConfig.addDataSourceProperty("serverName", postgres.getHost());
             hikariConfig.addDataSourceProperty("portNumber", postgres.getFirstMappedPort());
             hikariConfig.addDataSourceProperty("user", postgres.getUsername());
@@ -159,7 +156,7 @@ public class DataTest {
             throw new RuntimeException(e);
         }
 
-        if (System.getenv("GITHUB_ACTIONS").equals("true")) {
+        if (Objects.equals(System.getenv("GITHUB_ACTIONS"), "true")) {
             try {
                 Thread.sleep(1000);
             } catch (InterruptedException e) {

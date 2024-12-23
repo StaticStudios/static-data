@@ -7,12 +7,21 @@ import net.staticstudios.data.data.UniqueData;
 import java.util.UUID;
 
 public class DiscordUser extends UniqueData {
-    private final PersistentValue<String> name = PersistentValue.of(this, String.class, "name");
+    private final PersistentValue<Integer> nameUpdatesCalled = PersistentValue.foreign(this, Integer.class, "discord.user_meta.name_updates_called", "id")
+            .withDefault(0);
+    private final PersistentValue<Integer> enableFriendRequestsUpdatesCalled = PersistentValue.foreign(this, Integer.class, "discord.user_meta.enable_friend_requests_updates_called", "id")
+            .withDefault(0);
+    private final PersistentValue<String> name = PersistentValue.of(this, String.class, "name")
+            .onUpdate(update -> nameUpdatesCalled.set(nameUpdatesCalled.get() + 1));
     private final PersistentValue<Boolean> enableFriendRequests = PersistentValue.foreign(this, Boolean.class, "discord", "user_settings", "enable_friend_requests", "user_id")
             .withDefault(true)
             .onUpdate(update -> {
-                //todo: test this update handler
-                //todo: also ensure with dummy PVs this doesnt break anything.
+                System.out.println("Update 1: " + update);
+                enableFriendRequestsUpdatesCalled.set(enableFriendRequestsUpdatesCalled.get() + 1);
+            })
+            .onUpdate(update -> {
+                System.out.println("Update 2: " + update);
+                enableFriendRequestsUpdatesCalled.set(enableFriendRequestsUpdatesCalled.get() + 1);
             });
 
     private DiscordUser(DataManager dataManager, UUID id) {
@@ -40,5 +49,13 @@ public class DiscordUser extends UniqueData {
 
     public void setEnableFriendRequests(boolean enableFriendRequests) {
         this.enableFriendRequests.set(enableFriendRequests);
+    }
+
+    public int getNameUpdatesCalled() {
+        return nameUpdatesCalled.get();
+    }
+
+    public int getEnableFriendRequestsUpdatesCalled() {
+        return enableFriendRequestsUpdatesCalled.get();
     }
 }

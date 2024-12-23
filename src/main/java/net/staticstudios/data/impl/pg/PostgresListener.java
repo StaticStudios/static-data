@@ -1,10 +1,10 @@
 package net.staticstudios.data.impl.pg;
 
 import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
 import com.impossibl.postgres.api.jdbc.PGConnection;
 import com.impossibl.postgres.api.jdbc.PGNotificationListener;
 import com.zaxxer.hikari.HikariConfig;
+import net.staticstudios.data.DataManager;
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
 import org.slf4j.Logger;
@@ -16,7 +16,10 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.function.Consumer;
 
@@ -27,7 +30,7 @@ public class PostgresListener {
             declare
                 notification text;
             begin
-                notification := to_char(current_timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.FF6"Z"') || ',' || tg_table_schema || ',' || TG_TABLE_NAME || ',' || TG_OP || ',' ||
+                notification := to_char(current_timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.FF6"Z"') || ',' || tg_table_schema || ',' || TG_TABLE_NAME || ',' || TG_OP || ',' || current_setting('application_name') || ',' ||
                                 json_build_object(
                                     'old', (case when TG_OP = 'INSERT' then '{}' else row_to_json(OLD) end),
                                     'new', (case when TG_OP = 'DELETE' then '{}' else row_to_json(NEW) end)
@@ -60,10 +63,8 @@ public class PostgresListener {
     private final ConcurrentLinkedDeque<Consumer<PostgresNotification>> notificationHandlers = new ConcurrentLinkedDeque<>();
     private final PGConnection pgConnection;
     private final Gson gson = new Gson();
-    private final TypeToken<Map<String, String>> mapType = new TypeToken<>() {
-    };
 
-    public PostgresListener(HikariConfig hikariConfig) {
+    public PostgresListener(DataManager dataManager, HikariConfig hikariConfig) {
         try {
             Class.forName("com.impossibl.postgres.jdbc.PGDriver");
 
@@ -84,12 +85,20 @@ public class PostgresListener {
                 @Override
                 public void notification(int processId, String channelName, String payload) {
                     logger.trace("Received notification. PID: {}, Channel: {}, Payload: {}", processId, channelName, payload);
-                    String[] parts = payload.split(",", 5);
+                    String[] parts = payload.split(",", 6);
                     String encodedTimestamp = parts[0];
                     String schema = parts[1];
                     String table = parts[2];
                     String encodedOperation = parts[3];
-                    String encodedData = parts[4];
+                    String applicationName = parts[4];
+                    String encodedData = parts[5];
+
+                    //Filter out notifications from this application (data manager session)
+                    if (dataManager.getApplicationName().equals(applicationName)) {
+                        logger.trace("Ignoring notification from this session");
+                        return;
+                    }
+
                     PostgresData data = gson.fromJson(encodedData, PostgresData.class);
 
                     OffsetDateTime offsetDateTime = OffsetDateTime.parse(encodedTimestamp, DATE_TIME_FORMATTER);
