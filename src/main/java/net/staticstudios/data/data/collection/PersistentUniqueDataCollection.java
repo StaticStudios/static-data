@@ -90,7 +90,7 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
         manager.addEntriesToCache(holderIds, toAdd);
         ThreadUtils.submit(() -> {
             try (Connection connection = getHolder().getDataManager().getConnection()) {
-                manager.addToDatabase(connection, holderIds, toAdd);
+                manager.addUniqueDataToDatabase(connection, this, toAdd);
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -148,7 +148,7 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
         manager.addEntriesToCache(holderIds, toAdd);
         ThreadUtils.submit(() -> {
             try (Connection connection = getHolder().getDataManager().getConnection()) {
-                manager.addToDatabase(connection, holderIds, toAdd);
+                manager.addUniqueDataToDatabase(connection, this, toAdd);
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -230,7 +230,7 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
         PersistentCollectionManager manager = holderIds.getManager();
         List<CollectionEntry> toAdd = Collections.singletonList(new CollectionEntry(t.getId(), t.getId()));
         manager.addEntriesToCache(holderIds, toAdd);
-        manager.addToDatabase(connection, holderIds, toAdd);
+        manager.addUniqueDataToDatabase(connection, this, toAdd);
         return true;
     }
 
@@ -243,7 +243,7 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
 
         PersistentCollectionManager manager = holderIds.getManager();
         manager.addEntriesToCache(holderIds, toAdd);
-        manager.addToDatabase(connection, holderIds, toAdd);
+        manager.addUniqueDataToDatabase(connection, this, toAdd);
         return true;
     }
 

@@ -7,6 +7,7 @@ import net.staticstudios.data.DataManager;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.data.collection.CollectionEntry;
 import net.staticstudios.data.data.collection.PersistentCollection;
+import net.staticstudios.data.data.collection.PersistentUniqueDataCollection;
 import net.staticstudios.data.data.collection.PersistentValueCollection;
 import net.staticstudios.data.impl.pg.PostgresListener;
 import net.staticstudios.data.key.CellKey;
@@ -359,22 +360,19 @@ public class PersistentCollectionManager {
         }).toList();
     }
 
-    public void addToDatabase(Connection connection, PersistentValueCollection<?> collection, Collection<CollectionEntry> entries) throws SQLException {
+    public void addValueToDatabase(Connection connection, PersistentValueCollection<?> collection, Collection<CollectionEntry> entries) throws SQLException {
         if (entries.isEmpty()) {
             return;
         }
 
         String entryIdColumn = collection.getEntryIdColumn();
 
-        //todo: this insert thing is wrong, since it will fail if there is a not null constraint on some other column not specified
-        //todo: change this to a function or something where we try to update an existing entry, if its not there, then we fallback to insert. this case is when were using a uniquedatacollection
         StringBuilder sqlBuilder = new StringBuilder("INSERT INTO ").append(collection.getSchema()).append(".").append(collection.getTable()).append(" (");
 
         List<String> columns = new ArrayList<>();
 
         columns.add(entryIdColumn);
         if (!collection.getDataColumn().equals(entryIdColumn)) {
-            // For PersistentUniqueDataCollection the entry id will be the data, since that's what we're interested in
             columns.add(collection.getDataColumn());
         }
         columns.add(collection.getLinkingColumn());
@@ -410,20 +408,46 @@ public class PersistentCollectionManager {
         connection.setAutoCommit(false);
 
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-
             for (CollectionEntry entry : entries) {
 
                 int i = 1;
                 statement.setObject(i, entry.id());
                 if (!collection.getDataColumn().equals(entryIdColumn)) {
-                    // For PersistentUniqueDataCollection the entry id will be the data, since that's what we're interested in
                     statement.setObject(++i, dataManager.serialize(entry.value()));
                 }
                 statement.setObject(++i, collection.getRootHolder().getId());
 
                 statement.executeUpdate();
             }
+        } finally {
+            connection.setAutoCommit(autoCommit);
+        }
 
+    }
+
+    public void addUniqueDataToDatabase(Connection connection, PersistentUniqueDataCollection<?> collection, Collection<CollectionEntry> entries) throws SQLException {
+        if (entries.isEmpty()) {
+            return;
+        }
+        
+        StringBuilder sqlBuilder = new StringBuilder("UPDATE ").append(collection.getSchema()).append(".").append(collection.getTable()).append(" SET ");
+        sqlBuilder.append(collection.getLinkingColumn()).append(" = ? WHERE ");
+        sqlBuilder.append(collection.getEntryIdColumn()).append(" = ?");
+
+        String sql = sqlBuilder.toString();
+        dataManager.logSQL(sql);
+
+        boolean autoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            for (CollectionEntry entry : entries) {
+                int i = 1;
+                statement.setObject(i, collection.getRootHolder().getId());
+                statement.setObject(++i, entry.id());
+
+                statement.executeUpdate();
+            }
         } finally {
             connection.setAutoCommit(autoCommit);
         }
@@ -431,7 +455,7 @@ public class PersistentCollectionManager {
     }
 
 
-    public void removeFromDatabase(Connection connection, PersistentValueCollection<?> collection, List<CollectionEntry> entries) throws SQLException {
+    public void removeValueFromDatabase(Connection connection, PersistentValueCollection<?> collection, List<CollectionEntry> entries) throws SQLException {
         if (entries.isEmpty()) {
             return;
         }

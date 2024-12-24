@@ -64,7 +64,7 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
         manager.addEntriesToCache(this, toAdd);
         ThreadUtils.submit(() -> {
             try (Connection connection = getHolder().getDataManager().getConnection()) {
-                manager.addToDatabase(connection, this, toAdd);
+                manager.addValueToDatabase(connection, this, toAdd);
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -83,7 +83,7 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
                 manager.removeEntriesFromCache(this, toRemove);
                 ThreadUtils.submit(() -> {
                     try (Connection connection = getHolder().getDataManager().getConnection()) {
-                        manager.removeFromDatabase(connection, this, toRemove);
+                        manager.removeValueFromDatabase(connection, this, toRemove);
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -108,7 +108,7 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
         manager.addEntriesToCache(this, toAdd);
         ThreadUtils.submit(() -> {
             try (Connection connection = getHolder().getDataManager().getConnection()) {
-                manager.addToDatabase(connection, this, toAdd);
+                manager.addValueToDatabase(connection, this, toAdd);
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -138,7 +138,7 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
         manager.removeEntriesFromCache(this, toRemove);
         ThreadUtils.submit(() -> {
             try (Connection connection = getHolder().getDataManager().getConnection()) {
-                manager.removeFromDatabase(connection, this, toRemove);
+                manager.removeValueFromDatabase(connection, this, toRemove);
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -164,7 +164,7 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
         manager.removeEntriesFromCache(this, toRemove);
         ThreadUtils.submit(() -> {
             try (Connection connection = getHolder().getDataManager().getConnection()) {
-                manager.removeFromDatabase(connection, this, toRemove);
+                manager.removeValueFromDatabase(connection, this, toRemove);
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -180,7 +180,7 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
         manager.removeEntriesFromCache(this, toRemove);
         ThreadUtils.submit(() -> {
             try (Connection connection = getHolder().getDataManager().getConnection()) {
-                manager.removeFromDatabase(connection, this, toRemove);
+                manager.removeValueFromDatabase(connection, this, toRemove);
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -242,7 +242,7 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
         PersistentCollectionManager manager = getManager();
         List<CollectionEntry> toAdd = Collections.singletonList(new CollectionEntry(UUID.randomUUID(), t));
         manager.addEntriesToCache(this, toAdd);
-        manager.addToDatabase(connection, this, toAdd);
+        manager.addValueToDatabase(connection, this, toAdd);
 
         return true;
     }
@@ -252,7 +252,7 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
         PersistentCollectionManager manager = getManager();
         List<CollectionEntry> toAdd = c.stream().map(value -> new CollectionEntry(UUID.randomUUID(), value)).toList();
         manager.addEntriesToCache(this, toAdd);
-        manager.addToDatabase(connection, this, toAdd);
+        manager.addValueToDatabase(connection, this, toAdd);
 
         return true;
     }
@@ -265,7 +265,7 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
             if (entry.value().equals(t)) {
                 List<CollectionEntry> toRemove = Collections.singletonList(entry);
                 manager.removeEntriesFromCache(this, toRemove);
-                manager.removeFromDatabase(connection, this, toRemove);
+                manager.removeValueFromDatabase(connection, this, toRemove);
 
                 return true;
             }
@@ -293,7 +293,7 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
         }
 
         manager.removeEntriesFromCache(this, toRemove);
-        manager.removeFromDatabase(connection, this, toRemove);
+        manager.removeValueFromDatabase(connection, this, toRemove);
 
         return changed;
     }
@@ -303,7 +303,7 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
         PersistentCollectionManager manager = getManager();
         List<CollectionEntry> toRemove = new ArrayList<>(manager.getCollectionEntries(this));
         manager.removeEntriesFromCache(this, toRemove);
-        manager.removeFromDatabase(connection, this, toRemove);
+        manager.removeValueFromDatabase(connection, this, toRemove);
     }
 
     @Override
