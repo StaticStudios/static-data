@@ -50,7 +50,6 @@ public class PersistentValueManager {
                                 .orElse(null);
 
                         if (dummyPV == null) {
-                            System.out.println("No dummyPV found for column: " + column);
                             continue;
                         }
 
@@ -63,8 +62,7 @@ public class PersistentValueManager {
                         Object rawValue = dataManager.decode(dummyPV.getDataType(), encodedValue);
                         Object deserialized = dataManager.deserialize(dummyPV.getDataType(), rawValue);
 
-                        System.out.println("Caching " + key + " with value " + deserialized);
-                        dataManager.cache(key, deserialized, notification.getInstant());
+                        dataManager.cache(key, dummyPV.getDataType(), deserialized, notification.getInstant());
                     }
                 }
                 case PostgresOperation.DELETE -> {
@@ -128,11 +126,12 @@ public class PersistentValueManager {
                 persistentValue.getColumn(),
                 persistentValue.getHolder().getRootHolder().getId(),
                 persistentValue.getIdColumn(),
+                persistentValue.getDataType(),
                 value
         );
     }
 
-    public void updateCache(String schema, String table, String column, UUID holderId, String idColumn, Object value) {
+    public void updateCache(String schema, String table, String column, UUID holderId, String idColumn, Class<?> valueDataType, Object value) {
         Object oldValue = null;
 
         CellKey key = new CellKey(schema, table, column, holderId, idColumn);
@@ -142,7 +141,7 @@ public class PersistentValueManager {
         } catch (DataDoesNotExistException ignored) {
         }
 
-        dataManager.cache(key, value, Instant.now());
+        dataManager.cache(key, valueDataType, value, Instant.now());
         PersistentCollectionManager.getInstance().handlePersistentValueCacheUpdated(schema, table, column, holderId, idColumn, oldValue, value);
     }
 
@@ -220,6 +219,7 @@ public class PersistentValueManager {
     /**
      * Column keys are expected to all be in the same table, AND are expected to all have the same id column
      */
+    @SuppressWarnings("rawtypes")
     public void loadAllFromDatabase(Connection connection, UniqueData dummyHolder, Collection<CellKey> dummyCellKeys) throws SQLException {
         if (dummyCellKeys.isEmpty()) {
             return;
@@ -306,11 +306,11 @@ public class PersistentValueManager {
 
                     Object value = resultSet.getObject(column);
                     Object deserialized = dataManager.deserialize(dummyPV.getDataType(), value);
-                    dataManager.cache(new CellKey(firstCellKey.getSchema(), firstCellKey.getTable(), column, id, idColumn), deserialized, Instant.now());
+                    dataManager.cache(new CellKey(firstCellKey.getSchema(), firstCellKey.getTable(), column, id, idColumn), dummyPV.getDataType(), deserialized, Instant.now());
                 }
 
                 if (!dataColumns.contains(idColumn)) {
-                    dataManager.cache(new CellKey(firstCellKey.getSchema(), firstCellKey.getTable(), idColumn, id, idColumn), id, Instant.now());
+                    dataManager.cache(new CellKey(firstCellKey.getSchema(), firstCellKey.getTable(), idColumn, id, idColumn), UUID.class, id, Instant.now());
                 }
             }
         }

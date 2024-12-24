@@ -1,5 +1,6 @@
 package net.staticstudios.data;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
@@ -222,7 +223,6 @@ public class DataManager {
     @Blocking
     @SafeVarargs
     public final <I extends InitialValue<?, ?>> void insert(UniqueData holder, I... initialData) {
-        //todo: all other Values that are not specified here should be set to NULL_MARKER in the cache. the database may then set a default value
         Map<PersistentValue<?>, InitialPersistentValue> initialValues = new HashMap<>();
 
         for (Field field : ReflectionUtils.getFields(holder.getClass())) {
@@ -249,7 +249,14 @@ public class DataManager {
             //todo: redis values
         }
 
-        //todo: tell the collection manager we inserted data to see if it wants to track it
+        for (Map.Entry<PersistentValue<?>, InitialPersistentValue> initial : initialValues.entrySet()) {
+            PersistentValue<?> pv = initial.getKey();
+            InitialPersistentValue value = initial.getValue();
+
+            if (Primitives.isPrimitive(pv.getDataType()) && !Primitives.getPrimitive(pv.getDataType()).isNullable()) {
+                Preconditions.checkNotNull(value.getInitialDataValue(), "Initial data value cannot be null for primitive type: " + pv.getDataType());
+            }
+        }
 
         try {
             PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
@@ -267,8 +274,11 @@ public class DataManager {
 
                 //do not call PersistenValueManager#updateCache since we need to cache both values
                 //before PersistentCollectionManager#handlePersistentValueCacheUpdated is called, otherwise we get unexpected behavior
-                cache(data.getValue().getKey(), data.getInitialDataValue(), Instant.now());
-                cache(idColumn, holder.getId(), Instant.now());
+                cache(data.getValue().getKey(), data.getValue().getDataType(), data.getInitialDataValue(), Instant.now());
+                cache(idColumn, UUID.class, holder.getId(), Instant.now());
+
+
+                //Alert the collection manager of this change so it can update what it's keeping track of
                 PersistentCollectionManager.getInstance().handlePersistentValueCacheUpdated(
                         data.getValue().getSchema(),
                         data.getValue().getTable(),
@@ -300,43 +310,46 @@ public class DataManager {
 
     @SafeVarargs
     public final <I extends InitialValue<?, ?>> void insertAsync(UniqueData holder, I... initialData) {
-        List<InitialPersistentValue> initialPersistentData = new ArrayList<>();
-
-        for (InitialValue<?, ?> data : initialData) {
-            if (data instanceof InitialPersistentValue) {
-                initialPersistentData.add((InitialPersistentValue) data);
-            } else {
-                throw new IllegalArgumentException("Unsupported initial data type: " + data.getClass());
-            }
-            //todo: redis values
-        }
-        PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
-        for (InitialPersistentValue data : initialPersistentData) {
-            persistentValueManager.updateCache(data.getValue(), data.getInitialDataValue());
-
-            UniqueData pvHolder = data.getValue().getHolder().getRootHolder();
-            //update the id column too
-            persistentValueManager.updateCache(
-                    pvHolder.getSchema(),
-                    pvHolder.getTable(),
-                    pvHolder.getIdentifier().getColumn(),
-                    pvHolder.getId(),
-                    pvHolder.getIdentifier().getColumn(),
-                    pvHolder.getId()
-            );
-        }
-
-        ThreadUtils.submit(() -> {
-            try {
-                persistentValueManager.setInDatabase(initialPersistentData);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        });
-
-//        redisDataManager.insertIntoDataSource(holder, initialRedisData);
-
-        addUniqueData(holder);
+        throw new UnsupportedOperationException("Not implemented");
+        //todo: when implementing id like to code share between insert and insertAsync.
+        // this isnt implemented right now since #insert is still being changed
+//        List<InitialPersistentValue> initialPersistentData = new ArrayList<>();
+//
+//        for (InitialValue<?, ?> data : initialData) {
+//            if (data instanceof InitialPersistentValue) {
+//                initialPersistentData.add((InitialPersistentValue) data);
+//            } else {
+//                throw new IllegalArgumentException("Unsupported initial data type: " + data.getClass());
+//            }
+//            //todo: redis values
+//        }
+//        PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
+//        for (InitialPersistentValue data : initialPersistentData) {
+//            persistentValueManager.updateCache(data.getValue(), data.getInitialDataValue());
+//
+//            UniqueData pvHolder = data.getValue().getHolder().getRootHolder();
+//            //update the id column too
+//            persistentValueManager.updateCache(
+//                    pvHolder.getSchema(),
+//                    pvHolder.getTable(),
+//                    pvHolder.getIdentifier().getColumn(),
+//                    pvHolder.getId(),
+//                    pvHolder.getIdentifier().getColumn(),
+//                    pvHolder.getId()
+//            );
+//        }
+//
+//        ThreadUtils.submit(() -> {
+//            try {
+//                persistentValueManager.setInDatabase(initialPersistentData);
+//            } catch (Exception e) {
+//                throw new RuntimeException(e);
+//            }
+//        });
+//
+////        redisDataManager.insertIntoDataSource(holder, initialRedisData);
+//
+//        addUniqueData(holder);
     }
 
     public <T extends UniqueData> void delete(T holder) {
@@ -579,11 +592,19 @@ public class DataManager {
      * If an entry with the given key already exists in the cache,
      * it will only be replaced if this value's instant is newer than the existing entry's instant.
      *
-     * @param key     The key to cache the value under
-     * @param value   The value to cache
-     * @param instant The instant at which the value was set
+     * @param key           The key to cache the value under
+     * @param valueDataType The type of the value
+     * @param value         The value to cache
+     * @param instant       The instant at which the value was set
      */
-    public <T> void cache(DataKey key, T value, Instant instant) {
+    public <T> void cache(DataKey key, Class<?> valueDataType, T value, Instant instant) {
+        if (value != null && !valueDataType.isInstance(value)) {
+            throw new IllegalArgumentException("Value is not of the correct type! Expected: " + valueDataType + ", got: " + value.getClass());
+        }
+        if (Primitives.isPrimitive(valueDataType) && !Primitives.getPrimitive(valueDataType).isNullable()) {
+            Preconditions.checkNotNull(value, "Value cannot be null for primitive type: " + valueDataType);
+        }
+
         CacheEntry existing = cache.get(key);
 
         if (existing != null && existing.instant().isAfter(instant)) {

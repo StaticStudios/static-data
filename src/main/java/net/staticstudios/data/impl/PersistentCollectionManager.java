@@ -295,14 +295,14 @@ public class PersistentCollectionManager {
                     // For PersistentUniqueDataCollection the entry id will be the data, since that's what we're interested in
                     Object serializedDataValue = resultSet.getObject(entryDataColumn);
                     Object dataValue = dataManager.deserialize(dummyCollection.getDataType(), serializedDataValue);
-                    dataManager.cache(entryDataKey, dataValue, Instant.now());
+                    dataManager.cache(entryDataKey, dummyCollection.getDataType(), dataValue, Instant.now());
 
                     logger.trace("Adding collection entry data to cache: {} -> {}", entryDataKey, dataValue);
                 }
 
                 logger.trace("Adding collection entry holder to map: {} -> {}", dummyCollection.getKey(), uniqueIdentifier);
 
-                dataManager.cache(entryLinkKey, linkingId, Instant.now());
+                dataManager.cache(entryLinkKey, UUID.class, linkingId, Instant.now());
                 collectionEntryHolders.put(dummyCollection.getKey(), uniqueIdentifier);
             }
         }
@@ -321,8 +321,8 @@ public class PersistentCollectionManager {
             logger.trace("Adding collection entry data to cache: {} -> {}", entryDataKey, entry.value());
             logger.trace("Adding collection entry holder to map: {} -> {}", collection.getKey(), uniqueIdentifier);
 
-            dataManager.cache(entryLinkKey, collection.getRootHolder().getId(), Instant.now());
-            dataManager.cache(entryDataKey, entry.value(), Instant.now());
+            dataManager.cache(entryLinkKey, UUID.class, collection.getRootHolder().getId(), Instant.now());
+            dataManager.cache(entryDataKey, collection.getDataType(), entry.value(), Instant.now());
             collectionEntryHolders.put(collection.getKey(), uniqueIdentifier);
         }
 
