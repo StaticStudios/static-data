@@ -13,11 +13,11 @@ import net.staticstudios.data.data.collection.PersistentCollection;
 import net.staticstudios.data.data.value.Value;
 import net.staticstudios.data.data.value.persistent.InitialPersistentValue;
 import net.staticstudios.data.data.value.persistent.PersistentValue;
-import net.staticstudios.data.data.value.redis.InitialRedisValue;
-import net.staticstudios.data.data.value.redis.RedisValue;
+import net.staticstudios.data.data.value.redis.CachedValue;
+import net.staticstudios.data.data.value.redis.InitialCachedValue;
+import net.staticstudios.data.impl.CachedValueManager;
 import net.staticstudios.data.impl.PersistentCollectionManager;
 import net.staticstudios.data.impl.PersistentValueManager;
-import net.staticstudios.data.impl.RedisValueManager;
 import net.staticstudios.data.impl.pg.PostgresListener;
 import net.staticstudios.data.impl.pg.PostgresOperation;
 import net.staticstudios.data.key.CellKey;
@@ -79,7 +79,7 @@ public class DataManager {
 
         PersistentCollectionManager.instantiate(this, pgListener);
         PersistentValueManager.instantiate(this, pgListener);
-        RedisValueManager.instantiate(this);
+        CachedValueManager.instantiate(this);
 
         HikariConfig customizedPoolConfig = new HikariConfig();
         poolConfig.copyStateTo(customizedPoolConfig);
@@ -153,7 +153,7 @@ public class DataManager {
 
             Multimap<UniqueData, DatabaseKey> dummyDatabaseKeys = Multimaps.newSetMultimap(new HashMap<>(), HashSet::new);
             Multimap<UniqueData, PersistentCollection<?>> dummyPersistentCollections = Multimaps.newSetMultimap(new HashMap<>(), HashSet::new);
-            Multimap<UniqueData, RedisValue<?>> dummyRedisValues = Multimaps.newSetMultimap(new HashMap<>(), HashSet::new);
+            Multimap<UniqueData, CachedValue<?>> dummyCachedValues = Multimaps.newSetMultimap(new HashMap<>(), HashSet::new);
 
 
             for (Class<? extends UniqueData> dependency : dependencies) {
@@ -176,9 +176,9 @@ public class DataManager {
                         dummyPersistentCollections.put(data.getHolder().getRootHolder(), collection);
                     }
 
-                    if (data instanceof RedisValue<?> redisValue) {
-                        dummyValueMap.put(data.getHolder().getRootHolder().getSchema() + "." + data.getHolder().getRootHolder().getTable(), redisValue);
-                        dummyRedisValues.put(data.getHolder().getRootHolder(), redisValue);
+                    if (data instanceof CachedValue<?> cachedValue) {
+                        dummyValueMap.put(data.getHolder().getRootHolder().getSchema() + "." + data.getHolder().getRootHolder().getTable(), cachedValue);
+                        dummyCachedValues.put(data.getHolder().getRootHolder(), cachedValue);
                     }
                 }
             }
@@ -219,12 +219,12 @@ public class DataManager {
                     }
                 }
 
-                //Load RedisValues
-                for (UniqueData dummyHolder : dummyRedisValues.keySet()) {
-                    Collection<RedisValue<?>> dummyValues = dummyRedisValues.get(dummyHolder);
+                //Load CachedValues
+                for (UniqueData dummyHolder : dummyCachedValues.keySet()) {
+                    Collection<CachedValue<?>> dummyValues = dummyCachedValues.get(dummyHolder);
 
-                    RedisValueManager manager = RedisValueManager.getInstance();
-                    for (RedisValue<?> dummyValue : dummyValues) {
+                    CachedValueManager manager = CachedValueManager.getInstance();
+                    for (CachedValue<?> dummyValue : dummyValues) {
                         manager.loadAllFromRedis(dummyValue);
                     }
                 }
@@ -254,7 +254,7 @@ public class DataManager {
     @SafeVarargs
     public final <I extends InitialValue<?, ?>> void insert(UniqueData holder, I... initialData) {
         Map<PersistentValue<?>, InitialPersistentValue> initialPersistentValues = new HashMap<>();
-        Map<RedisValue<?>, InitialRedisValue> initialRedisValues = new HashMap<>();
+        Map<CachedValue<?>, InitialCachedValue> initialCachedValues = new HashMap<>();
 
         for (Field field : ReflectionUtils.getFields(holder.getClass())) {
             field.setAccessible(true);
@@ -274,9 +274,9 @@ public class DataManager {
         for (InitialValue<?, ?> data : initialData) {
             if (data instanceof InitialPersistentValue initial) {
                 initialPersistentValues.put(initial.getValue(), initial);
-            } else if (data instanceof InitialRedisValue initial) {
+            } else if (data instanceof InitialCachedValue initial) {
                 if (initial.getInitialDataValue() != null) {
-                    initialRedisValues.put(initial.getValue(), initial);
+                    initialCachedValues.put(initial.getValue(), initial);
                 }
             } else {
                 throw new IllegalArgumentException("Unsupported initial data type: " + data.getClass());
@@ -292,12 +292,12 @@ public class DataManager {
             }
         }
 
-        for (Map.Entry<RedisValue<?>, InitialRedisValue> initial : initialRedisValues.entrySet()) {
-            RedisValue<?> rv = initial.getKey();
-            InitialRedisValue value = initial.getValue();
+        for (Map.Entry<CachedValue<?>, InitialCachedValue> initial : initialCachedValues.entrySet()) {
+            CachedValue<?> cv = initial.getKey();
+            InitialCachedValue value = initial.getValue();
 
-            if (Primitives.isPrimitive(rv.getDataType()) && !Primitives.getPrimitive(rv.getDataType()).isNullable()) {
-                Preconditions.checkNotNull(value.getInitialDataValue(), "Initial data value cannot be null for primitive type: " + rv.getDataType());
+            if (Primitives.isPrimitive(cv.getDataType()) && !Primitives.getPrimitive(cv.getDataType()).isNullable()) {
+                Preconditions.checkNotNull(value.getInitialDataValue(), "Initial data value cannot be null for primitive type: " + cv.getDataType());
             }
         }
 
@@ -348,9 +348,9 @@ public class DataManager {
             throw new RuntimeException(e);
         }
 
-        RedisValueManager redisValueManager = RedisValueManager.getInstance();
-        redisValueManager.setInRedis(new ArrayList<>(initialRedisValues.values()));
-        for (InitialRedisValue data : initialRedisValues.values()) {
+        CachedValueManager cachedValueManager = CachedValueManager.getInstance();
+        cachedValueManager.setInRedis(new ArrayList<>(initialCachedValues.values()));
+        for (InitialCachedValue data : initialCachedValues.values()) {
             cache(data.getValue().getKey(), data.getValue().getDataType(), data.getInitialDataValue(), Instant.now());
         }
 

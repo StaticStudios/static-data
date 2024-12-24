@@ -1,8 +1,8 @@
 package net.staticstudios.data.impl;
 
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.data.value.redis.InitialRedisValue;
-import net.staticstudios.data.data.value.redis.RedisValue;
+import net.staticstudios.data.data.value.redis.CachedValue;
+import net.staticstudios.data.data.value.redis.InitialCachedValue;
 import net.staticstudios.data.key.RedisKey;
 import net.staticstudios.data.primative.Primitives;
 import net.staticstudios.utils.ShutdownStage;
@@ -18,12 +18,12 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
-public class RedisValueManager {
-    private static final Logger logger = LoggerFactory.getLogger(RedisValueManager.class);
-    private static RedisValueManager instance;
+public class CachedValueManager {
+    private static final Logger logger = LoggerFactory.getLogger(CachedValueManager.class);
+    private static CachedValueManager instance;
     private final DataManager dataManager;
 
-    public RedisValueManager(DataManager dataManager) {
+    public CachedValueManager(DataManager dataManager) {
         this.dataManager = dataManager;
 
         RedisListener listener = new RedisListener();
@@ -40,22 +40,22 @@ public class RedisValueManager {
         });
     }
 
-    public static RedisValueManager getInstance() {
+    public static CachedValueManager getInstance() {
         return instance;
     }
 
     public static void instantiate(DataManager dataManager) {
-        instance = new RedisValueManager(dataManager);
+        instance = new CachedValueManager(dataManager);
     }
 
     @Blocking
-    public void setInRedis(List<InitialRedisValue> initialData) {
+    public void setInRedis(List<InitialCachedValue> initialData) {
         if (initialData.isEmpty()) {
             return;
         }
 
         try (Jedis jedis = dataManager.getJedis()) {
-            for (InitialRedisValue initial : initialData) {
+            for (InitialCachedValue initial : initialData) {
                 RedisKey key = initial.getValue().getKey();
                 if (initial.getInitialDataValue() == null) {
                     jedis.del(key.toString());
@@ -78,7 +78,7 @@ public class RedisValueManager {
 
 
     @Blocking
-    public void loadAllFromRedis(RedisValue<?> dummyValue) {
+    public void loadAllFromRedis(CachedValue<?> dummyValue) {
         try (Jedis jedis = dataManager.getJedis()) {
             Set<String> matchedKeys = jedis.keys(dummyValue.getKey().toPartialKey());
             for (String matchedKey : matchedKeys) {
@@ -111,8 +111,8 @@ public class RedisValueManager {
                 case SET -> ThreadUtils.submit(() -> {
                     try (Jedis jedis = dataManager.getJedis()) {
                         dataManager.getDummyValues(redisKey.getHolderSchema() + "." + redisKey.getHolderTable()).stream()
-                                .filter(v -> v.getClass() == RedisValue.class)
-                                .map(v -> (RedisValue<?>) v)
+                                .filter(v -> v.getClass() == CachedValue.class)
+                                .map(v -> (CachedValue<?>) v)
                                 .filter(v -> v.getKey().getIdentifyingKey().equals(redisKey.getIdentifyingKey()))
                                 .findFirst()
                                 .ifPresent(dummyValue -> {

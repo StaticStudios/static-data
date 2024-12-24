@@ -6,7 +6,7 @@ import net.staticstudios.data.ValueUpdateHandler;
 import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.data.value.Value;
-import net.staticstudios.data.impl.RedisValueManager;
+import net.staticstudios.data.impl.CachedValueManager;
 import net.staticstudios.data.key.RedisKey;
 import net.staticstudios.data.primative.Primitive;
 import net.staticstudios.data.primative.Primitives;
@@ -15,7 +15,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.function.Supplier;
 
-public class RedisValue<T> implements Value<T> {
+public class CachedValue<T> implements Value<T> {
     private final String identifyingKey;
     private final Class<T> dataType;
     private final DataHolder holder;
@@ -23,7 +23,7 @@ public class RedisValue<T> implements Value<T> {
     private int expirySeconds = -1;
     private Supplier<T> fallbackValue;
 
-    public RedisValue(String key, Class<T> dataType, DataHolder holder, DataManager dataManager) {
+    public CachedValue(String key, Class<T> dataType, DataHolder holder, DataManager dataManager) {
         if (!holder.getDataManager().isSupportedType(dataType)) {
             throw new IllegalArgumentException("Unsupported data type: " + dataType);
         }
@@ -34,20 +34,20 @@ public class RedisValue<T> implements Value<T> {
         this.dataManager = dataManager;
     }
 
-    public static <T> RedisValue<T> of(UniqueData holder, Class<T> dataType, String key) {
-        return new RedisValue<>(key, dataType, holder, holder.getDataManager());
+    public static <T> CachedValue<T> of(UniqueData holder, Class<T> dataType, String key) {
+        return new CachedValue<>(key, dataType, holder, holder.getDataManager());
     }
 
-    public InitialRedisValue initial(T value) {
-        return new InitialRedisValue(this, value);
+    public InitialCachedValue initial(T value) {
+        return new InitialCachedValue(this, value);
     }
 
-    public RedisValue<T> onUpdate(ValueUpdateHandler<T> updateHandler) {
+    public CachedValue<T> onUpdate(ValueUpdateHandler<T> updateHandler) {
         dataManager.registerValueUpdateHandler(this.getKey(), updateHandler);
         return this;
     }
 
-    public RedisValue<T> withExpiry(int seconds) {
+    public CachedValue<T> withExpiry(int seconds) {
         this.expirySeconds = seconds;
         return this;
     }
@@ -60,7 +60,7 @@ public class RedisValue<T> implements Value<T> {
      * @param fallbackValue the value to fall back on
      * @return this
      */
-    public RedisValue<T> withFallback(Supplier<T> fallbackValue) {
+    public CachedValue<T> withFallback(Supplier<T> fallbackValue) {
         this.fallbackValue = fallbackValue;
         return this;
     }
@@ -73,11 +73,11 @@ public class RedisValue<T> implements Value<T> {
      * @param fallbackValue the value to fall back on
      * @return this
      */
-    public RedisValue<T> withFallback(T fallbackValue) {
+    public CachedValue<T> withFallback(T fallbackValue) {
         this.fallbackValue = () -> fallbackValue;
         return this;
     }
-    
+
     private T getFallbackValue() {
         T fallbackValue = this.fallbackValue == null ? null : this.fallbackValue.get();
         if (fallbackValue == null) {
@@ -116,7 +116,7 @@ public class RedisValue<T> implements Value<T> {
     }
 
     public void set(T value) {
-        RedisValueManager manager = RedisValueManager.getInstance();
+        CachedValueManager manager = CachedValueManager.getInstance();
         dataManager.cache(this.getKey(), dataType, value, Instant.now());
 
         try {
@@ -147,7 +147,7 @@ public class RedisValue<T> implements Value<T> {
 
     @Override
     public String toString() {
-        return "RedisValue{" +
+        return "CachedValue{" +
                 "identifyingKey='" + identifyingKey +
                 '}';
     }

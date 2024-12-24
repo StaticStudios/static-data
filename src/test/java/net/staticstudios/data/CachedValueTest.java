@@ -2,7 +2,7 @@ package net.staticstudios.data;
 
 import net.staticstudios.data.misc.DataTest;
 import net.staticstudios.data.misc.MockEnvironment;
-import net.staticstudios.data.mock.redisvalue.RedditUser;
+import net.staticstudios.data.mock.cachedvalue.RedditUser;
 import net.staticstudios.data.primative.Primitives;
 import org.junit.jupiter.api.BeforeEach;
 import org.junitpioneer.jupiter.RetryingTest;
@@ -15,7 +15,7 @@ import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class RedisValueTest extends DataTest {
+public class CachedValueTest extends DataTest {
     //todo: test loading from redis
 
     @BeforeEach
@@ -39,7 +39,7 @@ public class RedisValueTest extends DataTest {
     }
 
     @RetryingTest(5)
-    public void testSetRedisValue() {
+    public void testSetCachedValue() {
         MockEnvironment environment = getMockEnvironments().getFirst();
         DataManager dataManager = environment.dataManager();
 
@@ -82,7 +82,7 @@ public class RedisValueTest extends DataTest {
     }
 
     @RetryingTest(5)
-    public void testExpiringRedisValue() {
+    public void testExpiringCachedValue() {
         MockEnvironment environment = getMockEnvironments().getFirst();
         DataManager dataManager = environment.dataManager();
 

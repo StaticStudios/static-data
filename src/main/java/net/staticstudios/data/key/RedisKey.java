@@ -1,6 +1,6 @@
 package net.staticstudios.data.key;
 
-import net.staticstudios.data.data.value.redis.RedisValue;
+import net.staticstudios.data.data.value.redis.CachedValue;
 
 import java.util.UUID;
 
@@ -20,7 +20,7 @@ public class RedisKey extends DataKey {
         this.rootHolderId = rootHolderId;
     }
 
-    public RedisKey(RedisValue<?> data) {
+    public RedisKey(CachedValue<?> data) {
         this(
                 data.getHolder().getRootHolder().getSchema(),
                 data.getHolder().getRootHolder().getTable(),
