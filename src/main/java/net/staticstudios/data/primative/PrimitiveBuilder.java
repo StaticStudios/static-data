@@ -10,6 +10,7 @@ public class PrimitiveBuilder<T> {
     private Function<String, T> decoder;
     private Function<T, String> encoder;
     private Boolean nullable;
+    private T defaultValue;
 
     public PrimitiveBuilder(Class<T> runtimeType) {
         this.runtimeType = runtimeType;
@@ -36,13 +37,22 @@ public class PrimitiveBuilder<T> {
         return this;
     }
 
+    public PrimitiveBuilder<T> defaultValue(T defaultValue) {
+        this.defaultValue = defaultValue;
+        return this;
+    }
+
     public Primitive<T> build(Consumer<Primitive<T>> consumer) {
         Preconditions.checkNotNull(decoder, "Decoder is null");
         Preconditions.checkNotNull(encoder, "Encoder is null");
         Preconditions.checkNotNull(consumer, "Consumer is null");
         Preconditions.checkNotNull(nullable, "Nullable flag is null");
 
-        Primitive<T> primitive = new Primitive<>(runtimeType, decoder, encoder, nullable);
+        if (!nullable) {
+            Preconditions.checkNotNull(defaultValue, "Default value is null");
+        }
+
+        Primitive<T> primitive = new Primitive<>(runtimeType, decoder, encoder, nullable, defaultValue);
         consumer.accept(primitive);
 
         return primitive;

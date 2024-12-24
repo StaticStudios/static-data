@@ -1,7 +1,10 @@
-package net.staticstudios.data.data;
+package net.staticstudios.data.data.value.persistent;
 
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.ValueUpdateHandler;
+import net.staticstudios.data.data.DataHolder;
+import net.staticstudios.data.data.UniqueData;
+import net.staticstudios.data.data.value.Value;
 import net.staticstudios.data.impl.PersistentValueManager;
 import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.DataKey;
@@ -33,19 +36,6 @@ public class PersistentValue<T> implements Value<T> {
         this.dataManager = dataManager;
     }
 
-    public static <T> PersistentValue<T> of(DataHolder holder, Class<T> dataType, String schemaTableColumn) {
-        String[] parts = schemaTableColumn.split("\\.");
-        if (parts.length != 3) {
-            throw new IllegalArgumentException("Invalid schema.table.column format: " + schemaTableColumn);
-        }
-
-        return new PersistentValue<>(parts[0], parts[1], parts[2], holder.getRootHolder().getIdentifier().getColumn(), dataType, holder, holder.getDataManager());
-    }
-
-    public static <T> PersistentValue<T> of(DataHolder holder, Class<T> dataType, String schema, String table, String column) {
-        return new PersistentValue<>(schema, table, column, holder.getRootHolder().getIdentifier().getColumn(), dataType, holder, holder.getDataManager());
-    }
-
     public static <T> PersistentValue<T> of(UniqueData holder, Class<T> dataType, String column) {
         return new PersistentValue<>(holder.getSchema(), holder.getTable(), column, holder.getRootHolder().getIdentifier().getColumn(), dataType, holder, holder.getDataManager());
     }
@@ -72,9 +62,6 @@ public class PersistentValue<T> implements Value<T> {
     }
 
     public PersistentValue<T> withDefault(T defaultValue) {
-        //todo: id like to validate that if this is a primative, that the value cant be null for certain entries. for example, an int.
-        // further more, id like to ensure even if with default isnt called, that the value is never null. we can probably add this check in the
-        // initial persistent value constructor, and in #set.
         this.defaultValueSupplier = () -> defaultValue;
         return this;
     }

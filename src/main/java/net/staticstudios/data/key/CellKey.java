@@ -1,6 +1,6 @@
 package net.staticstudios.data.key;
 
-import net.staticstudios.data.data.PersistentValue;
+import net.staticstudios.data.data.value.persistent.PersistentValue;
 
 import java.util.UUID;
 

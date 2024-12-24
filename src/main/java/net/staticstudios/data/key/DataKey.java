@@ -25,7 +25,7 @@ public class DataKey {
 
     @Override
     public int hashCode() {
-        return Arrays.hashCode(parts);
+        return Arrays.hashCode(parts) + getClass().hashCode();
     }
 
     @Override

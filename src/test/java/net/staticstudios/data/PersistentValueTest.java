@@ -18,6 +18,8 @@ public class PersistentValueTest extends DataTest {
 
     //todo: we need to test what happens when we manually edit the db. do the values get set on insert, update, and delete
     //todo: add and test default values
+    //todo: ensure pvs are loaded properly
+    //todo: currently all #set calls are blocking
 
     @BeforeEach
     public void init() {
@@ -60,7 +62,7 @@ public class PersistentValueTest extends DataTest {
 
         waitForDataPropagation();
 
-        try (Statement statement = connection.createStatement()) {
+        try (Statement statement = getConnection().createStatement()) {
             statement.executeUpdate("update discord.users set name = 'Jane Doe' where id = '" + user.getId() + "'");
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -75,7 +77,7 @@ public class PersistentValueTest extends DataTest {
 
         waitForDataPropagation();
 
-        try (Statement statement = connection.createStatement()) {
+        try (Statement statement = getConnection().createStatement()) {
             ResultSet resultSet = statement.executeQuery("select name from discord.users where id = '" + user.getId() + "'");
             resultSet.next();
             assertEquals("User", resultSet.getString("name"));
@@ -94,7 +96,7 @@ public class PersistentValueTest extends DataTest {
 
         waitForDataPropagation();
 
-        try (Statement statement = connection.createStatement()) {
+        try (Statement statement = getConnection().createStatement()) {
             ResultSet resultSet = statement.executeQuery("select enable_friend_requests from discord.user_settings where user_id = '" + user.getId() + "'");
             resultSet.next();
             assertTrue(resultSet.getBoolean("enable_friend_requests"));
@@ -107,7 +109,7 @@ public class PersistentValueTest extends DataTest {
 
         waitForDataPropagation();
 
-        try (Statement statement = connection.createStatement()) {
+        try (Statement statement = getConnection().createStatement()) {
             ResultSet resultSet = statement.executeQuery("select enable_friend_requests from discord.user_settings where user_id = '" + user.getId() + "'");
             resultSet.next();
             assertFalse(resultSet.getBoolean("enable_friend_requests"));
@@ -120,7 +122,7 @@ public class PersistentValueTest extends DataTest {
 
         waitForDataPropagation();
 
-        try (Statement statement = connection.createStatement()) {
+        try (Statement statement = getConnection().createStatement()) {
             ResultSet resultSet = statement.executeQuery("select enable_friend_requests from discord.user_settings where user_id = '" + user.getId() + "'");
             resultSet.next();
             assertTrue(resultSet.getBoolean("enable_friend_requests"));
@@ -128,7 +130,7 @@ public class PersistentValueTest extends DataTest {
             throw new RuntimeException(e);
         }
 
-        try (Statement statement = connection.createStatement()) {
+        try (Statement statement = getConnection().createStatement()) {
             statement.executeUpdate("update discord.user_settings set enable_friend_requests = false where user_id = '" + user.getId() + "'");
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -169,7 +171,7 @@ public class PersistentValueTest extends DataTest {
         assertTrue(user.getEnableFriendRequests());
         assertTrue(settings.getEnableFriendRequests());
 
-        try (Statement statement = connection.createStatement()) {
+        try (Statement statement = getConnection().createStatement()) {
             statement.executeUpdate("update discord.user_settings set enable_friend_requests = false where user_id = '" + user.getId() + "'");
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -209,13 +211,13 @@ public class PersistentValueTest extends DataTest {
         assertEquals(2, user.getNameUpdatesCalled());
         assertEquals(4, user.getEnableFriendRequestsUpdatesCalled());
 
-        try (Statement statement = connection.createStatement()) {
+        try (Statement statement = getConnection().createStatement()) {
             statement.executeUpdate("update discord.users set name = 'Jane Doe' where id = '" + user.getId() + "'");
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
 
-        try (Statement statement = connection.createStatement()) {
+        try (Statement statement = getConnection().createStatement()) {
             statement.executeUpdate("update discord.user_settings set enable_friend_requests = false where user_id = '" + user.getId() + "'");
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -227,6 +229,6 @@ public class PersistentValueTest extends DataTest {
         assertEquals(6, user.getEnableFriendRequestsUpdatesCalled());
     }
 
-    //todo: test null values
+
     //todo: test straight up deleting an fpv. ideally a data does not exist exception should be thrown when calling get on a deleted fpv
 }

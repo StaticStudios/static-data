@@ -6,10 +6,18 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.pool.HikariPool;
-import net.staticstudios.data.data.*;
+import net.staticstudios.data.data.Data;
+import net.staticstudios.data.data.InitialValue;
+import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.data.collection.PersistentCollection;
+import net.staticstudios.data.data.value.Value;
+import net.staticstudios.data.data.value.persistent.InitialPersistentValue;
+import net.staticstudios.data.data.value.persistent.PersistentValue;
+import net.staticstudios.data.data.value.redis.InitialRedisValue;
+import net.staticstudios.data.data.value.redis.RedisValue;
 import net.staticstudios.data.impl.PersistentCollectionManager;
 import net.staticstudios.data.impl.PersistentValueManager;
+import net.staticstudios.data.impl.RedisValueManager;
 import net.staticstudios.data.impl.pg.PostgresListener;
 import net.staticstudios.data.impl.pg.PostgresOperation;
 import net.staticstudios.data.key.CellKey;
@@ -17,12 +25,14 @@ import net.staticstudios.data.key.DataKey;
 import net.staticstudios.data.key.DatabaseKey;
 import net.staticstudios.data.primative.Primitives;
 import net.staticstudios.data.util.ReflectionUtils;
+import net.staticstudios.utils.JedisProvider;
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.Blocking;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import redis.clients.jedis.Jedis;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -51,8 +61,9 @@ public class DataManager {
     private final List<ValueSerializer<?, ?>> valueSerializers;
     private final PostgresListener pgListener;
     private final String applicationName;
+    private final JedisProvider jedisProvider;
 
-    public DataManager(HikariConfig poolConfig) {
+    public DataManager(HikariConfig poolConfig, JedisProvider jedisProvider) {
         this.applicationName = "static_data_manager-" + UUID.randomUUID();
         this.cache = new ConcurrentHashMap<>();
         this.valueUpdateHandlers = Multimaps.synchronizedSetMultimap(HashMultimap.create());
@@ -62,11 +73,13 @@ public class DataManager {
         this.dummyUniqueDataMap = Multimaps.synchronizedSetMultimap(HashMultimap.create());
         this.uniqueDataIds = Multimaps.synchronizedSetMultimap(HashMultimap.create());
         this.valueSerializers = new CopyOnWriteArrayList<>();
+        this.jedisProvider = jedisProvider;
 
         pgListener = new PostgresListener(this, poolConfig);
 
         PersistentCollectionManager.instantiate(this, pgListener);
         PersistentValueManager.instantiate(this, pgListener);
+        RedisValueManager.instantiate(this);
 
         HikariConfig customizedPoolConfig = new HikariConfig();
         poolConfig.copyStateTo(customizedPoolConfig);
@@ -140,6 +153,8 @@ public class DataManager {
 
             Multimap<UniqueData, DatabaseKey> dummyDatabaseKeys = Multimaps.newSetMultimap(new HashMap<>(), HashSet::new);
             Multimap<UniqueData, PersistentCollection<?>> dummyPersistentCollections = Multimaps.newSetMultimap(new HashMap<>(), HashSet::new);
+            Multimap<UniqueData, RedisValue<?>> dummyRedisValues = Multimaps.newSetMultimap(new HashMap<>(), HashSet::new);
+
 
             for (Class<? extends UniqueData> dependency : dependencies) {
                 // A data dependency is some data field on one of our dependencies
@@ -159,6 +174,11 @@ public class DataManager {
                     if (data instanceof PersistentCollection<?> collection) {
                         dummyPersistentCollectionMap.put(collection.getSchema() + "." + collection.getTable(), collection);
                         dummyPersistentCollections.put(data.getHolder().getRootHolder(), collection);
+                    }
+
+                    if (data instanceof RedisValue<?> redisValue) {
+                        dummyValueMap.put(data.getHolder().getRootHolder().getSchema() + "." + data.getHolder().getRootHolder().getTable(), redisValue);
+                        dummyRedisValues.put(data.getHolder().getRootHolder(), redisValue);
                     }
                 }
             }
@@ -199,6 +219,16 @@ public class DataManager {
                     }
                 }
 
+                //Load RedisValues
+                for (UniqueData dummyHolder : dummyRedisValues.keySet()) {
+                    Collection<RedisValue<?>> dummyValues = dummyRedisValues.get(dummyHolder);
+
+                    RedisValueManager manager = RedisValueManager.getInstance();
+                    for (RedisValue<?> dummyValue : dummyValues) {
+                        manager.loadAllFromRedis(dummyValue);
+                    }
+                }
+
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -223,7 +253,8 @@ public class DataManager {
     @Blocking
     @SafeVarargs
     public final <I extends InitialValue<?, ?>> void insert(UniqueData holder, I... initialData) {
-        Map<PersistentValue<?>, InitialPersistentValue> initialValues = new HashMap<>();
+        Map<PersistentValue<?>, InitialPersistentValue> initialPersistentValues = new HashMap<>();
+        Map<RedisValue<?>, InitialRedisValue> initialRedisValues = new HashMap<>();
 
         for (Field field : ReflectionUtils.getFields(holder.getClass())) {
             field.setAccessible(true);
@@ -232,7 +263,7 @@ public class DataManager {
                 try {
                     Data<?> data = (Data<?>) field.get(holder);
                     if (data instanceof PersistentValue<?> pv) {
-                        initialValues.put(pv, new InitialPersistentValue(pv, pv.getDefaultValue()));
+                        initialPersistentValues.put(pv, new InitialPersistentValue(pv, pv.getDefaultValue()));
                     }
                 } catch (IllegalAccessException e) {
                     throw new RuntimeException(e);
@@ -242,14 +273,17 @@ public class DataManager {
 
         for (InitialValue<?, ?> data : initialData) {
             if (data instanceof InitialPersistentValue initial) {
-                initialValues.put(initial.getValue(), initial);
+                initialPersistentValues.put(initial.getValue(), initial);
+            } else if (data instanceof InitialRedisValue initial) {
+                if (initial.getInitialDataValue() != null) {
+                    initialRedisValues.put(initial.getValue(), initial);
+                }
             } else {
                 throw new IllegalArgumentException("Unsupported initial data type: " + data.getClass());
             }
-            //todo: redis values
         }
 
-        for (Map.Entry<PersistentValue<?>, InitialPersistentValue> initial : initialValues.entrySet()) {
+        for (Map.Entry<PersistentValue<?>, InitialPersistentValue> initial : initialPersistentValues.entrySet()) {
             PersistentValue<?> pv = initial.getKey();
             InitialPersistentValue value = initial.getValue();
 
@@ -258,10 +292,19 @@ public class DataManager {
             }
         }
 
+        for (Map.Entry<RedisValue<?>, InitialRedisValue> initial : initialRedisValues.entrySet()) {
+            RedisValue<?> rv = initial.getKey();
+            InitialRedisValue value = initial.getValue();
+
+            if (Primitives.isPrimitive(rv.getDataType()) && !Primitives.getPrimitive(rv.getDataType()).isNullable()) {
+                Preconditions.checkNotNull(value.getInitialDataValue(), "Initial data value cannot be null for primitive type: " + rv.getDataType());
+            }
+        }
+
         try {
             PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
-            persistentValueManager.setInDatabase(new ArrayList<>(initialValues.values()));
-            for (InitialPersistentValue data : initialValues.values()) {
+            persistentValueManager.setInDatabase(new ArrayList<>(initialPersistentValues.values()));
+            for (InitialPersistentValue data : initialPersistentValues.values()) {
 
                 UniqueData pvHolder = data.getValue().getHolder().getRootHolder();
                 CellKey idColumn = new CellKey(
@@ -303,6 +346,12 @@ public class DataManager {
 
         } catch (Exception e) {
             throw new RuntimeException(e);
+        }
+
+        RedisValueManager redisValueManager = RedisValueManager.getInstance();
+        redisValueManager.setInRedis(new ArrayList<>(initialRedisValues.values()));
+        for (InitialRedisValue data : initialRedisValues.values()) {
+            cache(data.getValue().getKey(), data.getValue().getDataType(), data.getInitialDataValue(), Instant.now());
         }
 
         addUniqueData(holder);
@@ -621,21 +670,35 @@ public class DataManager {
         cache.put(key, CacheEntry.of(Objects.requireNonNullElse(value, NULL_MARKER), instant));
 
         Collection<ValueUpdateHandler<?>> updateHandlers = valueUpdateHandlers.get(key);
-        if (existing != null) {
-            Object oldValue = existing.value() == NULL_MARKER ? null : existing.value();
-            Object newValue = value == NULL_MARKER ? null : value;
 
-            for (ValueUpdateHandler<?> updateHandler : updateHandlers) {
-                try {
-                    updateHandler.unsafeHandle(oldValue, newValue);
-                } catch (Exception e) {
-                    logger.error("Error handling value update. Key: {}", key, e);
-                }
+        Object oldValue = existing == null ? null : existing.value() == NULL_MARKER ? null : existing.value();
+        Object newValue = value == NULL_MARKER ? null : value;
+
+        if (Objects.equals(oldValue, newValue)) {
+            return;
+        }
+
+        for (ValueUpdateHandler<?> updateHandler : updateHandlers) {
+            try {
+                updateHandler.unsafeHandle(oldValue, newValue);
+            } catch (Exception e) {
+                logger.error("Error handling value update. Key: {}", key, e);
             }
         }
     }
 
     public void uncache(DataKey key) {
+        Collection<ValueUpdateHandler<?>> updateHandlers = valueUpdateHandlers.get(key);
+        CacheEntry existing = cache.get(key);
+
+        for (ValueUpdateHandler<?> updateHandler : updateHandlers) {
+            try {
+                updateHandler.unsafeHandle(existing.value(), null);
+            } catch (Exception e) {
+                logger.error("Error handling value update. Key: {}", key, e);
+            }
+        }
+
         cache.remove(key);
         valueUpdateHandlers.removeAll(key);
     }
@@ -646,6 +709,14 @@ public class DataManager {
 
     public Connection getConnection() throws SQLException {
         return connectionPool.getConnection();
+    }
+
+    public JedisProvider getJedisProvider() {
+        return jedisProvider;
+    }
+
+    public Jedis getJedis() {
+        return jedisProvider.getJedis();
     }
 
     public void registerSerializer(ValueSerializer<?, ?> serializer) {

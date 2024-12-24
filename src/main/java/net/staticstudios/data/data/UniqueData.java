@@ -3,6 +3,7 @@ package net.staticstudios.data.data;
 
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.data.collection.PersistentCollection;
+import net.staticstudios.data.data.value.Value;
 import net.staticstudios.data.key.UniqueIdentifier;
 import net.staticstudios.data.util.ReflectionUtils;
 

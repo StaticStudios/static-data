@@ -1,7 +1,7 @@
 package net.staticstudios.data.mock.persistentvalue;
 
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.data.PersistentValue;
+import net.staticstudios.data.data.value.persistent.PersistentValue;
 import net.staticstudios.data.data.UniqueData;
 
 import java.util.UUID;

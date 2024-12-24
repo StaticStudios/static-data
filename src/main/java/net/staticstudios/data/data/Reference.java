@@ -3,6 +3,8 @@ package net.staticstudios.data.data;
 
 import net.staticstudios.data.DataDoesNotExistException;
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.data.value.persistent.InitialPersistentValue;
+import net.staticstudios.data.data.value.persistent.PersistentValue;
 
 import java.util.UUID;
 

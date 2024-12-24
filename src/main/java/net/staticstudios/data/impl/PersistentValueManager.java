@@ -4,13 +4,14 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
 import net.staticstudios.data.DataDoesNotExistException;
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.data.InitialPersistentValue;
-import net.staticstudios.data.data.PersistentValue;
 import net.staticstudios.data.data.UniqueData;
+import net.staticstudios.data.data.value.persistent.InitialPersistentValue;
+import net.staticstudios.data.data.value.persistent.PersistentValue;
 import net.staticstudios.data.impl.pg.PostgresListener;
 import net.staticstudios.data.impl.pg.PostgresOperation;
 import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.DataKey;
+import org.jetbrains.annotations.Blocking;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -20,7 +21,7 @@ import java.time.Instant;
 import java.util.*;
 
 public class PersistentValueManager {
-    private static PersistentValueManager instance;
+    private static PersistentValueManager instance; //todo: static instance is bad for testing.
     private final DataManager dataManager;
     private final PostgresListener pgListener;
 
@@ -145,6 +146,7 @@ public class PersistentValueManager {
         PersistentCollectionManager.getInstance().handlePersistentValueCacheUpdated(schema, table, column, holderId, idColumn, oldValue, value);
     }
 
+    @Blocking
     public void setInDatabase(List<InitialPersistentValue> initialData) throws Exception {
         if (initialData.isEmpty()) {
             return;

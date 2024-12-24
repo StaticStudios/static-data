@@ -1,8 +1,8 @@
 package net.staticstudios.data.mock.persistentvalue;
 
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.data.PersistentValue;
 import net.staticstudios.data.data.UniqueData;
+import net.staticstudios.data.data.value.persistent.PersistentValue;
 
 import java.util.UUID;
 
@@ -12,14 +12,25 @@ public class DiscordUser extends UniqueData {
     private final PersistentValue<Integer> enableFriendRequestsUpdatesCalled = PersistentValue.foreign(this, Integer.class, "discord.user_meta.enable_friend_requests_updates_called", "id")
             .withDefault(0);
     private final PersistentValue<String> name = PersistentValue.of(this, String.class, "name")
-            .onUpdate(update -> nameUpdatesCalled.set(nameUpdatesCalled.get() + 1));
+            .onUpdate(update -> {
+                if (update.oldValue() == null) {
+                    return;
+                }
+                nameUpdatesCalled.set(nameUpdatesCalled.get() + 1);
+            });
     private final PersistentValue<Boolean> enableFriendRequests = PersistentValue.foreign(this, Boolean.class, "discord", "user_settings", "enable_friend_requests", "user_id")
             .withDefault(true)
             .onUpdate(update -> {
+                if (update.oldValue() == null) {
+                    return;
+                }
                 System.out.println("Update 1: " + update);
                 enableFriendRequestsUpdatesCalled.set(enableFriendRequestsUpdatesCalled.get() + 1);
             })
             .onUpdate(update -> {
+                if (update.oldValue() == null) {
+                    return;
+                }
                 System.out.println("Update 2: " + update);
                 enableFriendRequestsUpdatesCalled.set(enableFriendRequestsUpdatesCalled.get() + 1);
             });

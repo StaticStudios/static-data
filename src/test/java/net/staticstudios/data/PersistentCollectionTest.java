@@ -22,6 +22,7 @@ public class PersistentCollectionTest extends DataTest {
 
     //todo: we need to add add handlers add and remove handlers
     //todo: we need to test what happens when we manually edit the db. do the collections update?
+    //todo: test loading from db
 
     @BeforeEach
     public void init() {
