@@ -13,7 +13,11 @@ import java.util.Map;
 @SuppressWarnings("unused")
 public class Primitives {
     // General rule of thumb: if the Primitive is a Java primitive, it should not be nullable, everything else should be nullable.
-
+    private static final DateTimeFormatter TIMESTAMP_FORMATTER = new DateTimeFormatterBuilder()
+            .append(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+            .appendPattern("xxx")
+            .toFormatter()
+            .withZone(ZoneId.of("UTC"));
 
     private static Map<Class<?>, Primitive<?>> primitives;
     public static final Primitive<String> STRING = Primitive.builder(String.class)
@@ -73,20 +77,14 @@ public class Primitives {
                     return null;
                 }
 
-                return new DateTimeFormatterBuilder()
-                        .append(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-                        .appendPattern("xxx")
-                        .toFormatter()
-                        .withZone(ZoneId.of("UTC"))
-                        .format(timestamp.toInstant());
+                return TIMESTAMP_FORMATTER.format(timestamp.toInstant());
             })
             .decoder(s -> {
                 if (s == null) {
                     return null;
                 }
-                System.out.println("parsing timestamp: " + s);
 
-                OffsetDateTime parsedTimestamp = OffsetDateTime.parse(s, DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+                OffsetDateTime parsedTimestamp = OffsetDateTime.parse(s, TIMESTAMP_FORMATTER);
                 return Timestamp.from(parsedTimestamp.toInstant());
             })
             .build(Primitives::register);
