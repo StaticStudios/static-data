@@ -253,6 +253,40 @@ public class DataManager {
     @Blocking
     @SafeVarargs
     public final <I extends InitialValue<?, ?>> void insert(UniqueData holder, I... initialData) {
+        InsertContext context = buildInsertContext(holder, initialData);
+
+        try (
+                Connection connection = getConnection();
+                Jedis jedis = jedisProvider.getJedis()
+        ) {
+            insertIntoDataSource(connection, jedis, context);
+            insertIntoCache(context);
+        } catch (SQLException e) {
+            logger.error("Error inserting data", e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    @SafeVarargs
+    public final <I extends InitialValue<?, ?>> void insertAsync(UniqueData holder, I... initialData) {
+        InsertContext context = buildInsertContext(holder, initialData);
+        insertIntoCache(context);
+
+        ThreadUtils.submit(() -> {
+            try (
+                    Connection connection = getConnection();
+                    Jedis jedis = jedisProvider.getJedis()
+            ) {
+                insertIntoDataSource(connection, jedis, context);
+            } catch (SQLException e) {
+                logger.error("Error inserting data", e);
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @SafeVarargs
+    private <I extends InitialValue<?, ?>> InsertContext buildInsertContext(UniqueData holder, I... initialData) {
         Map<PersistentValue<?>, InitialPersistentValue> initialPersistentValues = new HashMap<>();
         Map<CachedValue<?>, InitialCachedValue> initialCachedValues = new HashMap<>();
 
@@ -301,108 +335,64 @@ public class DataManager {
             }
         }
 
-        try {
-            PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
-            persistentValueManager.setInDatabase(new ArrayList<>(initialPersistentValues.values()));
-            for (InitialPersistentValue data : initialPersistentValues.values()) {
-
-                UniqueData pvHolder = data.getValue().getHolder().getRootHolder();
-                CellKey idColumn = new CellKey(
-                        pvHolder.getSchema(),
-                        pvHolder.getTable(),
-                        pvHolder.getIdentifier().getColumn(),
-                        pvHolder.getId(),
-                        pvHolder.getIdentifier().getColumn()
-                );
-
-                //do not call PersistenValueManager#updateCache since we need to cache both values
-                //before PersistentCollectionManager#handlePersistentValueCacheUpdated is called, otherwise we get unexpected behavior
-                cache(data.getValue().getKey(), data.getValue().getDataType(), data.getInitialDataValue(), Instant.now());
-                cache(idColumn, UUID.class, holder.getId(), Instant.now());
-
-
-                //Alert the collection manager of this change so it can update what it's keeping track of
-                PersistentCollectionManager.getInstance().handlePersistentValueCacheUpdated(
-                        data.getValue().getSchema(),
-                        data.getValue().getTable(),
-                        data.getValue().getColumn(),
-                        holder.getId(),
-                        data.getValue().getIdColumn(),
-                        null,
-                        data.getInitialDataValue()
-                );
-
-                PersistentCollectionManager.getInstance().handlePersistentValueCacheUpdated(
-                        idColumn.getSchema(),
-                        idColumn.getTable(),
-                        idColumn.getColumn(),
-                        pvHolder.getId(),
-                        idColumn.getIdColumn(),
-                        null,
-                        pvHolder.getId()
-                );
-
-            }
-
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-
-        CachedValueManager cachedValueManager = CachedValueManager.getInstance();
-        cachedValueManager.setInRedis(new ArrayList<>(initialCachedValues.values()));
-        for (InitialCachedValue data : initialCachedValues.values()) {
-            cache(data.getValue().getKey(), data.getValue().getDataType(), data.getInitialDataValue(), Instant.now());
-        }
-
-        addUniqueData(holder);
+        return new InsertContext(holder, initialPersistentValues, initialCachedValues);
     }
 
-    @SafeVarargs
-    public final <I extends InitialValue<?, ?>> void insertAsync(UniqueData holder, I... initialData) {
-        throw new UnsupportedOperationException("Not implemented");
-        //todo: when implementing id like to code share between insert and insertAsync.
-        // this isnt implemented right now since #insert is still being changed
-//        List<InitialPersistentValue> initialPersistentData = new ArrayList<>();
-//
-//        for (InitialValue<?, ?> data : initialData) {
-//            if (data instanceof InitialPersistentValue) {
-//                initialPersistentData.add((InitialPersistentValue) data);
-//            } else {
-//                throw new IllegalArgumentException("Unsupported initial data type: " + data.getClass());
-//            }
-//            //todo: redis values
-//        }
-//        PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
-//        for (InitialPersistentValue data : initialPersistentData) {
-//            persistentValueManager.updateCache(data.getValue(), data.getInitialDataValue());
-//
-//            UniqueData pvHolder = data.getValue().getHolder().getRootHolder();
-//            //update the id column too
-//            persistentValueManager.updateCache(
-//                    pvHolder.getSchema(),
-//                    pvHolder.getTable(),
-//                    pvHolder.getIdentifier().getColumn(),
-//                    pvHolder.getId(),
-//                    pvHolder.getIdentifier().getColumn(),
-//                    pvHolder.getId()
-//            );
-//        }
-//
-//        ThreadUtils.submit(() -> {
-//            try {
-//                persistentValueManager.setInDatabase(initialPersistentData);
-//            } catch (Exception e) {
-//                throw new RuntimeException(e);
-//            }
-//        });
-//
-////        redisDataManager.insertIntoDataSource(holder, initialRedisData);
-//
-//        addUniqueData(holder);
+    private void insertIntoCache(InsertContext context) {
+        addUniqueData(context.holder());
+
+        for (InitialPersistentValue data : context.initialPersistentValues().values()) {
+            UniqueData pvHolder = data.getValue().getHolder().getRootHolder();
+            CellKey idColumn = new CellKey(
+                    pvHolder.getSchema(),
+                    pvHolder.getTable(),
+                    pvHolder.getIdentifier().getColumn(),
+                    pvHolder.getId(),
+                    pvHolder.getIdentifier().getColumn()
+            );
+
+            //do not call PersistentValueManager#updateCache since we need to cache both values
+            //before PersistentCollectionManager#handlePersistentValueCacheUpdated is called, otherwise we get unexpected behavior
+            cache(data.getValue().getKey(), data.getValue().getDataType(), data.getInitialDataValue(), Instant.now());
+            cache(idColumn, UUID.class, context.holder().getId(), Instant.now());
+
+
+            //Alert the collection manager of this change so it can update what it's keeping track of
+            PersistentCollectionManager.getInstance().handlePersistentValueCacheUpdated(
+                    data.getValue().getSchema(),
+                    data.getValue().getTable(),
+                    data.getValue().getColumn(),
+                    context.holder().getId(),
+                    data.getValue().getIdColumn(),
+                    null,
+                    data.getInitialDataValue()
+            );
+
+            PersistentCollectionManager.getInstance().handlePersistentValueCacheUpdated(
+                    idColumn.getSchema(),
+                    idColumn.getTable(),
+                    idColumn.getColumn(),
+                    pvHolder.getId(),
+                    idColumn.getIdColumn(),
+                    null,
+                    pvHolder.getId()
+            );
+        }
+
+        for (InitialCachedValue data : context.initialCachedValues().values()) {
+            cache(data.getValue().getKey(), data.getValue().getDataType(), data.getInitialDataValue(), Instant.now());
+        }
+    }
+
+    private void insertIntoDataSource(Connection connection, Jedis jedis, InsertContext context) throws SQLException {
+        PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
+        persistentValueManager.setInDatabase(connection, new ArrayList<>(context.initialPersistentValues().values()));
+        CachedValueManager.getInstance().setInRedis(jedis, new ArrayList<>(context.initialCachedValues().values()));
     }
 
     public <T extends UniqueData> void delete(T holder) {
         //todo: we need to delete collections as well
+        //todo: redis values
         PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
 
         for (Field field : ReflectionUtils.getFields(holder.getClass())) {
@@ -499,77 +489,7 @@ public class DataManager {
         return dependencies;
     }
 
-    //todo: this can be named better
-    private void loadPersistentDataIntoCache(Connection connection, Multimap<UniqueData, DatabaseKey> databaseKeys) {
-//        System.out.println("Loading persistent data into cache");
-//        System.out.println("Keys: " + databaseKeys.entries());
-
-//        Multimap<String, String> valueColumnsToLoad = Multimaps.newListMultimap(new HashMap<>(), ArrayList::new);
-//        Multimap<String, Pair<String, CollectionKey>> collectionColumnsToLoad = Multimaps.newListMultimap(new HashMap<>(), ArrayList::new);
-
-//        for (DatabaseKey key : databaseKeys) {
-//            if (key instanceof ColumnKey columnKey) {
-//                for (String column : columnKey.getColumns()) {
-//                    valueColumnsToLoad.put(key.getSchema() + "." + key.getTable(), column);
-//                }
-//            } else if (key instanceof CollectionKey collectionKey) {
-//                for (String column : key.getColumns()) {
-//                    collectionColumnsToLoad.put(key.getSchema() + "." + key.getTable(), Pair.of(column, collectionKey));
-//                }
-//            }
-//        }
-
-
-        //todo: pull this out and load based on a join on the holder's primary key column
-//        for (Map.Entry<String, Collection<Pair<String, CollectionKey>>> entry : collectionColumnsToLoad.asMap().entrySet()) {
-//            String schemaTable = entry.getKey();
-//            Collection<Pair<String, CollectionKey>> pairs = entry.getValue();
-//            List<String> columns = new ArrayList<>();
-//            columns.add("id");
-//            for (Pair<String, CollectionKey> pair : pairs) {
-//                columns.add(pair.first());
-//            }
-//
-//            columns = new ArrayList<>(new HashSet<>(columns));
-//
-//
-//            StringBuilder sqlBuilder = new StringBuilder("SELECT ");
-//
-//            for (int i = 0; i < columns.size(); i++) {
-//                sqlBuilder.append(columns.get(i));
-//                if (i < columns.size() - 1) {
-//                    sqlBuilder.append(", ");
-//                }
-//            }
-//            sqlBuilder.append(" FROM ").append(schemaTable);
-//
-//            String sql = sqlBuilder.toString();
-//            System.out.println("SQL: " + sql);
-//
-//            try (PreparedStatement statement = connection.prepareStatement(sql)) {
-//                ResultSet resultSet = statement.executeQuery();
-//                while (resultSet.next()) {
-//                    UUID id = resultSet.getObject("id", UUID.class);
-//                    UUID linkingId = resultSet.getObject(pairs.iterator().next().second().getLinkingColumn(), UUID.class);
-//
-//                    if (linkingId == null) {
-//                        continue;
-//                    }
-//
-//                    for (Pair<String, CollectionKey> pair : pairs) {
-//                        String column = pair.first();
-//                        CollectionKey collectionKey = pair.second();
-//                        Object value = resultSet.getObject(column); //todo: deserialize
-//                        cache(new CollectionEntryKey(collectionKey.getSchema(), collectionKey.getTable(), collectionKey.getLinkingColumn(), collectionKey.getDataColumn(), linkingId, id), value);
-//                    }
-//                }
-//            }
-//        }
-
-    }
-
     public void dump() {
-        //print each cache entry line by line
         for (Map.Entry<DataKey, CacheEntry> entry : cache.entrySet()) {
             logger.debug("{} -> {}", entry.getKey(), entry.getValue().value());
         }

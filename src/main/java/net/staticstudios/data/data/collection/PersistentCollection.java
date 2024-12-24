@@ -5,8 +5,13 @@ import net.staticstudios.data.data.Data;
 import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.key.CollectionKey;
+import org.jetbrains.annotations.Blocking;
 
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.Arrays;
+import java.util.Iterator;
+import java.util.function.Predicate;
 
 public abstract class PersistentCollection<T> implements DataHolder, java.util.Collection<T>, Data<T> {
     private final DataHolder holder;
@@ -87,5 +92,42 @@ public abstract class PersistentCollection<T> implements DataHolder, java.util.C
     @Override
     public String toString() {
         return Arrays.toString(toArray());
+    }
+
+    @Blocking
+    public abstract boolean add(Connection connection, T t) throws SQLException;
+
+    @Blocking
+    public abstract boolean addAll(Connection connection, java.util.Collection<? extends T> c) throws SQLException;
+
+    @Blocking
+    public abstract boolean remove(Connection connection, T t) throws SQLException;
+
+    @Blocking
+    public abstract boolean removeAll(Connection connection, java.util.Collection<? extends T> c) throws SQLException;
+
+    @Blocking
+    public abstract void clear(Connection connection) throws SQLException;
+
+    @Blocking
+    public abstract Iterator<T> iterator(Connection connection);
+
+    @Blocking
+    public boolean removeIf(Connection connection, Predicate<? super T> filter) throws SQLException {
+        boolean removed = false;
+        Iterator<T> each = iterator(connection);
+        while (each.hasNext()) {
+            if (filter.test(each.next())) {
+                try {
+                    each.remove();
+                } catch (Exception e) {
+                    if (e.getCause() instanceof SQLException) {
+                        throw (SQLException) e.getCause();
+                    }
+                }
+                removed = true;
+            }
+        }
+        return removed;
     }
 }

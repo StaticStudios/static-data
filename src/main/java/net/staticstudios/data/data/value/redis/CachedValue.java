@@ -10,6 +10,9 @@ import net.staticstudios.data.impl.CachedValueManager;
 import net.staticstudios.data.key.RedisKey;
 import net.staticstudios.data.primative.Primitive;
 import net.staticstudios.data.primative.Primitives;
+import net.staticstudios.utils.ThreadUtils;
+import org.jetbrains.annotations.Blocking;
+import redis.clients.jedis.Jedis;
 
 import java.time.Instant;
 import java.util.List;
@@ -78,6 +81,7 @@ public class CachedValue<T> implements Value<T> {
         return this;
     }
 
+    @SuppressWarnings("unchecked")
     private T getFallbackValue() {
         T fallbackValue = this.fallbackValue == null ? null : this.fallbackValue.get();
         if (fallbackValue == null) {
@@ -108,19 +112,36 @@ public class CachedValue<T> implements Value<T> {
     }
 
     public T get() {
+        T value;
         try {
-            return getDataManager().get(this);
+            value = getDataManager().get(this);
         } catch (DataDoesNotExistException e) {
-            return getFallbackValue();
+            value = null;
         }
+
+        return value == null ? getFallbackValue() : value;
     }
 
     public void set(T value) {
         CachedValueManager manager = CachedValueManager.getInstance();
         dataManager.cache(this.getKey(), dataType, value, Instant.now());
 
+        ThreadUtils.submit(() -> {
+            try (Jedis jedis = dataManager.getJedis()) {
+                manager.setInRedis(jedis, List.of(initial(value)));
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    @Blocking
+    public void set(Jedis jedis, T value) {
+        CachedValueManager manager = CachedValueManager.getInstance();
+        dataManager.cache(this.getKey(), dataType, value, Instant.now());
+
         try {
-            manager.setInRedis(List.of(initial(value)));
+            manager.setInRedis(jedis, List.of(initial(value)));
         } catch (Exception e) {
             e.printStackTrace();
         }

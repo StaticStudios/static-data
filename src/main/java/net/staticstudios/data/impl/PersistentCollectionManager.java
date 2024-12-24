@@ -13,7 +13,6 @@ import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.CollectionKey;
 import net.staticstudios.data.key.DataKey;
 import net.staticstudios.data.key.UniqueIdentifier;
-import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.Blocking;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -308,7 +307,7 @@ public class PersistentCollectionManager {
         }
     }
 
-    public void addEntries(PersistentValueCollection<?> collection, Collection<CollectionEntry> entries) {
+    public void addEntriesToCache(PersistentValueCollection<?> collection, Collection<CollectionEntry> entries) {
         UniqueData holder = collection.getRootHolder();
 
         for (CollectionEntry entry : entries) {
@@ -325,24 +324,14 @@ public class PersistentCollectionManager {
             dataManager.cache(entryDataKey, collection.getDataType(), entry.value(), Instant.now());
             collectionEntryHolders.put(collection.getKey(), uniqueIdentifier);
         }
-
-        ThreadUtils.submit(() -> {
-            try {
-                addToDatabase(collection, entries);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        });
     }
 
-    public void removeEntries(PersistentValueCollection<?> collection, List<CollectionEntry> entries) {
+    public void removeEntriesFromCache(PersistentValueCollection<?> collection, List<CollectionEntry> entries) {
         DataKey collectionKey = collection.getKey();
         for (CollectionEntry entry : entries) {
             collectionEntryHolders.remove(collectionKey, UniqueIdentifier.of(collection.getRootHolder().getIdentifier().getColumn(), entry.id()));
             dataManager.uncache(getEntryDataKey(collection, entry.id(), collection.getRootHolder().getIdentifier()));
         }
-
-        ThreadUtils.submit(() -> removeFromDatabase(collection, entries));
     }
 
 
@@ -370,132 +359,117 @@ public class PersistentCollectionManager {
         }).toList();
     }
 
-    public void addToDatabase(PersistentValueCollection<?> collection, Collection<CollectionEntry> entries) {
+    public void addToDatabase(Connection connection, PersistentValueCollection<?> collection, Collection<CollectionEntry> entries) throws SQLException {
         if (entries.isEmpty()) {
             return;
         }
 
         String entryIdColumn = collection.getEntryIdColumn();
 
-        try (Connection connection = dataManager.getConnection()) {
-            //todo: this insert thing is wrong, since it will fail if there is a not null constraint on some other column not specified
-            //todo: change this to a function or something where we try to update an existing entry, if its not there, then we fallback to insert. this case is when were using a uniquedatacollection
-            StringBuilder sqlBuilder = new StringBuilder("INSERT INTO ").append(collection.getSchema()).append(".").append(collection.getTable()).append(" (");
+        //todo: this insert thing is wrong, since it will fail if there is a not null constraint on some other column not specified
+        //todo: change this to a function or something where we try to update an existing entry, if its not there, then we fallback to insert. this case is when were using a uniquedatacollection
+        StringBuilder sqlBuilder = new StringBuilder("INSERT INTO ").append(collection.getSchema()).append(".").append(collection.getTable()).append(" (");
 
-            List<String> columns = new ArrayList<>();
+        List<String> columns = new ArrayList<>();
 
-            columns.add(entryIdColumn);
-            if (!collection.getDataColumn().equals(entryIdColumn)) {
-                // For PersistentUniqueDataCollection the entry id will be the data, since that's what we're interested in
-                columns.add(collection.getDataColumn());
-            }
-            columns.add(collection.getLinkingColumn());
-
-            for (int i = 0; i < columns.size(); i++) {
-                sqlBuilder.append(columns.get(i));
-                if (i < columns.size() - 1) {
-                    sqlBuilder.append(", ");
-                }
-            }
-
-            sqlBuilder.append(") VALUES (");
-
-            for (int i = 0; i < columns.size(); i++) {
-                sqlBuilder.append("?");
-                if (i < columns.size() - 1) {
-                    sqlBuilder.append(", ");
-                }
-            }
-
-            sqlBuilder.append(")");
-
-            sqlBuilder.append(" ON CONFLICT (");
-            sqlBuilder.append(entryIdColumn);
-            sqlBuilder.append(") DO UPDATE SET ");
-            sqlBuilder.append(collection.getLinkingColumn()).append(" = EXCLUDED.").append(collection.getLinkingColumn());
-
-            String sql = sqlBuilder.toString();
-            dataManager.logSQL(sql);
-
-
-            boolean autoCommit = connection.getAutoCommit();
-            connection.setAutoCommit(false);
-
-            try (PreparedStatement statement = connection.prepareStatement(sql)) {
-
-                for (CollectionEntry entry : entries) {
-
-                    int i = 1;
-                    statement.setObject(i, entry.id());
-                    if (!collection.getDataColumn().equals(entryIdColumn)) {
-                        // For PersistentUniqueDataCollection the entry id will be the data, since that's what we're interested in
-                        statement.setObject(++i, dataManager.serialize(entry.value()));
-                    }
-                    statement.setObject(++i, collection.getRootHolder().getId());
-
-                    statement.executeUpdate();
-                }
-
-            } finally {
-                if (!autoCommit) {
-                    connection.commit();
-                }
-                connection.setAutoCommit(autoCommit);
-            }
-
-
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
+        columns.add(entryIdColumn);
+        if (!collection.getDataColumn().equals(entryIdColumn)) {
+            // For PersistentUniqueDataCollection the entry id will be the data, since that's what we're interested in
+            columns.add(collection.getDataColumn());
         }
+        columns.add(collection.getLinkingColumn());
+
+        for (int i = 0; i < columns.size(); i++) {
+            sqlBuilder.append(columns.get(i));
+            if (i < columns.size() - 1) {
+                sqlBuilder.append(", ");
+            }
+        }
+
+        sqlBuilder.append(") VALUES (");
+
+        for (int i = 0; i < columns.size(); i++) {
+            sqlBuilder.append("?");
+            if (i < columns.size() - 1) {
+                sqlBuilder.append(", ");
+            }
+        }
+
+        sqlBuilder.append(")");
+
+        sqlBuilder.append(" ON CONFLICT (");
+        sqlBuilder.append(entryIdColumn);
+        sqlBuilder.append(") DO UPDATE SET ");
+        sqlBuilder.append(collection.getLinkingColumn()).append(" = EXCLUDED.").append(collection.getLinkingColumn());
+
+        String sql = sqlBuilder.toString();
+        dataManager.logSQL(sql);
+
+
+        boolean autoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+
+            for (CollectionEntry entry : entries) {
+
+                int i = 1;
+                statement.setObject(i, entry.id());
+                if (!collection.getDataColumn().equals(entryIdColumn)) {
+                    // For PersistentUniqueDataCollection the entry id will be the data, since that's what we're interested in
+                    statement.setObject(++i, dataManager.serialize(entry.value()));
+                }
+                statement.setObject(++i, collection.getRootHolder().getId());
+
+                statement.executeUpdate();
+            }
+
+        } finally {
+            connection.setAutoCommit(autoCommit);
+        }
+
     }
 
 
-    public void removeFromDatabase(PersistentValueCollection<?> collection, List<CollectionEntry> entries) {
+    public void removeFromDatabase(Connection connection, PersistentValueCollection<?> collection, List<CollectionEntry> entries) throws SQLException {
         if (entries.isEmpty()) {
             return;
         }
 
         UniqueIdentifier firstPkey = collection.getRootHolder().getIdentifier();
+        StringBuilder sqlBuilder = new StringBuilder("DELETE FROM ").append(collection.getSchema()).append(".").append(collection.getTable()).append(" WHERE (");
 
-        try (Connection connection = dataManager.getConnection()) {
-            StringBuilder sqlBuilder = new StringBuilder("DELETE FROM ").append(collection.getSchema()).append(".").append(collection.getTable()).append(" WHERE (");
+        sqlBuilder.append(firstPkey.getColumn());
 
-            sqlBuilder.append(firstPkey.getColumn());
+        sqlBuilder.append(") IN (");
 
-            sqlBuilder.append(") IN (");
+        int totalValues = entries.size();
 
-            int totalValues = entries.size();
+        for (int i = 0; i < totalValues; i++) {
+            sqlBuilder.append("?");
+            if (i < totalValues - 1) {
+                sqlBuilder.append(", ");
+            }
+        }
 
-            for (int i = 0; i < totalValues; i++) {
-                sqlBuilder.append("?");
-                if (i < totalValues - 1) {
-                    sqlBuilder.append(", ");
-                }
+        sqlBuilder.append(")");
+
+
+        String sql = sqlBuilder.toString();
+        dataManager.logSQL(sql);
+
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            int i = 1;
+
+            for (CollectionEntry entry : entries) {
+                statement.setObject(i++, entry.id());
             }
 
-            sqlBuilder.append(")");
-
-
-            String sql = sqlBuilder.toString();
-            dataManager.logSQL(sql);
-
-            try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                int i = 1;
-
-                for (CollectionEntry entry : entries) {
-                    statement.setObject(i++, entry.id());
-                }
-
-                statement.executeUpdate();
-            }
-
-
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
+            statement.executeUpdate();
         }
     }
 
-    public void removeFromUniqueDataCollection(PersistentValueCollection<?> idsCollection, List<UUID> entryIds) {
+    public void removeFromUniqueDataCollectionInMemory(PersistentValueCollection<?> idsCollection, List<UUID> entryIds) {
         if (entryIds.isEmpty()) {
             return;
         }
@@ -504,41 +478,39 @@ public class PersistentCollectionManager {
             UniqueIdentifier pkey = UniqueIdentifier.of(idsCollection.getRootHolder().getIdentifier().getColumn(), entry);
             collectionEntryHolders.remove(idsCollection.getKey(), pkey);
         }
+    }
 
+    public void removeFromUniqueDataCollectionInDatabase(Connection connection, PersistentValueCollection<?> idsCollection, List<UUID> entryIds) throws SQLException {
+        if (entryIds.isEmpty()) {
+            return;
+        }
 
-        ThreadUtils.submit(() -> {
-            try (Connection connection = dataManager.getConnection()) {
-                StringBuilder sqlBuilder = new StringBuilder("UPDATE ").append(idsCollection.getSchema()).append(".").append(idsCollection.getTable()).append(" SET ");
-                sqlBuilder.append(idsCollection.getLinkingColumn()).append(" = NULL WHERE ");
-                sqlBuilder.append(idsCollection.getEntryIdColumn()).append(" IN (");
+        StringBuilder sqlBuilder = new StringBuilder("UPDATE ").append(idsCollection.getSchema()).append(".").append(idsCollection.getTable()).append(" SET ");
+        sqlBuilder.append(idsCollection.getLinkingColumn()).append(" = NULL WHERE ");
+        sqlBuilder.append(idsCollection.getEntryIdColumn()).append(" IN (");
 
-                int totalValues = entryIds.size();
+        int totalValues = entryIds.size();
 
-                for (int i = 0; i < totalValues; i++) {
-                    sqlBuilder.append("?");
-                    if (i < totalValues - 1) {
-                        sqlBuilder.append(", ");
-                    }
-                }
-
-                sqlBuilder.append(")");
-
-                String sql = sqlBuilder.toString();
-                dataManager.logSQL(sql);
-
-                try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                    int i = 1;
-
-                    for (UUID entry : entryIds) {
-                        statement.setObject(i++, entry);
-                    }
-
-                    statement.executeUpdate();
-                }
-
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
+        for (int i = 0; i < totalValues; i++) {
+            sqlBuilder.append("?");
+            if (i < totalValues - 1) {
+                sqlBuilder.append(", ");
             }
-        });
+        }
+
+        sqlBuilder.append(")");
+
+        String sql = sqlBuilder.toString();
+        dataManager.logSQL(sql);
+
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            int i = 1;
+
+            for (UUID entry : entryIds) {
+                statement.setObject(i++, entry);
+            }
+
+            statement.executeUpdate();
+        }
     }
 }

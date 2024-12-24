@@ -49,29 +49,26 @@ public class CachedValueManager {
     }
 
     @Blocking
-    public void setInRedis(List<InitialCachedValue> initialData) {
+    public void setInRedis(Jedis jedis, List<InitialCachedValue> initialData) {
         if (initialData.isEmpty()) {
             return;
         }
 
-        try (Jedis jedis = dataManager.getJedis()) {
-            for (InitialCachedValue initial : initialData) {
-                RedisKey key = initial.getValue().getKey();
-                if (initial.getInitialDataValue() == null) {
-                    jedis.del(key.toString());
-                    logger.trace("Deleted {}", key);
-                    continue;
-                }
-                Object serialized = dataManager.serialize(initial.getInitialDataValue());
+        for (InitialCachedValue initial : initialData) {
+            RedisKey key = initial.getValue().getKey();
+            if (initial.getInitialDataValue() == null) {
+                jedis.del(key.toString());
+                logger.trace("Deleted {}", key);
+                continue;
+            }
+            Object serialized = dataManager.serialize(initial.getInitialDataValue());
 
-                if (initial.getValue().getExpirySeconds() > 0) {
-                    jedis.setex(key.toString(), initial.getValue().getExpirySeconds(), Primitives.encode(serialized));
-                    logger.trace("Set {} to {} with expiry of {} seconds", key, serialized, initial.getValue().getExpirySeconds());
-                } else {
-                    jedis.set(key.toString(), Primitives.encode(serialized));
-                    logger.trace("Set {} to {}", key, serialized);
-                }
-
+            if (initial.getValue().getExpirySeconds() > 0) {
+                jedis.setex(key.toString(), initial.getValue().getExpirySeconds(), Primitives.encode(serialized));
+                logger.trace("Set {} to {} with expiry of {} seconds", key, serialized, initial.getValue().getExpirySeconds());
+            } else {
+                jedis.set(key.toString(), Primitives.encode(serialized));
+                logger.trace("Set {} to {}", key, serialized);
             }
         }
     }

@@ -2,8 +2,12 @@ package net.staticstudios.data.data.collection;
 
 import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.data.UniqueData;
+import net.staticstudios.data.impl.PersistentCollectionManager;
+import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.NotNull;
 
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.*;
 import java.util.function.Consumer;
 
@@ -48,7 +52,7 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
 
     @Override
     public @NotNull Iterator<T> iterator() {
-        return new Itr(holderIds.toArray(new UUID[0]));
+        return new NonBlockingItr(holderIds.toArray(new UUID[0]));
     }
 
     @Override
@@ -81,7 +85,17 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
 
     @Override
     public boolean add(T t) {
-        holderIds.getManager().addEntries(holderIds, Collections.singletonList(new CollectionEntry(t.getId(), t.getId())));
+        PersistentCollectionManager manager = holderIds.getManager();
+        List<CollectionEntry> toAdd = Collections.singletonList(new CollectionEntry(t.getId(), t.getId()));
+        manager.addEntriesToCache(holderIds, toAdd);
+        ThreadUtils.submit(() -> {
+            try (Connection connection = getHolder().getDataManager().getConnection()) {
+                manager.addToDatabase(connection, holderIds, toAdd);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+
         return true;
     }
 
@@ -90,7 +104,16 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
         if (o instanceof DataHolder holder) {
             UUID id = holder.getRootHolder().getId();
             if (holderIds.contains(id)) {
-                holderIds.getManager().removeFromUniqueDataCollection(holderIds, Collections.singletonList(id));
+                List<UUID> toRemove = Collections.singletonList(id);
+                holderIds.getManager().removeFromUniqueDataCollectionInMemory(holderIds, toRemove);
+
+                ThreadUtils.submit(() -> {
+                    try (Connection connection = getHolder().getDataManager().getConnection()) {
+                        holderIds.getManager().removeFromUniqueDataCollectionInDatabase(connection, holderIds, toRemove);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                });
                 return true;
             }
         }
@@ -116,29 +139,46 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
 
     @Override
     public boolean addAll(@NotNull Collection<? extends T> c) {
-        List<CollectionEntry> entries = new ArrayList<>();
+        List<CollectionEntry> toAdd = new ArrayList<>();
         for (T t : c) {
-            entries.add(new CollectionEntry(t.getId(), t.getId()));
+            toAdd.add(new CollectionEntry(t.getId(), t.getId()));
         }
 
-        holderIds.getManager().addEntries(holderIds, entries);
+        PersistentCollectionManager manager = holderIds.getManager();
+        manager.addEntriesToCache(holderIds, toAdd);
+        ThreadUtils.submit(() -> {
+            try (Connection connection = getHolder().getDataManager().getConnection()) {
+                manager.addToDatabase(connection, holderIds, toAdd);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+
         return true;
     }
 
     @Override
     public boolean removeAll(@NotNull Collection<?> c) {
-        List<UUID> ids = new ArrayList<>();
+        List<UUID> toRemove = new ArrayList<>();
         for (Object o : c) {
             if (o instanceof DataHolder) {
                 if (holderIds.contains(((DataHolder) o).getRootHolder().getId())) {
-                    ids.add(((DataHolder) o).getRootHolder().getId());
+                    toRemove.add(((DataHolder) o).getRootHolder().getId());
                 }
             }
         }
 
-        holderIds.getManager().removeFromUniqueDataCollection(holderIds, ids);
+        holderIds.getManager().removeFromUniqueDataCollectionInMemory(holderIds, toRemove);
 
-        return !ids.isEmpty();
+        ThreadUtils.submit(() -> {
+            try (Connection connection = getHolder().getDataManager().getConnection()) {
+                holderIds.getManager().removeFromUniqueDataCollectionInDatabase(connection, holderIds, toRemove);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+
+        return !toRemove.isEmpty();
     }
 
     @Override
@@ -159,15 +199,22 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
             }
         }
 
-        holderIds.getManager().removeFromUniqueDataCollection(holderIds, toRemove);
+        holderIds.getManager().removeFromUniqueDataCollectionInMemory(holderIds, toRemove);
+
+        ThreadUtils.submit(() -> {
+            try (Connection connection = getHolder().getDataManager().getConnection()) {
+                holderIds.getManager().removeFromUniqueDataCollectionInDatabase(connection, holderIds, toRemove);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
 
         return !toRemove.isEmpty();
     }
 
     @Override
     public void clear() {
-        List<UUID> ids = new ArrayList<>(holderIds);
-        holderIds.getManager().removeFromUniqueDataCollection(holderIds, ids);
+        removeAll(new ArrayList<>(holderIds));
     }
 
     @Override
@@ -176,6 +223,67 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
                 "dataType=" + getDataType() +
                 ", holderIds=" + holderIds +
                 '}';
+    }
+
+    @Override
+    public boolean add(Connection connection, T t) throws SQLException {
+        PersistentCollectionManager manager = holderIds.getManager();
+        List<CollectionEntry> toAdd = Collections.singletonList(new CollectionEntry(t.getId(), t.getId()));
+        manager.addEntriesToCache(holderIds, toAdd);
+        manager.addToDatabase(connection, holderIds, toAdd);
+        return true;
+    }
+
+    @Override
+    public boolean addAll(Connection connection, Collection<? extends T> c) throws SQLException {
+        List<CollectionEntry> toAdd = new ArrayList<>();
+        for (T t : c) {
+            toAdd.add(new CollectionEntry(t.getId(), t.getId()));
+        }
+
+        PersistentCollectionManager manager = holderIds.getManager();
+        manager.addEntriesToCache(holderIds, toAdd);
+        manager.addToDatabase(connection, holderIds, toAdd);
+        return true;
+    }
+
+    @Override
+    public boolean remove(Connection connection, T t) throws SQLException {
+        UUID id = t.getId();
+        if (holderIds.contains(id)) {
+            List<UUID> toRemove = Collections.singletonList(id);
+            holderIds.getManager().removeFromUniqueDataCollectionInMemory(holderIds, toRemove);
+            holderIds.getManager().removeFromUniqueDataCollectionInDatabase(connection, holderIds, toRemove);
+            return true;
+        }
+
+        return false;
+    }
+
+    @Override
+    public boolean removeAll(Connection connection, Collection<? extends T> c) throws SQLException {
+        List<UUID> toRemove = new ArrayList<>();
+        for (T t : c) {
+            if (holderIds.contains(t.getId())) {
+                toRemove.add(t.getId());
+            }
+        }
+
+        holderIds.getManager().removeFromUniqueDataCollectionInMemory(holderIds, toRemove);
+        holderIds.getManager().removeFromUniqueDataCollectionInDatabase(connection, holderIds, toRemove);
+        return !toRemove.isEmpty();
+    }
+
+    @Override
+    public void clear(Connection connection) throws SQLException {
+        List<UUID> toRemove = new ArrayList<>(holderIds);
+        holderIds.getManager().removeFromUniqueDataCollectionInMemory(holderIds, toRemove);
+        holderIds.getManager().removeFromUniqueDataCollectionInDatabase(connection, holderIds, toRemove);
+    }
+
+    @Override
+    public Iterator<T> iterator(Connection connection) {
+        return new BlockingItr(holderIds.toArray(new UUID[0]), connection);
     }
 
     @Override
@@ -192,12 +300,12 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
         return holderIds.hashCode();
     }
 
-    private class Itr implements Iterator<T> {
+    private class NonBlockingItr implements Iterator<T> {
         private final UUID[] ids;
         int cursor;       // index of next element to return
         int lastRet = -1; // index of last element returned; -1 if no such
 
-        public Itr(UUID[] ids) {
+        public NonBlockingItr(UUID[] ids) {
             this.ids = ids;
         }
 
@@ -218,7 +326,65 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
             if (lastRet < 0)
                 throw new IllegalStateException();
             UUID id = ids[lastRet];
-            holderIds.getManager().removeFromUniqueDataCollection(holderIds, Collections.singletonList(id));
+            PersistentCollectionManager manager = holderIds.getManager();
+            manager.removeFromUniqueDataCollectionInMemory(holderIds, Collections.singletonList(id));
+            ThreadUtils.submit(() -> {
+                try (Connection connection = getHolder().getDataManager().getConnection()) {
+                    manager.removeFromUniqueDataCollectionInDatabase(connection, holderIds, Collections.singletonList(id));
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+            });
+
+            lastRet = -1;
+        }
+
+        @Override
+        public void forEachRemaining(Consumer<? super T> action) {
+            Objects.requireNonNull(action);
+            for (int i = cursor; i < ids.length; i++) {
+                UUID id = ids[i];
+                action.accept(getDataManager().getUniqueData(getDataType(), id));
+            }
+            cursor = ids.length;
+        }
+    }
+
+    private class BlockingItr implements Iterator<T> {
+        private final UUID[] ids;
+        private final Connection connection;
+        int cursor;       // index of next element to return
+        int lastRet = -1; // index of last element returned; -1 if no such
+
+        public BlockingItr(UUID[] ids, Connection connection) {
+            this.ids = ids;
+            this.connection = connection;
+        }
+
+        public boolean hasNext() {
+            return cursor != ids.length;
+        }
+
+        public T next() {
+            int i = cursor;
+            if (!hasNext())
+                throw new NoSuchElementException();
+            cursor = i + 1;
+            UUID id = ids[lastRet = i];
+            return getDataManager().getUniqueData(getDataType(), id);
+        }
+
+        public void remove() {
+            if (lastRet < 0)
+                throw new IllegalStateException();
+            UUID id = ids[lastRet];
+            PersistentCollectionManager manager = holderIds.getManager();
+            manager.removeFromUniqueDataCollectionInMemory(holderIds, Collections.singletonList(id));
+            try {
+                manager.removeFromUniqueDataCollectionInDatabase(connection, holderIds, Collections.singletonList(id));
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
 
             lastRet = -1;
         }

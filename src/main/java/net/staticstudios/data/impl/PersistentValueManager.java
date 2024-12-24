@@ -147,75 +147,71 @@ public class PersistentValueManager {
     }
 
     @Blocking
-    public void setInDatabase(List<InitialPersistentValue> initialData) throws Exception {
+    public void setInDatabase(Connection connection, List<InitialPersistentValue> initialData) throws SQLException {
         if (initialData.isEmpty()) {
             return;
         }
 
-        try (Connection connection = dataManager.getConnection()) {
-            boolean autoCommit = connection.getAutoCommit();
-            connection.setAutoCommit(false);
+        boolean autoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
 
-            //Group by id.schema.table
-            Multimap<String, InitialPersistentValue> initialDataMap = Multimaps.newListMultimap(new HashMap<>(), ArrayList::new);
+        //Group by id.schema.table
+        Multimap<String, InitialPersistentValue> initialDataMap = Multimaps.newListMultimap(new HashMap<>(), ArrayList::new);
 
-            for (InitialPersistentValue initial : initialData) {
-                PersistentValue<?> pv = initial.getValue();
-                String schemaTable = pv.getIdColumn() + "." + pv.getSchema() + "." + pv.getTable();
-                initialDataMap.put(schemaTable, initial);
-            }
-
-            for (String idSchemaTable : initialDataMap.keySet()) {
-                String idColumn = idSchemaTable.split("\\.", 2)[0];
-                String schemaTable = idSchemaTable.split("\\.", 2)[1];
-                Collection<InitialPersistentValue> initialDataValues = initialDataMap.get(idSchemaTable);
-
-                StringBuilder sqlBuilder = new StringBuilder("INSERT INTO ");
-                sqlBuilder.append(schemaTable);
-                sqlBuilder.append(" (");
-                sqlBuilder.append(idColumn);
-                sqlBuilder.append(", ");
-                for (InitialPersistentValue initial : initialDataValues) {
-                    sqlBuilder.append(initial.getValue().getColumn());
-                    sqlBuilder.append(", ");
-                }
-                sqlBuilder.setLength(sqlBuilder.length() - 2);
-
-                sqlBuilder.append(") VALUES (?, ");
-                sqlBuilder.append("?, ".repeat(initialDataValues.size()));
-                sqlBuilder.setLength(sqlBuilder.length() - 2);
-                sqlBuilder.append(") ON CONFLICT (");
-                sqlBuilder.append(idColumn);
-                sqlBuilder.append(") DO UPDATE SET ");
-                for (InitialPersistentValue initial : initialDataValues) {
-                    sqlBuilder.append(initial.getValue().getColumn());
-                    sqlBuilder.append(" = EXCLUDED.");
-                    sqlBuilder.append(initial.getValue().getColumn());
-                    sqlBuilder.append(", ");
-                }
-                sqlBuilder.setLength(sqlBuilder.length() - 2);
-                String sql = sqlBuilder.toString();
-
-                dataManager.logSQL(sql);
-
-                try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                    InitialPersistentValue first = initialDataValues.iterator().next();
-                    statement.setObject(1, first.getValue().getHolder().getRootHolder().getId());
-                    int i = 2;
-                    for (InitialPersistentValue initial : initialDataValues) {
-                        Object initialDataValue = initial.getInitialDataValue();
-                        Object serialized = dataManager.serialize(initialDataValue);
-                        statement.setObject(i++, serialized);
-                    }
-
-                    statement.executeUpdate();
-                }
-            }
-            if (!autoCommit) {
-                connection.commit();
-            }
-            connection.setAutoCommit(autoCommit);
+        for (InitialPersistentValue initial : initialData) {
+            PersistentValue<?> pv = initial.getValue();
+            String schemaTable = pv.getIdColumn() + "." + pv.getSchema() + "." + pv.getTable();
+            initialDataMap.put(schemaTable, initial);
         }
+
+        for (String idSchemaTable : initialDataMap.keySet()) {
+            String idColumn = idSchemaTable.split("\\.", 2)[0];
+            String schemaTable = idSchemaTable.split("\\.", 2)[1];
+            Collection<InitialPersistentValue> initialDataValues = initialDataMap.get(idSchemaTable);
+
+            StringBuilder sqlBuilder = new StringBuilder("INSERT INTO ");
+            sqlBuilder.append(schemaTable);
+            sqlBuilder.append(" (");
+            sqlBuilder.append(idColumn);
+            sqlBuilder.append(", ");
+            for (InitialPersistentValue initial : initialDataValues) {
+                sqlBuilder.append(initial.getValue().getColumn());
+                sqlBuilder.append(", ");
+            }
+            sqlBuilder.setLength(sqlBuilder.length() - 2);
+
+            sqlBuilder.append(") VALUES (?, ");
+            sqlBuilder.append("?, ".repeat(initialDataValues.size()));
+            sqlBuilder.setLength(sqlBuilder.length() - 2);
+            sqlBuilder.append(") ON CONFLICT (");
+            sqlBuilder.append(idColumn);
+            sqlBuilder.append(") DO UPDATE SET ");
+            for (InitialPersistentValue initial : initialDataValues) {
+                sqlBuilder.append(initial.getValue().getColumn());
+                sqlBuilder.append(" = EXCLUDED.");
+                sqlBuilder.append(initial.getValue().getColumn());
+                sqlBuilder.append(", ");
+            }
+            sqlBuilder.setLength(sqlBuilder.length() - 2);
+            String sql = sqlBuilder.toString();
+
+            dataManager.logSQL(sql);
+
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                InitialPersistentValue first = initialDataValues.iterator().next();
+                statement.setObject(1, first.getValue().getHolder().getRootHolder().getId());
+                int i = 2;
+                for (InitialPersistentValue initial : initialDataValues) {
+                    Object initialDataValue = initial.getInitialDataValue();
+                    Object serialized = dataManager.serialize(initialDataValue);
+                    statement.setObject(i++, serialized);
+                }
+
+                statement.executeUpdate();
+            }
+        }
+
+        connection.setAutoCommit(autoCommit);
     }
 
     /**

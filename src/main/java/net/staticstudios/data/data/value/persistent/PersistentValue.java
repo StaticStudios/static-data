@@ -8,7 +8,11 @@ import net.staticstudios.data.data.value.Value;
 import net.staticstudios.data.impl.PersistentValueManager;
 import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.DataKey;
+import net.staticstudios.utils.ThreadUtils;
+import org.jetbrains.annotations.Blocking;
 
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -88,11 +92,21 @@ public class PersistentValue<T> implements Value<T> {
         PersistentValueManager manager = PersistentValueManager.getInstance();
         manager.updateCache(this, value);
 
-        try {
-            manager.setInDatabase(List.of(new InitialPersistentValue(this, value)));
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        ThreadUtils.submit(() -> {
+            try (Connection connection = dataManager.getConnection()) {
+                manager.setInDatabase(connection, List.of(new InitialPersistentValue(this, value)));
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    @Blocking
+    public void set(Connection connection, T value) throws SQLException {
+        PersistentValueManager manager = PersistentValueManager.getInstance();
+        manager.updateCache(this, value);
+
+        manager.setInDatabase(connection, List.of(new InitialPersistentValue(this, value)));
     }
 
     public String getSchema() {
