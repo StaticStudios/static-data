@@ -123,7 +123,7 @@ public class CachedValue<T> implements Value<T> {
     }
 
     public void set(T value) {
-        CachedValueManager manager = CachedValueManager.getInstance();
+        CachedValueManager manager = dataManager.getCachedValueManager();
         dataManager.cache(this.getKey(), dataType, value, Instant.now());
 
         ThreadUtils.submit(() -> {
@@ -137,7 +137,7 @@ public class CachedValue<T> implements Value<T> {
 
     @Blocking
     public void set(Jedis jedis, T value) {
-        CachedValueManager manager = CachedValueManager.getInstance();
+        CachedValueManager manager = dataManager.getCachedValueManager();
         dataManager.cache(this.getKey(), dataType, value, Instant.now());
 
         try {

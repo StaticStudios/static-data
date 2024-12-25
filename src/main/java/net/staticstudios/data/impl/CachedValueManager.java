@@ -20,7 +20,6 @@ import java.util.Set;
 
 public class CachedValueManager {
     private static final Logger logger = LoggerFactory.getLogger(CachedValueManager.class);
-    private static CachedValueManager instance;
     private final DataManager dataManager;
 
     public CachedValueManager(DataManager dataManager) {
@@ -38,14 +37,6 @@ public class CachedValueManager {
             listener.punsubscribe();
             listenerThread.interrupt();
         });
-    }
-
-    public static CachedValueManager getInstance() {
-        return instance;
-    }
-
-    public static void instantiate(DataManager dataManager) {
-        instance = new CachedValueManager(dataManager);
     }
 
     @Blocking

@@ -89,7 +89,7 @@ public class PersistentValue<T> implements Value<T> {
     }
 
     public void set(T value) {
-        PersistentValueManager manager = PersistentValueManager.getInstance();
+        PersistentValueManager manager = dataManager.getPersistentValueManager();
         manager.updateCache(this, value);
 
         ThreadUtils.submit(() -> {
@@ -103,7 +103,7 @@ public class PersistentValue<T> implements Value<T> {
 
     @Blocking
     public void set(Connection connection, T value) throws SQLException {
-        PersistentValueManager manager = PersistentValueManager.getInstance();
+        PersistentValueManager manager = dataManager.getPersistentValueManager();
         manager.updateCache(this, value);
 
         manager.setInDatabase(connection, List.of(new InitialPersistentValue(this, value)));

@@ -10,6 +10,8 @@ import net.staticstudios.data.data.Data;
 import net.staticstudios.data.data.InitialValue;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.data.collection.PersistentCollection;
+import net.staticstudios.data.data.collection.PersistentUniqueDataCollection;
+import net.staticstudios.data.data.collection.PersistentValueCollection;
 import net.staticstudios.data.data.value.Value;
 import net.staticstudios.data.data.value.persistent.InitialPersistentValue;
 import net.staticstudios.data.data.value.persistent.PersistentValue;
@@ -62,6 +64,9 @@ public class DataManager {
     private final PostgresListener pgListener;
     private final String applicationName;
     private final JedisProvider jedisProvider;
+    private final PersistentValueManager persistentValueManager;
+    private final PersistentCollectionManager persistentCollectionManager;
+    private final CachedValueManager cachedValueManager;
 
     public DataManager(HikariConfig poolConfig, JedisProvider jedisProvider) {
         this.applicationName = "static_data_manager-" + UUID.randomUUID();
@@ -77,9 +82,9 @@ public class DataManager {
 
         pgListener = new PostgresListener(this, poolConfig);
 
-        PersistentCollectionManager.instantiate(this, pgListener);
-        PersistentValueManager.instantiate(this, pgListener);
-        CachedValueManager.instantiate(this);
+        this.persistentValueManager = new PersistentValueManager(this, pgListener);
+        this.persistentCollectionManager = new PersistentCollectionManager(this, pgListener);
+        this.cachedValueManager = new CachedValueManager(this);
 
         HikariConfig customizedPoolConfig = new HikariConfig();
         poolConfig.copyStateTo(customizedPoolConfig);
@@ -120,6 +125,18 @@ public class DataManager {
                 throw new RuntimeException(e);
             }
         });
+    }
+
+    public PersistentValueManager getPersistentValueManager() {
+        return persistentValueManager;
+    }
+
+    public PersistentCollectionManager getPersistentCollectionManager() {
+        return persistentCollectionManager;
+    }
+
+    public CachedValueManager getCachedValueManager() {
+        return cachedValueManager;
     }
 
     public String getApplicationName() {
@@ -203,9 +220,8 @@ public class DataManager {
                         }
                     }
 
-                    PersistentValueManager manager = PersistentValueManager.getInstance();
                     for (DataKey key : persistentDataColumns.keySet()) {
-                        manager.loadAllFromDatabase(connection, dummyHolder, persistentDataColumns.get(key));
+                        persistentValueManager.loadAllFromDatabase(connection, dummyHolder, persistentDataColumns.get(key));
                     }
                 }
 
@@ -213,9 +229,8 @@ public class DataManager {
                 for (UniqueData dummyHolder : dummyPersistentCollections.keySet()) {
                     Collection<PersistentCollection<?>> dummyCollections = dummyPersistentCollections.get(dummyHolder);
 
-                    PersistentCollectionManager manager = PersistentCollectionManager.getInstance();
                     for (PersistentCollection<?> dummyCollection : dummyCollections) {
-                        manager.loadAllFromDatabase(connection, dummyHolder, dummyCollection);
+                        persistentCollectionManager.loadAllFromDatabase(connection, dummyHolder, dummyCollection);
                     }
                 }
 
@@ -223,9 +238,8 @@ public class DataManager {
                 for (UniqueData dummyHolder : dummyCachedValues.keySet()) {
                     Collection<CachedValue<?>> dummyValues = dummyCachedValues.get(dummyHolder);
 
-                    CachedValueManager manager = CachedValueManager.getInstance();
                     for (CachedValue<?> dummyValue : dummyValues) {
-                        manager.loadAllFromRedis(dummyValue);
+                        cachedValueManager.loadAllFromRedis(dummyValue);
                     }
                 }
 
@@ -358,7 +372,7 @@ public class DataManager {
 
 
             //Alert the collection manager of this change so it can update what it's keeping track of
-            PersistentCollectionManager.getInstance().handlePersistentValueCacheUpdated(
+            persistentCollectionManager.handlePersistentValueCacheUpdated(
                     data.getValue().getSchema(),
                     data.getValue().getTable(),
                     data.getValue().getColumn(),
@@ -368,7 +382,7 @@ public class DataManager {
                     data.getInitialDataValue()
             );
 
-            PersistentCollectionManager.getInstance().handlePersistentValueCacheUpdated(
+            persistentCollectionManager.handlePersistentValueCacheUpdated(
                     idColumn.getSchema(),
                     idColumn.getTable(),
                     idColumn.getColumn(),
@@ -385,15 +399,12 @@ public class DataManager {
     }
 
     private void insertIntoDataSource(Connection connection, Jedis jedis, InsertContext context) throws SQLException {
-        PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
         persistentValueManager.setInDatabase(connection, new ArrayList<>(context.initialPersistentValues().values()));
-        CachedValueManager.getInstance().setInRedis(jedis, new ArrayList<>(context.initialCachedValues().values()));
+        cachedValueManager.setInRedis(jedis, new ArrayList<>(context.initialCachedValues().values()));
     }
 
     public <T extends UniqueData> void delete(T holder) {
-        //todo: we need to delete collections as well
-        //todo: redis values
-        PersistentValueManager persistentValueManager = PersistentValueManager.getInstance();
+        List<Data<?>> dataList = new ArrayList<>();
 
         for (Field field : ReflectionUtils.getFields(holder.getClass())) {
             field.setAccessible(true);
@@ -401,38 +412,64 @@ public class DataManager {
             if (Data.class.isAssignableFrom(field.getType())) {
                 try {
                     Data<?> data = (Data<?>) field.get(holder);
-                    if (data instanceof PersistentValue<?> value) {
-                        persistentValueManager.uncache(value);
-                        persistentValueManager.uncache(
-                                value.getSchema(),
-                                value.getTable(),
-                                value.getIdColumn(),
-                                holder.getId(),
-                                value.getIdColumn()
-                        );
-                    }
+                    dataList.add(data);
                 } catch (IllegalAccessException e) {
                     throw new RuntimeException(e);
                 }
             }
         }
 
+        deleteFromCache(holder, dataList);
         removeUniqueData(holder.getClass(), holder.getId());
 
         ThreadUtils.submit(() -> {
-            try (Connection connection = getConnection()) {
-                String sql = "DELETE FROM " + holder.getSchema() + "." + holder.getTable() + " WHERE " + holder.getIdentifier().getColumn() + " = ?";
-                logSQL(sql);
-
-                try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                    statement.setObject(1, holder.getId());
-                    statement.execute();
-                }
-
+            try (Connection connection = getConnection();
+                 Jedis jedis = jedisProvider.getJedis()
+            ) {
+                deleteFromDataSource(connection, jedis, holder);
             } catch (SQLException e) {
+                logger.error("Error deleting data", e);
                 throw new RuntimeException(e);
             }
         });
+    }
+
+    private void deleteFromCache(UniqueData holder, List<Data<?>> dataList) {
+        for (Data<?> data : dataList) {
+            if (data instanceof PersistentValue<?> value) {
+                persistentValueManager.uncache(value);
+
+                //Uncache the id column as well
+                persistentValueManager.uncache(
+                        value.getSchema(),
+                        value.getTable(),
+                        value.getIdColumn(),
+                        holder.getId(),
+                        value.getIdColumn()
+                );
+            } else if (data instanceof CachedValue<?> value) {
+                cache.remove(value.getKey());
+            } else if (data instanceof PersistentValueCollection<?> collection) {
+                persistentCollectionManager.removeEntriesFromCache(collection, persistentCollectionManager.getCollectionEntries(collection));
+            } else if (data instanceof PersistentUniqueDataCollection<?> collection) {
+                persistentCollectionManager.removeEntriesFromInternalMap(collection, persistentCollectionManager.getCollectionEntries(collection));
+            }
+        }
+
+    }
+
+    private void deleteFromDataSource(Connection connection, Jedis jedis, UniqueData holder) throws SQLException {
+        //todo: handle foreign PVs
+        //todo: handle CVs
+        //todo: handle PVCs
+        //todo: handle PUDCs
+        String sql = "DELETE FROM " + holder.getSchema() + "." + holder.getTable() + " WHERE " + holder.getIdentifier().getColumn() + " = ?";
+        logSQL(sql);
+
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setObject(1, holder.getId());
+            statement.execute();
+        }
     }
 
     public <T extends UniqueData> List<T> getAll(Class<T> clazz) {

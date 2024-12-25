@@ -173,4 +173,16 @@ public class CachedValueTest extends DataTest {
 
         assertEquals(3, user.getStatusUpdates());
     }
+
+    @Override
+    public void waitForDataPropagation() {
+        //Redis is taking a while to update so we need to wait a bit longer
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+
+        super.waitForDataPropagation();
+    }
 }

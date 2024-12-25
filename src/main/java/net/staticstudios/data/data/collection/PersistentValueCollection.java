@@ -188,7 +188,7 @@ public class PersistentValueCollection<T> extends PersistentCollection<T> {
     }
 
     protected PersistentCollectionManager getManager() {
-        return PersistentCollectionManager.getInstance();
+        return getDataManager().getPersistentCollectionManager();
     }
 
     @SuppressWarnings("unchecked")

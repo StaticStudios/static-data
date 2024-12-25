@@ -38,8 +38,6 @@ public class PersistentValueManager {
                     .map(value -> (PersistentValue) value)
                     .toList();
 
-            System.out.println(dummyPersistentValues);
-
             switch (notification.getOperation()) {
                 case PostgresOperation.UPDATE, PostgresOperation.INSERT -> {
                     Map<String, String> newDataValueMap = notification.getData().newDataValueMap();
@@ -91,14 +89,6 @@ public class PersistentValueManager {
         });
     }
 
-    public static PersistentValueManager getInstance() {
-        return instance;
-    }
-
-    public static void instantiate(DataManager dataManager, PostgresListener pgListener) {
-        instance = new PersistentValueManager(dataManager, pgListener);
-    }
-
     public void uncache(PersistentValue<?> persistentValue) {
         uncache(persistentValue.getSchema(),
                 persistentValue.getTable(),
@@ -118,7 +108,7 @@ public class PersistentValueManager {
         } catch (DataDoesNotExistException ignored) {
         }
         dataManager.uncache(key);
-        PersistentCollectionManager.getInstance().handlePersistentValueUncache(schema, table, column, holderId, idColumn, oldValue);
+        dataManager.getPersistentCollectionManager().handlePersistentValueUncache(schema, table, column, holderId, idColumn, oldValue);
     }
 
     public void updateCache(PersistentValue<?> persistentValue, Object value) {
@@ -143,7 +133,7 @@ public class PersistentValueManager {
         }
 
         dataManager.cache(key, valueDataType, value, Instant.now());
-        PersistentCollectionManager.getInstance().handlePersistentValueCacheUpdated(schema, table, column, holderId, idColumn, oldValue, value);
+        dataManager.getPersistentCollectionManager().handlePersistentValueCacheUpdated(schema, table, column, holderId, idColumn, oldValue, value);
     }
 
     @Blocking

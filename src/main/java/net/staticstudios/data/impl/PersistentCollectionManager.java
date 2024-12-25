@@ -26,7 +26,6 @@ import java.time.Instant;
 import java.util.*;
 
 public class PersistentCollectionManager {
-    private static PersistentCollectionManager instance;
     private final Logger logger = LoggerFactory.getLogger(PersistentCollectionManager.class);
     private final DataManager dataManager;
     private final PostgresListener pgListener;
@@ -35,7 +34,7 @@ public class PersistentCollectionManager {
      */
     private final Multimap<CollectionKey, UniqueIdentifier> collectionEntryHolders;
 
-    protected PersistentCollectionManager(DataManager dataManager, PostgresListener pgListener) {
+    public PersistentCollectionManager(DataManager dataManager, PostgresListener pgListener) {
         this.dataManager = dataManager;
         this.pgListener = pgListener;
         this.collectionEntryHolders = Multimaps.synchronizedSetMultimap(HashMultimap.create());
@@ -132,14 +131,6 @@ public class PersistentCollectionManager {
                 });
             }
         });
-    }
-
-    public static void instantiate(DataManager dataManager, PostgresListener pgListener) {
-        instance = new PersistentCollectionManager(dataManager, pgListener);
-    }
-
-    public static PersistentCollectionManager getInstance() {
-        return instance;
     }
 
     public void handlePersistentValueUncache(String schema, String table, String column, UUID holderId, String idColumn, Object oldValue) {
@@ -327,7 +318,7 @@ public class PersistentCollectionManager {
         }
     }
 
-    public void removeEntriesFromCache(PersistentValueCollection<?> collection, List<CollectionEntry> entries) {
+    public void removeEntriesFromCache(PersistentCollection<?> collection, List<CollectionEntry> entries) {
         DataKey collectionKey = collection.getKey();
         for (CollectionEntry entry : entries) {
             collectionEntryHolders.remove(collectionKey, UniqueIdentifier.of(collection.getRootHolder().getIdentifier().getColumn(), entry.id()));
@@ -335,8 +326,14 @@ public class PersistentCollectionManager {
         }
     }
 
+    public void removeEntriesFromInternalMap(PersistentCollection<?> collection, List<CollectionEntry> entries) {
+        DataKey collectionKey = collection.getKey();
+        for (CollectionEntry entry : entries) {
+            collectionEntryHolders.remove(collectionKey, UniqueIdentifier.of(collection.getRootHolder().getIdentifier().getColumn(), entry.id()));
+        }
+    }
 
-    public CellKey getEntryDataKey(PersistentCollection<?> collection, UUID entryId, UniqueIdentifier holderIdentifier) {
+    private CellKey getEntryDataKey(PersistentCollection<?> collection, UUID entryId, UniqueIdentifier holderIdentifier) {
         return new CellKey(collection.getSchema(), collection.getTable(), collection.getDataColumn(), entryId, holderIdentifier.getColumn());
     }
 
@@ -429,7 +426,7 @@ public class PersistentCollectionManager {
         if (entries.isEmpty()) {
             return;
         }
-        
+
         StringBuilder sqlBuilder = new StringBuilder("UPDATE ").append(collection.getSchema()).append(".").append(collection.getTable()).append(" SET ");
         sqlBuilder.append(collection.getLinkingColumn()).append(" = ? WHERE ");
         sqlBuilder.append(collection.getEntryIdColumn()).append(" = ?");

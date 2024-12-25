@@ -24,14 +24,12 @@ public class DiscordUser extends UniqueData {
                 if (update.oldValue() == null) {
                     return;
                 }
-                System.out.println("Update 1: " + update);
                 enableFriendRequestsUpdatesCalled.set(enableFriendRequestsUpdatesCalled.get() + 1);
             })
             .onUpdate(update -> {
                 if (update.oldValue() == null) {
                     return;
                 }
-                System.out.println("Update 2: " + update);
                 enableFriendRequestsUpdatesCalled.set(enableFriendRequestsUpdatesCalled.get() + 1);
             });
 
