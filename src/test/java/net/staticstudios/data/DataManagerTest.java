@@ -6,6 +6,6 @@ public class DataManagerTest extends DataTest {
     //todo: test insert
     //todo: test insertAsync
     //todo: test deletions
-    //todo: test loading - delegate to other tests
+    //todo: test inheritance
     //todo: test value serializers
 }
