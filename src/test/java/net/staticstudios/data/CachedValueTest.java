@@ -21,6 +21,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class CachedValueTest extends DataTest {
 
+    //todo: test blocking #set calls
+
     @BeforeEach
     public void init() {
         try (Statement statement = getConnection().createStatement()) {
@@ -202,10 +204,8 @@ public class CachedValueTest extends DataTest {
         assertEquals(10, dataManager.getAll(RedditUser.class).size());
 
         for (UUID id : ids) {
-            dataManager.getAll(RedditUser.class).stream()
-                    .filter(user -> user.getId().equals(id))
-                    .findFirst()
-                    .ifPresent(user -> assertEquals("Hey, I'm user " + ids.indexOf(id), user.getStatus()));
+            RedditUser user = dataManager.get(RedditUser.class, id);
+            assertEquals("Hey, I'm user " + ids.indexOf(id), user.getStatus());
         }
     }
 

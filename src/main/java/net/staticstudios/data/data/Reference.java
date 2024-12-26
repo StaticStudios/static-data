@@ -57,7 +57,7 @@ public class Reference<T extends UniqueData> implements DataHolder {
 
     public T get() {
         try {
-            return getDataManager().getUniqueData(clazz, id.get());
+            return getDataManager().get(clazz, id.get());
         } catch (DataDoesNotExistException e) {
             return null;
         }

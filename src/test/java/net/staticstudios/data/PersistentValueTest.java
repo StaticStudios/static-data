@@ -11,15 +11,17 @@ import org.junitpioneer.jupiter.RetryingTest;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 public class PersistentValueTest extends DataTest {
 
     //todo: we need to test what happens when we manually edit the db. do the values get set on insert, update, and delete
-    //todo: add and test default values
-    //todo: ensure pvs are loaded properly
-    //todo: currently all #set calls are blocking
+    //todo: test default values
+    //todo: test blocking #set calls
 
     @BeforeEach
     public void init() {
@@ -159,7 +161,7 @@ public class PersistentValueTest extends DataTest {
 
         waitForDataPropagation();
 
-        DiscordUserSettings settings = dataManager.getUniqueData(DiscordUserSettings.class, user.getId());
+        DiscordUserSettings settings = dataManager.get(DiscordUserSettings.class, user.getId());
 
         assertTrue(settings.getEnableFriendRequests());
 
@@ -229,6 +231,32 @@ public class PersistentValueTest extends DataTest {
         assertEquals(6, user.getEnableFriendRequestsUpdatesCalled());
     }
 
+    @RetryingTest(5)
+    public void testLoading() {
+        List<UUID> ids = new ArrayList<>();
+        try (Statement statement = getConnection().createStatement()) {
+            for (int i = 0; i < 10; i++) {
+                UUID id = UUID.randomUUID();
+                ids.add(id);
+                statement.executeUpdate("insert into discord.users (id, name) values ('" + id + "', 'User " + i + "')");
+                statement.executeUpdate("insert into discord.user_meta (id) values ('" + id + "')");
+                statement.executeUpdate("insert into discord.user_settings (user_id) values ('" + id + "')");
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        MockEnvironment environment = createMockEnvironment();
+        getMockEnvironments().add(environment);
+
+        DataManager dataManager = environment.dataManager();
+        dataManager.loadAll(DiscordUser.class);
+
+        for (UUID id : ids) {
+            DiscordUser user = dataManager.get(DiscordUser.class, id);
+            assertEquals("User " + ids.indexOf(id), user.getName());
+        }
+    }
 
     //todo: test straight up deleting an fpv. ideally a data does not exist exception should be thrown when calling get on a deleted fpv
 }

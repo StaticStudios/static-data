@@ -477,7 +477,7 @@ public class DataManager {
     }
 
     public <T extends UniqueData> List<T> getAll(Class<T> clazz) {
-        return uniqueDataIds.get(clazz).stream().map(id -> getUniqueData(clazz, id)).toList();
+        return uniqueDataIds.get(clazz).stream().map(id -> get(clazz, id)).toList();
     }
 
     private void extractDependencies(Class<? extends UniqueData> clazz, @NotNull Set<Class<? extends UniqueData>> dependencies) throws Exception {
@@ -570,7 +570,7 @@ public class DataManager {
         return (T) value;
     }
 
-    public <T extends UniqueData> T getUniqueData(Class<T> clazz, UUID id) throws DataDoesNotExistException {
+    public <T extends UniqueData> T get(Class<T> clazz, UUID id) throws DataDoesNotExistException {
         Map<UUID, UniqueData> uniqueData = uniqueDataCache.get(clazz);
         if (uniqueData != null) {
             UniqueData data = uniqueData.get(id);

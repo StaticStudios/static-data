@@ -15,6 +15,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -22,7 +23,7 @@ public class PersistentCollectionTest extends DataTest {
 
     //todo: we need to add add handlers add and remove handlers
     //todo: we need to test what happens when we manually edit the db. do the collections update?
-    //todo: test loading from db
+    //todo: test blocking #add, #addAll, ... calls
 
     @BeforeEach
     public void init() {
@@ -744,6 +745,64 @@ public class PersistentCollectionTest extends DataTest {
             assertFalse(resultSet.next());
         } catch (SQLException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
+    public void testLoadingValueCollection() {
+        List<UUID> ids = new ArrayList<>();
+        try (Statement statement = getConnection().createStatement()) {
+            for (int i = 0; i < 10; i++) {
+                UUID id = UUID.randomUUID();
+                ids.add(id);
+                statement.executeUpdate("insert into facebook.users (id) values ('" + id + "')");
+                statement.executeUpdate("insert into facebook.favorite_quotes (id, user_id, quote) values ('" + UUID.randomUUID() + "', '" + id + "', 'quote - " + id + "')");
+                statement.executeUpdate("insert into facebook.favorite_quotes (id, user_id, quote) values ('" + UUID.randomUUID() + "', '" + id + "', 'quote 2 - " + id + "')");
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        MockEnvironment environment = createMockEnvironment();
+        getMockEnvironments().add(environment);
+
+        DataManager dataManager = environment.dataManager();
+        dataManager.loadAll(FacebookUser.class);
+
+        for (UUID id : ids) {
+            FacebookUser user = dataManager.get(FacebookUser.class, id);
+            assertEquals(2, user.getFavoriteQuotes().size());
+            assertTrue(user.getFavoriteQuotes().contains("quote - " + id));
+            assertTrue(user.getFavoriteQuotes().contains("quote 2 - " + id));
+        }
+    }
+
+    @Test
+    public void testLoadingUniqueDataCollection() {
+        List<UUID> ids = new ArrayList<>();
+        try (Statement statement = getConnection().createStatement()) {
+            for (int i = 0; i < 10; i++) {
+                UUID id = UUID.randomUUID();
+                ids.add(id);
+                statement.executeUpdate("insert into facebook.users (id) values ('" + id + "')");
+                statement.executeUpdate("insert into facebook.posts (id, user_id, description) values ('" + UUID.randomUUID() + "', '" + id + "', 'post - " + id + "')");
+                statement.executeUpdate("insert into facebook.posts (id, user_id, description) values ('" + UUID.randomUUID() + "', '" + id + "', 'post 2 - " + id + "')");
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        MockEnvironment environment = createMockEnvironment();
+        getMockEnvironments().add(environment);
+
+        DataManager dataManager = environment.dataManager();
+        dataManager.loadAll(FacebookUser.class);
+
+        for (UUID id : ids) {
+            FacebookUser user = dataManager.get(FacebookUser.class, id);
+            assertEquals(2, user.getPosts().size());
+            assertTrue(user.getPosts().stream().anyMatch(post -> post.getDescription().equals("post - " + id)));
+            assertTrue(user.getPosts().stream().anyMatch(post -> post.getDescription().equals("post 2 - " + id)));
         }
     }
 }

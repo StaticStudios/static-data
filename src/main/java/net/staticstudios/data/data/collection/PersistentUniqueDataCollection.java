@@ -60,7 +60,7 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
         Object[] objects = new Object[size()];
         int i = 0;
         for (UUID id : holderIds) {
-            objects[i] = getDataManager().getUniqueData(getDataType(), id);
+            objects[i] = getDataManager().get(getDataType(), id);
             i++;
         }
 
@@ -319,7 +319,7 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
                 throw new NoSuchElementException();
             cursor = i + 1;
             UUID id = ids[lastRet = i];
-            return getDataManager().getUniqueData(getDataType(), id);
+            return getDataManager().get(getDataType(), id);
         }
 
         public void remove() {
@@ -344,7 +344,7 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
             Objects.requireNonNull(action);
             for (int i = cursor; i < ids.length; i++) {
                 UUID id = ids[i];
-                action.accept(getDataManager().getUniqueData(getDataType(), id));
+                action.accept(getDataManager().get(getDataType(), id));
             }
             cursor = ids.length;
         }
@@ -371,7 +371,7 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
                 throw new NoSuchElementException();
             cursor = i + 1;
             UUID id = ids[lastRet = i];
-            return getDataManager().getUniqueData(getDataType(), id);
+            return getDataManager().get(getDataType(), id);
         }
 
         public void remove() {
@@ -394,7 +394,7 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
             Objects.requireNonNull(action);
             for (int i = cursor; i < ids.length; i++) {
                 UUID id = ids[i];
-                action.accept(getDataManager().getUniqueData(getDataType(), id));
+                action.accept(getDataManager().get(getDataType(), id));
             }
             cursor = ids.length;
         }
