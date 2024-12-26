@@ -41,7 +41,7 @@ public class RedisKey extends DataKey {
      * @return the partial key
      */
     public String toPartialKey() {
-        return String.format("%s:%s:%s:?:%s", holderSchema, holderTable, holderIdColumn, identifyingKey);
+        return String.format("%s:%s:%s:*:%s", holderSchema, holderTable, holderIdColumn, identifyingKey);
     }
 
     public String getIdentifyingKey() {

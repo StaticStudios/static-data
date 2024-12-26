@@ -21,7 +21,6 @@ import java.time.Instant;
 import java.util.*;
 
 public class PersistentValueManager {
-    private static PersistentValueManager instance; //todo: static instance is bad for testing.
     private final DataManager dataManager;
     private final PostgresListener pgListener;
 

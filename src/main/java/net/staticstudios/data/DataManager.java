@@ -161,6 +161,7 @@ public class DataManager {
 
     @Blocking
     public <T extends UniqueData> List<T> loadAll(Class<T> clazz) {
+        logger.debug("Loading all data for class: {}", clazz);
         try {
             // A dependency is just another UniqueData that is referenced in some way.
             // This clazz is also treated as a dependency, these will all be loaded at the same time
@@ -168,6 +169,7 @@ public class DataManager {
             extractDependencies(clazz, dependencies);
             dependencies.removeIf(loadedDependencies::contains);
 
+            List<UniqueData> dummyHolders = new ArrayList<>();
             Multimap<UniqueData, DatabaseKey> dummyDatabaseKeys = Multimaps.newSetMultimap(new HashMap<>(), HashSet::new);
             Multimap<UniqueData, PersistentCollection<?>> dummyPersistentCollections = Multimaps.newSetMultimap(new HashMap<>(), HashSet::new);
             Multimap<UniqueData, CachedValue<?>> dummyCachedValues = Multimaps.newSetMultimap(new HashMap<>(), HashSet::new);
@@ -176,6 +178,8 @@ public class DataManager {
             for (Class<? extends UniqueData> dependency : dependencies) {
                 // A data dependency is some data field on one of our dependencies
                 List<Data<?>> dataDependencies = extractDataDependencies(dependency);
+
+                dummyHolders.add(createInstance(dependency, null));
 
                 for (Data<?> data : dataDependencies) {
                     DataKey key = data.getKey();
@@ -202,12 +206,12 @@ public class DataManager {
 
             try (Connection connection = getConnection()) {
                 // Load all the unique data first
-                for (UniqueData dummyHolder : dummyDatabaseKeys.keySet()) {
+                for (UniqueData dummyHolder : dummyHolders) {
                     loadUniqueData(connection, dummyHolder);
                 }
 
                 //Load PersistentValues
-                for (UniqueData dummyHolder : dummyDatabaseKeys.keySet()) {
+                for (UniqueData dummyHolder : dummyHolders) {
                     Collection<DatabaseKey> keys = dummyDatabaseKeys.get(dummyHolder);
 
                     // Use a multimap so we can easily group CellKeys together
@@ -226,7 +230,7 @@ public class DataManager {
                 }
 
                 //Load PersistentCollections
-                for (UniqueData dummyHolder : dummyPersistentCollections.keySet()) {
+                for (UniqueData dummyHolder : dummyHolders) {
                     Collection<PersistentCollection<?>> dummyCollections = dummyPersistentCollections.get(dummyHolder);
 
                     for (PersistentCollection<?> dummyCollection : dummyCollections) {
@@ -235,7 +239,7 @@ public class DataManager {
                 }
 
                 //Load CachedValues
-                for (UniqueData dummyHolder : dummyCachedValues.keySet()) {
+                for (UniqueData dummyHolder : dummyHolders) {
                     Collection<CachedValue<?>> dummyValues = dummyCachedValues.get(dummyHolder);
 
                     for (CachedValue<?> dummyValue : dummyValues) {
@@ -534,6 +538,7 @@ public class DataManager {
 
     private void loadUniqueData(Connection connection, UniqueData dummyHolder) throws SQLException {
         String sql = "SELECT " + dummyHolder.getIdentifier().getColumn() + " FROM " + dummyHolder.getSchema() + "." + dummyHolder.getTable();
+        logSQL(sql);
 
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             ResultSet resultSet = statement.executeQuery();

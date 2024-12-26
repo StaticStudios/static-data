@@ -1,5 +1,6 @@
 package net.staticstudios.data;
 
+import net.staticstudios.data.key.RedisKey;
 import net.staticstudios.data.misc.DataTest;
 import net.staticstudios.data.misc.MockEnvironment;
 import net.staticstudios.data.mock.cachedvalue.RedditUser;
@@ -12,11 +13,13 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 public class CachedValueTest extends DataTest {
-    //todo: test loading from redis
 
     @BeforeEach
     public void init() {
@@ -172,6 +175,38 @@ public class CachedValueTest extends DataTest {
         waitForDataPropagation();
 
         assertEquals(3, user.getStatusUpdates());
+    }
+
+    @RetryingTest(5)
+    public void testLoading() {
+        List<UUID> ids = new ArrayList<>();
+        Jedis jedis = getJedis();
+        try (Statement statement = getConnection().createStatement()) {
+            for (int i = 0; i < 10; i++) {
+                UUID id = UUID.randomUUID();
+                ids.add(id);
+                statement.executeUpdate("insert into reddit.users (id) values ('" + id + "')");
+                RedisKey key = new RedisKey("reddit", "users", "id", id, "status");
+                jedis.set(key.toString(), Primitives.encode("Hey, I'm user " + i));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        MockEnvironment environment = createMockEnvironment();
+        getMockEnvironments().add(environment);
+
+        DataManager dataManager = environment.dataManager();
+
+        dataManager.loadAll(RedditUser.class);
+        assertEquals(10, dataManager.getAll(RedditUser.class).size());
+
+        for (UUID id : ids) {
+            dataManager.getAll(RedditUser.class).stream()
+                    .filter(user -> user.getId().equals(id))
+                    .findFirst()
+                    .ifPresent(user -> assertEquals("Hey, I'm user " + ids.indexOf(id), user.getStatus()));
+        }
     }
 
     @Override

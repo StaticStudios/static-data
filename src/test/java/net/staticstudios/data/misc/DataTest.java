@@ -73,29 +73,33 @@ public class DataTest {
         mockEnvironments = new LinkedList<>();
         ThreadUtils.setProvider(new MockThreadProvider());
         for (int i = 0; i < NUM_ENVIRONMENTS; i++) {
-
-            DataManager dataManager = new DataManager(hikariConfig, new JedisProvider() {
-                private final JedisPool jedisPool = new JedisPool(redis.getHost(), redis.getRedisPort());
-
-                @Override
-                public Jedis getJedis() {
-                    return jedisPool.getResource();
-                }
-
-                @Override
-                public String getJedisHost() {
-                    return redis.getHost();
-                }
-
-                @Override
-                public int getJedisPort() {
-                    return redis.getRedisPort();
-                }
-            });
-
-            MockEnvironment mockEnvironment = new MockEnvironment(hikariConfig, dataManager);
-            mockEnvironments.add(mockEnvironment);
+            mockEnvironments.add(createMockEnvironment());
         }
+    }
+
+    protected MockEnvironment createMockEnvironment() {
+        DataManager dataManager = new DataManager(hikariConfig, new JedisProvider() {
+            private final JedisPool jedisPool = new JedisPool(redis.getHost(), redis.getRedisPort());
+
+            @Override
+            public Jedis getJedis() {
+                return jedisPool.getResource();
+            }
+
+            @Override
+            public String getJedisHost() {
+                return redis.getHost();
+            }
+
+            @Override
+            public int getJedisPort() {
+                return redis.getRedisPort();
+            }
+        });
+
+        MockEnvironment mockEnvironment = new MockEnvironment(hikariConfig, dataManager);
+        mockEnvironments.add(mockEnvironment);
+        return mockEnvironment;
     }
 
     @AfterEach
@@ -104,7 +108,7 @@ public class DataTest {
     }
 
     public int getNumEnvironments() {
-        return NUM_ENVIRONMENTS;
+        return mockEnvironments.size();
     }
 
     public List<MockEnvironment> getMockEnvironments() {
