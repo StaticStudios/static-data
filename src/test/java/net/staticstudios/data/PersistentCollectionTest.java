@@ -417,7 +417,7 @@ public class PersistentCollectionTest extends DataTest {
         }
     }
 
-    @RetryingTest
+    @RetryingTest(5)
     public void testLoadingUniqueDataCollection() {
         List<UUID> ids = new ArrayList<>();
         try (Statement statement = getConnection().createStatement()) {
