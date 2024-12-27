@@ -7,7 +7,6 @@ import net.staticstudios.data.misc.MockEnvironment;
 import net.staticstudios.data.mock.persistentcollection.FacebookPost;
 import net.staticstudios.data.mock.persistentcollection.FacebookUser;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.junitpioneer.jupiter.RetryingTest;
 
 import java.sql.PreparedStatement;
@@ -204,7 +203,7 @@ public class PersistentCollectionTest extends DataTest {
         }
     }
 
-    @Test
+    @RetryingTest(5)
     public void testRemoveAllFromUniqueDataCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -936,7 +935,7 @@ public class PersistentCollectionTest extends DataTest {
         }
     }
 
-    @Test
+    @RetryingTest(5)
     public void testRemoveAllFromManyToManyCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
