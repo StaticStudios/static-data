@@ -8,4 +8,5 @@ public class DataManagerTest extends DataTest {
     //todo: test deletions
     //todo: test inheritance
     //todo: test value serializers
+    //todo: test references
 }
