@@ -106,8 +106,8 @@ public class PersistentValueManager {
             oldValue = dataManager.get(key);
         } catch (DataDoesNotExistException ignored) {
         }
-        dataManager.uncache(key);
         dataManager.getPersistentCollectionManager().handlePersistentValueUncache(schema, table, column, holderId, idColumn, oldValue);
+        dataManager.uncache(key);
     }
 
     public void updateCache(PersistentValue<?> persistentValue, Object value) {

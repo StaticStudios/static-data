@@ -299,6 +299,24 @@ public class PersistentManyToManyCollection<T extends UniqueData> implements Per
     }
 
     @Override
+    public PersistentCollection<T> onAdd(PersistentCollectionChangeHandler<T> handler) {
+        getDataManager().getPersistentCollectionManager().addAddHandler(this, id -> {
+            T t = getDataManager().get(getDataType(), (UUID) id);
+            ThreadUtils.submit(() -> handler.onChange(t));
+        });
+        return this;
+    }
+
+    @Override
+    public PersistentCollection<T> onRemove(PersistentCollectionChangeHandler<T> handler) {
+        getDataManager().getPersistentCollectionManager().addRemoveHandler(this, id -> {
+            T t = getDataManager().get(getDataType(), (UUID) id);
+            ThreadUtils.submit(() -> handler.onChange(t));
+        });
+        return this;
+    }
+
+    @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;

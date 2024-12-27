@@ -295,6 +295,24 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Simple
     }
 
     @Override
+    public PersistentCollection<T> onAdd(PersistentCollectionChangeHandler<T> handler) {
+        getDataManager().getPersistentCollectionManager().addAddHandler(this, id -> {
+            T t = getDataManager().get(getDataType(), (UUID) id);
+            ThreadUtils.submit(() -> handler.onChange(t));
+        });
+        return this;
+    }
+
+    @Override
+    public PersistentCollection<T> onRemove(PersistentCollectionChangeHandler<T> handler) {
+        getDataManager().getPersistentCollectionManager().addRemoveHandler(this, id -> {
+            T t = getDataManager().get(getDataType(), (UUID) id);
+            ThreadUtils.submit(() -> handler.onChange(t));
+        });
+        return this;
+    }
+
+    @Override
     public boolean equals(Object obj) {
         if (this == obj) return true;
         if (obj == null || getClass() != obj.getClass()) return false;

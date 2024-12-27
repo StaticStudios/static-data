@@ -300,6 +300,20 @@ public class PersistentValueCollection<T> extends SimplePersistentCollection<T> 
         return new BlockingItr(getInternalValues().toArray(), connection);
     }
 
+    @Override
+    @SuppressWarnings("unchecked")
+    public PersistentCollection<T> onAdd(PersistentCollectionChangeHandler<T> handler) {
+        getDataManager().getPersistentCollectionManager().addAddHandler(this, change -> ThreadUtils.submit(() -> handler.onChange((T) change)));
+        return this;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public PersistentCollection<T> onRemove(PersistentCollectionChangeHandler<T> handler) {
+        getDataManager().getPersistentCollectionManager().addRemoveHandler(this, change -> ThreadUtils.submit(() -> handler.onChange((T) change)));
+        return this;
+    }
+
     private class NonBlockingItr implements Iterator<T> {
         private final Object[] values;
         int cursor;       // index of next element to return

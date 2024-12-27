@@ -11,7 +11,6 @@ import net.staticstudios.data.data.collection.*;
 import net.staticstudios.data.impl.pg.PostgresListener;
 import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.CollectionKey;
-import net.staticstudios.data.key.DataKey;
 import net.staticstudios.data.key.UniqueIdentifier;
 import net.staticstudios.data.util.JunctionTable;
 import org.jetbrains.annotations.Blocking;
@@ -71,7 +70,7 @@ public class PersistentCollectionManager {
                             UUID.fromString(encodedLinkingId)
                     );
 
-                    collectionEntryHolders.put(collectionKey, CollectionEntryIdentifier.of(
+                    addEntry(collectionKey, CollectionEntryIdentifier.of(
                             dummyCollection.getRootHolder().getIdentifier().getColumn(),
                             UUID.fromString(notification.getData().newDataValueMap().get(dummyCollection.getEntryIdColumn()))
                     ));
@@ -115,7 +114,7 @@ public class PersistentCollectionManager {
                         );
 
                         CollectionEntryIdentifier newIdentifier = CollectionEntryIdentifier.of(dummyCollection.getRootHolder().getIdentifier().getColumn(), entryId);
-                        collectionEntryHolders.put(collectionKey, newIdentifier);
+                        addEntry(collectionKey, newIdentifier);
                         logger.trace("Added collection entry holder to map: {} -> {}", collectionKey, newIdentifier);
                     }
 
@@ -134,11 +133,48 @@ public class PersistentCollectionManager {
                             UUID.fromString(encodedLinkingId)
                     );
 
-                    collectionEntryHolders.remove(collectionKey, CollectionEntryIdentifier.of(
+                    removeEntry(collectionKey, CollectionEntryIdentifier.of(
                             dummyCollection.getRootHolder().getIdentifier().getColumn(),
                             UUID.fromString(notification.getData().oldDataValueMap().get(dummyCollection.getEntryIdColumn()))
                     ));
                 });
+            }
+        });
+    }
+
+    private void addEntry(CollectionKey key, CollectionEntryIdentifier identifier) {
+        collectionEntryHolders.put(key, identifier);
+
+        Object newValue = getEntry(key, identifier);
+        callAddHandlers(key, newValue);
+    }
+
+    private void removeEntry(CollectionKey key, CollectionEntryIdentifier identifier) {
+        Object oldValue = getEntry(key, identifier);
+        callRemoveHandlers(key, oldValue);
+
+        //remove after handlers are called to avoid DDNEEs
+        collectionEntryHolders.remove(key, identifier);
+    }
+
+    private void callAddHandlers(CollectionKey key, Object newValue) {
+        Collection<PersistentCollectionChangeHandler<?>> addHandlers = this.addHandlers.get(key);
+        addHandlers.forEach(handler -> {
+            try {
+                handler.unsafeOnChange(newValue);
+            } catch (Exception e) {
+                logger.error("Error while handling add event", e);
+            }
+        });
+    }
+
+    private void callRemoveHandlers(CollectionKey key, Object oldValue) {
+        Collection<PersistentCollectionChangeHandler<?>> removeHandlers = this.removeHandlers.get(key);
+        removeHandlers.forEach(handler -> {
+            try {
+                handler.unsafeOnChange(oldValue);
+            } catch (Exception e) {
+                logger.error("Error while handling remove event", e);
             }
         });
     }
@@ -184,7 +220,7 @@ public class PersistentCollectionManager {
                             dataManager.get(linkingKey)
                     );
 
-                    collectionEntryHolders.remove(oldCollectionKey, oldIdentifier);
+                    removeEntry(oldCollectionKey, oldIdentifier);
                     logger.trace("Removed collection entry holder from map: {} -> {}", oldCollectionKey, oldIdentifier);
                 });
     }
@@ -233,7 +269,7 @@ public class PersistentCollectionManager {
                         UUID oldEntryId = dataManager.get(entryIdKey);
 
                         CollectionEntryIdentifier oldIdentifier = CollectionEntryIdentifier.of(dummyCollection.getRootHolder().getIdentifier().getColumn(), oldEntryId);
-                        collectionEntryHolders.remove(oldCollectionKey, oldIdentifier);
+                        removeEntry(oldCollectionKey, oldIdentifier);
                         logger.trace("Removed collection entry holder from map: {} -> {}", dummyCollection.getKey(), oldIdentifier);
                     }
 
@@ -249,7 +285,7 @@ public class PersistentCollectionManager {
                         UUID newEntryId = dataManager.get(entryIdKey);
 
                         CollectionEntryIdentifier newIdentifier = CollectionEntryIdentifier.of(dummyCollection.getRootHolder().getIdentifier().getColumn(), newEntryId);
-                        collectionEntryHolders.put(newCollectionKey, newIdentifier);
+                        addEntry(newCollectionKey, newIdentifier);
                         logger.trace("Added collection entry holder to map: {} -> {}", newCollectionKey, newIdentifier);
                     }
                 });
@@ -318,7 +354,7 @@ public class PersistentCollectionManager {
                 logger.trace("Adding collection entry holder to map: {} -> {}", collectionKey, identifier);
 
                 dataManager.cache(entryLinkKey, UUID.class, linkingId, Instant.now());
-                collectionEntryHolders.put(collectionKey, identifier);
+                addEntry(collectionKey, identifier);
             }
         }
     }
@@ -338,22 +374,22 @@ public class PersistentCollectionManager {
 
             dataManager.cache(entryLinkKey, UUID.class, collection.getRootHolder().getId(), Instant.now());
             dataManager.cache(entryDataKey, collection.getDataType(), entry.value(), Instant.now());
-            collectionEntryHolders.put(collection.getKey(), identifier);
+            addEntry(collection.getKey(), identifier);
         }
     }
 
     public void removeEntriesFromCache(SimplePersistentCollection<?> collection, List<CollectionEntry> entries) {
-        DataKey collectionKey = collection.getKey();
+        CollectionKey collectionKey = collection.getKey();
         for (CollectionEntry entry : entries) {
-            collectionEntryHolders.remove(collectionKey, CollectionEntryIdentifier.of(collection.getRootHolder().getIdentifier().getColumn(), entry.id()));
+            removeEntry(collectionKey, CollectionEntryIdentifier.of(collection.getRootHolder().getIdentifier().getColumn(), entry.id()));
             dataManager.uncache(getEntryDataKey(collection, entry.id(), collection.getRootHolder().getIdentifier()));
         }
     }
 
     public void removeEntriesFromInternalMap(SimplePersistentCollection<?> collection, List<CollectionEntry> entries) {
-        DataKey collectionKey = collection.getKey();
+        CollectionKey collectionKey = collection.getKey();
         for (CollectionEntry entry : entries) {
-            collectionEntryHolders.remove(collectionKey, CollectionEntryIdentifier.of(collection.getRootHolder().getIdentifier().getColumn(), entry.id()));
+            removeEntry(collectionKey, CollectionEntryIdentifier.of(collection.getRootHolder().getIdentifier().getColumn(), entry.id()));
         }
     }
 
@@ -371,6 +407,11 @@ public class PersistentCollectionManager {
 
     public List<Object> getEntries(SimplePersistentCollection<?> collection) {
         return getEntryKeys(collection).stream().map(dataManager::get).toList();
+    }
+
+    public Object getEntry(CollectionKey collectionKey, CollectionEntryIdentifier identifier) {
+        CellKey entryDataKey = new CellKey(collectionKey.getSchema(), collectionKey.getTable(), collectionKey.getDataColumn(), identifier.getId(), identifier.getColumn());
+        return dataManager.get(entryDataKey);
     }
 
     public List<CollectionEntry> getCollectionEntries(SimplePersistentCollection<?> collection) {
@@ -520,6 +561,9 @@ public class PersistentCollectionManager {
 
         for (UUID entry : entryIds) {
             CollectionEntryIdentifier identifier = CollectionEntryIdentifier.of(idsCollection.getRootHolder().getIdentifier().getColumn(), entry);
+            callRemoveHandlers(idsCollection.getKey(), getEntry(idsCollection.getKey(), identifier));
+
+            //remove after handlers are called to avoid DDNEEs
             collectionEntryHolders.remove(idsCollection.getKey(), identifier);
         }
     }
@@ -591,6 +635,19 @@ public class PersistentCollectionManager {
             CollectionEntryIdentifier thatIdentifier = CollectionEntryIdentifier.of(collection.getThatIdColumn(), id);
             jt.add(thisIdentifier, thatIdentifier);
         }
+
+        for (UUID id : ids) {
+            callAddHandlers(collection.getKey(), id);
+
+            CollectionKey otherCollectionKey = new CollectionKey(
+                    collection.getSchema(),
+                    collection.getJunctionTable(),
+                    collection.getThatIdColumn(),
+                    collection.getThisIdColumn(),
+                    id
+            );
+            callAddHandlers(otherCollectionKey, collection.getRootHolder().getId());
+        }
     }
 
     public void removeFromJunctionTableInMemory(PersistentManyToManyCollection<?> collection, List<UUID> ids) {
@@ -598,6 +655,20 @@ public class PersistentCollectionManager {
         JunctionTable jt = junctionTables.get(junctionTable);
         Preconditions.checkNotNull(jt, "Junction table not loaded: " + junctionTable);
 
+        for (UUID id : ids) {
+            callRemoveHandlers(collection.getKey(), id);
+
+            CollectionKey otherCollectionKey = new CollectionKey(
+                    collection.getSchema(),
+                    collection.getJunctionTable(),
+                    collection.getThatIdColumn(),
+                    collection.getThisIdColumn(),
+                    id
+            );
+            callRemoveHandlers(otherCollectionKey, collection.getRootHolder().getId());
+        }
+
+        //remove after handlers are called to avoid DDNEEs
         for (UUID id : ids) {
             CollectionEntryIdentifier thisIdentifier = CollectionEntryIdentifier.of(collection.getThisIdColumn(), collection.getRootHolder().getId());
             CollectionEntryIdentifier thatIdentifier = CollectionEntryIdentifier.of(collection.getThatIdColumn(), id);

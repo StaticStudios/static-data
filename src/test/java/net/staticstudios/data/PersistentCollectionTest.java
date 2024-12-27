@@ -22,7 +22,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class PersistentCollectionTest extends DataTest {
 
-    //todo: we need to add add handlers add and remove handlers
     //todo: we need to test what happens when we manually edit the db. do the collections update?
 
     @BeforeEach
@@ -2021,5 +2020,104 @@ public class PersistentCollectionTest extends DataTest {
             assertEquals(2, user.getFollowing().size());
             assertTrue(user.getFollowing().stream().anyMatch(following -> followingMap.get(userId).contains(following.getId())));
         }
+    }
+
+    @RetryingTest(5)
+    public void testAddHandlers() {
+        //Note that add handlers are called async
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        assertEquals(0, facebookUser.followingAdditions.get());
+        assertEquals(0, facebookUser.favoriteQuoteAdditions.get());
+        assertEquals(0, facebookUser.postAdditions.get());
+
+        FacebookPost post1 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+        waitForDataPropagation();
+        assertEquals(1, facebookUser.postAdditions.get());
+
+        FacebookPost post2 = FacebookPost.createSync(dataManager, "Here's some post description", null);
+        waitForDataPropagation();
+        assertEquals(1, facebookUser.postAdditions.get());
+
+        facebookUser.getPosts().add(post2);
+        waitForDataPropagation();
+        assertEquals(2, facebookUser.postAdditions.get());
+
+        FacebookPost post3 = FacebookPost.createSync(dataManager, "Here's some post description", null);
+        post3.setUser(facebookUser);
+        waitForDataPropagation();
+        assertEquals(3, facebookUser.postAdditions.get());
+
+        facebookUser.getFavoriteQuotes().add("Here's a quote");
+        waitForDataPropagation();
+        assertEquals(1, facebookUser.favoriteQuoteAdditions.get());
+
+        facebookUser.getFollowing().add(FacebookUser.createSync(dataManager));
+        waitForDataPropagation();
+        assertEquals(1, facebookUser.followingAdditions.get());
+
+        FacebookUser otherUser = FacebookUser.createSync(dataManager);
+        otherUser.getFollowers().add(facebookUser);
+        waitForDataPropagation();
+        assertEquals(2, facebookUser.followingAdditions.get());
+    }
+
+    @RetryingTest(5)
+    public void testRemoveHandlers() {
+        //Note that remove handlers are called async
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+        FacebookUser following1 = FacebookUser.createSync(dataManager);
+        FacebookUser following2 = FacebookUser.createSync(dataManager);
+
+        FacebookPost post1 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+        FacebookPost post2 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+        FacebookPost post3 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+        facebookUser.getFavoriteQuotes().add("Here's a quote");
+        facebookUser.getFavoriteQuotes().add("Here's another quote");
+        facebookUser.getFollowing().add(following1);
+        facebookUser.getFollowing().add(following2);
+
+        assertEquals(3, facebookUser.getPosts().size());
+        assertEquals(2, facebookUser.getFavoriteQuotes().size());
+        assertEquals(2, facebookUser.getFollowing().size());
+
+
+        assertEquals(0, facebookUser.followingRemovals.get());
+        assertEquals(0, facebookUser.favoriteQuoteRemovals.get());
+        assertEquals(0, facebookUser.postRemovals.get());
+
+        facebookUser.getPosts().remove(post1);
+        waitForDataPropagation();
+        assertEquals(1, facebookUser.postRemovals.get());
+
+        facebookUser.getPosts().remove(post2);
+        waitForDataPropagation();
+        assertEquals(2, facebookUser.postRemovals.get());
+
+        facebookUser.getPosts().remove(post3);
+        waitForDataPropagation();
+        assertEquals(3, facebookUser.postRemovals.get());
+
+        facebookUser.getFavoriteQuotes().remove("Here's a quote");
+        waitForDataPropagation();
+        assertEquals(1, facebookUser.favoriteQuoteRemovals.get());
+
+        facebookUser.getFavoriteQuotes().remove("Here's another quote");
+        waitForDataPropagation();
+        assertEquals(2, facebookUser.favoriteQuoteRemovals.get());
+
+        facebookUser.getFollowing().remove(following1);
+        waitForDataPropagation();
+        assertEquals(1, facebookUser.followingRemovals.get());
+
+        following2.getFollowers().remove(facebookUser);
+        waitForDataPropagation();
+        assertEquals(2, facebookUser.followingRemovals.get());
     }
 }

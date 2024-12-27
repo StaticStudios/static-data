@@ -48,15 +48,9 @@ public interface PersistentCollection<T> extends Collection<T>, DataHolder, Data
     @Blocking
     Iterator<T> iterator(Connection connection);
 
-    default PersistentCollection<T> onAdd(PersistentCollectionChangeHandler<T> handler) {
-        getDataManager().getPersistentCollectionManager().addAddHandler(this, handler);
-        return this;
-    }
+    PersistentCollection<T> onAdd(PersistentCollectionChangeHandler<T> handler);
 
-    default PersistentCollection<T> onRemove(PersistentCollectionChangeHandler<T> handler) {
-        getDataManager().getPersistentCollectionManager().addRemoveHandler(this, handler);
-        return this;
-    }
+    PersistentCollection<T> onRemove(PersistentCollectionChangeHandler<T> handler);
 
     CollectionKey getKey();
 

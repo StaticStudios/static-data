@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class PersistentValueTest extends DataTest {
 
+    //todo: update handlers need to be submitted to the thread pool and called there
     //todo: we need to test what happens when we manually edit the db. do the values get set on insert, update, and delete
     //todo: test default values
     //todo: test blocking #set calls
