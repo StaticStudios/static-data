@@ -1,15 +1,16 @@
 package net.staticstudios.data.mock;
 
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.data.value.persistent.PersistentValue;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.data.collection.PersistentCollection;
+import net.staticstudios.data.data.collection.SimplePersistentCollection;
+import net.staticstudios.data.data.value.persistent.PersistentValue;
 import org.jetbrains.annotations.Blocking;
 
 import java.util.UUID;
 
 public class Island extends UniqueData {
-    private final PersistentCollection<Player> members = PersistentCollection.oneToMany(this, Player.class, "public", "players", "island_id");
+    private final SimplePersistentCollection<Player> members = PersistentCollection.oneToMany(this, Player.class, "public", "players", "island_id");
     private final PersistentValue<String> name = PersistentValue.of(this, String.class, "name");
 
 
@@ -37,7 +38,7 @@ public class Island extends UniqueData {
         this.name.set(name);
     }
 
-    public PersistentCollection<Player> getMembers() {
+    public SimplePersistentCollection<Player> getMembers() {
         return members;
     }
 }

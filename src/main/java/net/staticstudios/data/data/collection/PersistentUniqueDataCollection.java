@@ -11,7 +11,7 @@ import java.sql.SQLException;
 import java.util.*;
 import java.util.function.Consumer;
 
-public class PersistentUniqueDataCollection<T extends UniqueData> extends PersistentCollection<T> {
+public class PersistentUniqueDataCollection<T extends UniqueData> extends SimplePersistentCollection<T> {
     private final PersistentValueCollection<UUID> holderIds;
 
     public PersistentUniqueDataCollection(DataHolder holder, Class<T> dataType, String schema, String table, String linkingColumn, String dataColumn) {
@@ -20,7 +20,7 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
                 schema,
                 table,
                 //The entryIdColumn is the id column of the data type, so just create a dummy instance so we can get the id column name
-                holder.getDataManager().createInstance(dataType, null).getIdentifier().getColumn(),
+                holder.getDataManager().getIdColumn(dataType),
                 linkingColumn,
                 dataColumn);
         holderIds = new PersistentValueCollection<>(holder, UUID.class, schema, table, getEntryIdColumn(), linkingColumn, dataColumn);
@@ -90,7 +90,7 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
         manager.addEntriesToCache(holderIds, toAdd);
         ThreadUtils.submit(() -> {
             try (Connection connection = getHolder().getDataManager().getConnection()) {
-                manager.addUniqueDataToDatabase(connection, this, toAdd);
+                manager.addUniqueDataEntryToDatabase(connection, this, toAdd);
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -148,7 +148,7 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
         manager.addEntriesToCache(holderIds, toAdd);
         ThreadUtils.submit(() -> {
             try (Connection connection = getHolder().getDataManager().getConnection()) {
-                manager.addUniqueDataToDatabase(connection, this, toAdd);
+                manager.addUniqueDataEntryToDatabase(connection, this, toAdd);
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -230,7 +230,7 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
         PersistentCollectionManager manager = holderIds.getManager();
         List<CollectionEntry> toAdd = Collections.singletonList(new CollectionEntry(t.getId(), t.getId()));
         manager.addEntriesToCache(holderIds, toAdd);
-        manager.addUniqueDataToDatabase(connection, this, toAdd);
+        manager.addUniqueDataEntryToDatabase(connection, this, toAdd);
         return true;
     }
 
@@ -243,7 +243,7 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Persis
 
         PersistentCollectionManager manager = holderIds.getManager();
         manager.addEntriesToCache(holderIds, toAdd);
-        manager.addUniqueDataToDatabase(connection, this, toAdd);
+        manager.addUniqueDataEntryToDatabase(connection, this, toAdd);
         return true;
     }
 

@@ -1,7 +1,5 @@
 package net.staticstudios.data.key;
 
-import net.staticstudios.data.data.collection.PersistentCollection;
-
 import java.util.UUID;
 
 /**
@@ -19,10 +17,6 @@ public class CollectionKey extends DatabaseKey {
         this.table = table;
         this.linkingColumn = linkingColumn;
         this.dataColumn = dataColumn;
-    }
-
-    public CollectionKey(PersistentCollection<?> collection) {
-        this(collection.getSchema(), collection.getTable(), collection.getLinkingColumn(), collection.getDataColumn(), collection.getRootHolder().getId());
     }
 
     @Override

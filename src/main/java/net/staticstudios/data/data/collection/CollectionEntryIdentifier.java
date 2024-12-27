@@ -1,6 +1,6 @@
 package net.staticstudios.data.data.collection;
 
-import com.impossibl.postgres.utils.guava.Preconditions;
+import com.google.common.base.Preconditions;
 
 import java.util.Objects;
 import java.util.UUID;

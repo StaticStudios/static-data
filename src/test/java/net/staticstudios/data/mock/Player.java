@@ -1,10 +1,11 @@
 package net.staticstudios.data.mock;
 
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.data.value.persistent.PersistentValue;
 import net.staticstudios.data.data.Reference;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.data.collection.PersistentCollection;
+import net.staticstudios.data.data.collection.SimplePersistentCollection;
+import net.staticstudios.data.data.value.persistent.PersistentValue;
 
 import java.util.Collection;
 import java.util.UUID;
@@ -16,8 +17,8 @@ public class Player extends UniqueData {
     private final Reference<Island> island = Reference.of(this, Island.class, "island_id");
 
 
-    private final PersistentCollection<HomeLocation> homeLocations = PersistentCollection.oneToMany(this, HomeLocation.class, "public", "home_locations", "player_id");
-    private final PersistentCollection<Integer> favoriteNumbers = PersistentCollection.of(this, Integer.class, "public", "favorite_numbers", "player_id", "number");
+    private final SimplePersistentCollection<HomeLocation> homeLocations = PersistentCollection.oneToMany(this, HomeLocation.class, "public", "home_locations", "player_id");
+    private final SimplePersistentCollection<Integer> favoriteNumbers = PersistentCollection.of(this, Integer.class, "public", "favorite_numbers", "player_id", "number");
 
     private Player(DataManager dataManager, UUID id) {
         super(dataManager, "public", "players", id);

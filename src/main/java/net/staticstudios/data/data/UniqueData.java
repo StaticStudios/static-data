@@ -2,7 +2,7 @@ package net.staticstudios.data.data;
 
 
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.data.collection.PersistentCollection;
+import net.staticstudios.data.data.collection.SimplePersistentCollection;
 import net.staticstudios.data.data.value.Value;
 import net.staticstudios.data.key.UniqueIdentifier;
 import net.staticstudios.data.util.ReflectionUtils;
@@ -89,7 +89,7 @@ public class UniqueData implements DataHolder {
                 if (data instanceof Value<?> value) {
                     sb.append(", ");
                     sb.append(field.getName()).append("=").append(value.get());
-                } else if (data instanceof PersistentCollection<?> collection) {
+                } else if (data instanceof SimplePersistentCollection<?> collection) {
                     sb.append(", ");
                     sb.append(field.getName()).append("=Collection<").append(collection.getDataType().getSimpleName()).append(">{size=").append(collection.size()).append("}");
                 } else if (data instanceof Reference<?> reference) {

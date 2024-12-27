@@ -9,9 +9,10 @@ import com.zaxxer.hikari.pool.HikariPool;
 import net.staticstudios.data.data.Data;
 import net.staticstudios.data.data.InitialValue;
 import net.staticstudios.data.data.UniqueData;
-import net.staticstudios.data.data.collection.PersistentCollection;
+import net.staticstudios.data.data.collection.PersistentManyToManyCollection;
 import net.staticstudios.data.data.collection.PersistentUniqueDataCollection;
 import net.staticstudios.data.data.collection.PersistentValueCollection;
+import net.staticstudios.data.data.collection.SimplePersistentCollection;
 import net.staticstudios.data.data.value.Value;
 import net.staticstudios.data.data.value.persistent.InitialPersistentValue;
 import net.staticstudios.data.data.value.persistent.PersistentValue;
@@ -56,8 +57,10 @@ public class DataManager {
     private final Multimap<Class<? extends UniqueData>, UUID> uniqueDataIds;
     private final Map<Class<? extends UniqueData>, Map<UUID, UniqueData>> uniqueDataCache;
     private final Multimap<String, Value<?>> dummyValueMap;
-    private final Multimap<String, PersistentCollection<?>> dummyPersistentCollectionMap;
+    private final Multimap<String, SimplePersistentCollection<?>> dummySimplePersistentCollectionMap;
+    private final Multimap<String, PersistentManyToManyCollection<?>> dummyPersistentManyToManyCollectionMap;
     private final Multimap<String, UniqueData> dummyUniqueDataMap;
+    private final Map<Class<?>, UniqueData> dummyInstances;
     private final HikariPool connectionPool;
     private final Set<Class<? extends UniqueData>> loadedDependencies = new HashSet<>();
     private final List<ValueSerializer<?, ?>> valueSerializers;
@@ -74,8 +77,10 @@ public class DataManager {
         this.valueUpdateHandlers = Multimaps.synchronizedSetMultimap(HashMultimap.create());
         this.uniqueDataCache = new ConcurrentHashMap<>();
         this.dummyValueMap = Multimaps.synchronizedSetMultimap(HashMultimap.create());
-        this.dummyPersistentCollectionMap = Multimaps.synchronizedSetMultimap(HashMultimap.create());
+        this.dummySimplePersistentCollectionMap = Multimaps.synchronizedSetMultimap(HashMultimap.create());
+        this.dummyPersistentManyToManyCollectionMap = Multimaps.synchronizedSetMultimap(HashMultimap.create());
         this.dummyUniqueDataMap = Multimaps.synchronizedSetMultimap(HashMultimap.create());
+        this.dummyInstances = new ConcurrentHashMap<>();
         this.uniqueDataIds = Multimaps.synchronizedSetMultimap(HashMultimap.create());
         this.valueSerializers = new CopyOnWriteArrayList<>();
         this.jedisProvider = jedisProvider;
@@ -155,8 +160,8 @@ public class DataManager {
         return dummyUniqueDataMap.get(schemaTable);
     }
 
-    public Collection<PersistentCollection<?>> getDummyPersistentCollections(String schemaTable) {
-        return dummyPersistentCollectionMap.get(schemaTable);
+    public Collection<SimplePersistentCollection<?>> getDummyPersistentCollections(String schemaTable) {
+        return dummySimplePersistentCollectionMap.get(schemaTable);
     }
 
     @Blocking
@@ -171,7 +176,8 @@ public class DataManager {
 
             List<UniqueData> dummyHolders = new ArrayList<>();
             Multimap<UniqueData, DatabaseKey> dummyDatabaseKeys = Multimaps.newSetMultimap(new HashMap<>(), HashSet::new);
-            Multimap<UniqueData, PersistentCollection<?>> dummyPersistentCollections = Multimaps.newSetMultimap(new HashMap<>(), HashSet::new);
+            Multimap<UniqueData, SimplePersistentCollection<?>> dummySimplePersistentCollections = Multimaps.newSetMultimap(new HashMap<>(), HashSet::new);
+            Multimap<UniqueData, PersistentManyToManyCollection<?>> dummyPersistentManyToManyCollections = Multimaps.newSetMultimap(new HashMap<>(), HashSet::new);
             Multimap<UniqueData, CachedValue<?>> dummyCachedValues = Multimaps.newSetMultimap(new HashMap<>(), HashSet::new);
 
 
@@ -192,9 +198,14 @@ public class DataManager {
                         dummyValueMap.put(value.getSchema() + "." + value.getTable(), value);
                     }
 
-                    if (data instanceof PersistentCollection<?> collection) {
-                        dummyPersistentCollectionMap.put(collection.getSchema() + "." + collection.getTable(), collection);
-                        dummyPersistentCollections.put(data.getHolder().getRootHolder(), collection);
+                    if (data instanceof SimplePersistentCollection<?> collection) {
+                        dummySimplePersistentCollectionMap.put(collection.getSchema() + "." + collection.getTable(), collection);
+                        dummySimplePersistentCollections.put(data.getHolder().getRootHolder(), collection);
+                    }
+
+                    if (data instanceof PersistentManyToManyCollection<?> collection) {
+                        dummyPersistentManyToManyCollectionMap.put(collection.getSchema() + "." + collection.getJunctionTable(), collection);
+                        dummyPersistentManyToManyCollections.put(data.getHolder().getRootHolder(), collection);
                     }
 
                     if (data instanceof CachedValue<?> cachedValue) {
@@ -229,12 +240,21 @@ public class DataManager {
                     }
                 }
 
-                //Load PersistentCollections
+                //Load SimplePersistentCollections
                 for (UniqueData dummyHolder : dummyHolders) {
-                    Collection<PersistentCollection<?>> dummyCollections = dummyPersistentCollections.get(dummyHolder);
+                    Collection<SimplePersistentCollection<?>> dummyCollections = dummySimplePersistentCollections.get(dummyHolder);
 
-                    for (PersistentCollection<?> dummyCollection : dummyCollections) {
+                    for (SimplePersistentCollection<?> dummyCollection : dummyCollections) {
                         persistentCollectionManager.loadAllFromDatabase(connection, dummyHolder, dummyCollection);
+                    }
+                }
+
+                //Load PersistentManyToManyCollections
+                for (UniqueData dummyHolder : dummyHolders) {
+                    Collection<PersistentManyToManyCollection<?>> dummyCollections = dummyPersistentManyToManyCollections.get(dummyHolder);
+
+                    for (PersistentManyToManyCollection<?> dummyCollection : dummyCollections) {
+                        persistentCollectionManager.loadJunctionTablesFromDatabase(connection, dummyCollection);
                     }
                 }
 
@@ -467,6 +487,7 @@ public class DataManager {
         //todo: handle CVs
         //todo: handle PVCs
         //todo: handle PUDCs
+        //todo: handle PMTMCs
         String sql = "DELETE FROM " + holder.getSchema() + "." + holder.getTable() + " WHERE " + holder.getIdentifier().getColumn() + " = ?";
         logSQL(sql);
 
@@ -481,6 +502,10 @@ public class DataManager {
     }
 
     private void extractDependencies(Class<? extends UniqueData> clazz, @NotNull Set<Class<? extends UniqueData>> dependencies) throws Exception {
+        if (dependencies.contains(clazz)) {
+            return;
+        }
+
         dependencies.add(clazz);
 
         if (!UniqueData.class.isAssignableFrom(clazz)) {
@@ -488,6 +513,7 @@ public class DataManager {
         }
 
         UniqueData dummy = createInstance(clazz, null);
+        dummyInstances.put(clazz, dummy);
 
         for (Field field : ReflectionUtils.getFields(clazz)) {
             field.setAccessible(true);
@@ -778,5 +804,16 @@ public class DataManager {
 
     public PostgresListener getPostgresListener() {
         return pgListener;
+    }
+
+    public String getIdColumn(Class<? extends UniqueData> clazz) {
+        if (!dummyInstances.containsKey(clazz)) {
+            try {
+                dummyInstances.put(clazz, createInstance(clazz, null));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return dummyInstances.get(clazz).getIdentifier().getColumn();
     }
 }

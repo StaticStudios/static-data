@@ -1,5 +1,6 @@
 package net.staticstudios.data.impl;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
@@ -11,6 +12,7 @@ import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.CollectionKey;
 import net.staticstudios.data.key.DataKey;
 import net.staticstudios.data.key.UniqueIdentifier;
+import net.staticstudios.data.util.JunctionTable;
 import org.jetbrains.annotations.Blocking;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +23,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class PersistentCollectionManager {
     private final Logger logger = LoggerFactory.getLogger(PersistentCollectionManager.class);
@@ -30,11 +33,16 @@ public class PersistentCollectionManager {
      * Maps a collection key to a list of data keys for each entry in the collection
      */
     private final Multimap<CollectionKey, CollectionEntryIdentifier> collectionEntryHolders;
+    private final Map<String, JunctionTable> junctionTables;
 
     public PersistentCollectionManager(DataManager dataManager, PostgresListener pgListener) {
         this.dataManager = dataManager;
         this.pgListener = pgListener;
         this.collectionEntryHolders = Multimaps.synchronizedSetMultimap(HashMultimap.create());
+        this.junctionTables = new ConcurrentHashMap<>();
+
+        //todo: listen to changes on junction tables
+        //todo: delete entries from junction tables when the root holder is deleted, OR one of the referenced entries is deleted
 
 
         pgListener.addHandler(notification -> {
@@ -42,7 +50,7 @@ public class PersistentCollectionManager {
             // All we have to concern ourselves with is updating the collection entry holders
             // Note about updates: we have to care about when the linking column changes, since that's what we use to identify the holder
 
-            Collection<PersistentCollection<?>> dummyCollections = dataManager.getDummyPersistentCollections(notification.getSchema() + "." + notification.getTable());
+            Collection<SimplePersistentCollection<?>> dummyCollections = dataManager.getDummyPersistentCollections(notification.getSchema() + "." + notification.getTable());
             switch (notification.getOperation()) {
                 case INSERT -> dummyCollections.forEach(dummyCollection -> {
                     String encodedLinkingId = notification.getData().newDataValueMap().get(dummyCollection.getLinkingColumn());
@@ -228,7 +236,7 @@ public class PersistentCollectionManager {
 
     @Blocking
     @SuppressWarnings("unchecked")
-    public void loadAllFromDatabase(Connection connection, UniqueData dummyHolder, PersistentCollection<?> dummyCollection) throws SQLException {
+    public void loadAllFromDatabase(Connection connection, UniqueData dummyHolder, SimplePersistentCollection<?> dummyCollection) throws SQLException {
         logger.trace("Loading all collection entries for {}", dummyCollection.getKey());
         String schemaTable = dummyCollection.getSchema() + "." + dummyCollection.getTable();
         pgListener.ensureTableHasTrigger(connection, schemaTable);
@@ -313,7 +321,7 @@ public class PersistentCollectionManager {
         }
     }
 
-    public void removeEntriesFromCache(PersistentCollection<?> collection, List<CollectionEntry> entries) {
+    public void removeEntriesFromCache(SimplePersistentCollection<?> collection, List<CollectionEntry> entries) {
         DataKey collectionKey = collection.getKey();
         for (CollectionEntry entry : entries) {
             collectionEntryHolders.remove(collectionKey, CollectionEntryIdentifier.of(collection.getRootHolder().getIdentifier().getColumn(), entry.id()));
@@ -321,30 +329,30 @@ public class PersistentCollectionManager {
         }
     }
 
-    public void removeEntriesFromInternalMap(PersistentCollection<?> collection, List<CollectionEntry> entries) {
+    public void removeEntriesFromInternalMap(SimplePersistentCollection<?> collection, List<CollectionEntry> entries) {
         DataKey collectionKey = collection.getKey();
         for (CollectionEntry entry : entries) {
             collectionEntryHolders.remove(collectionKey, CollectionEntryIdentifier.of(collection.getRootHolder().getIdentifier().getColumn(), entry.id()));
         }
     }
 
-    private CellKey getEntryDataKey(PersistentCollection<?> collection, UUID entryId, UniqueIdentifier holderIdentifier) {
+    private CellKey getEntryDataKey(SimplePersistentCollection<?> collection, UUID entryId, UniqueIdentifier holderIdentifier) {
         return new CellKey(collection.getSchema(), collection.getTable(), collection.getDataColumn(), entryId, holderIdentifier.getColumn());
     }
 
-    public CellKey getEntryLinkingKey(PersistentCollection<?> collection, UUID entryId) {
+    public CellKey getEntryLinkingKey(SimplePersistentCollection<?> collection, UUID entryId) {
         return new CellKey(collection.getSchema(), collection.getTable(), collection.getLinkingColumn(), entryId, collection.getRootHolder().getIdentifier().getColumn());
     }
 
-    public List<CellKey> getEntryKeys(PersistentCollection<?> collection) {
+    public List<CellKey> getEntryKeys(SimplePersistentCollection<?> collection) {
         return collectionEntryHolders.get(collection.getKey()).stream().map(k -> getEntryDataKey(collection, k.getId(), collection.getRootHolder().getIdentifier())).toList();
     }
 
-    public List<Object> getEntries(PersistentCollection<?> collection) {
+    public List<Object> getEntries(SimplePersistentCollection<?> collection) {
         return getEntryKeys(collection).stream().map(dataManager::get).toList();
     }
 
-    public List<CollectionEntry> getCollectionEntries(PersistentCollection<?> collection) {
+    public List<CollectionEntry> getCollectionEntries(SimplePersistentCollection<?> collection) {
         return collectionEntryHolders.get(collection.getKey()).stream().map(identifier -> {
             CellKey entryDataKey = getEntryDataKey(collection, identifier.getId(), collection.getRootHolder().getIdentifier());
             Object value = dataManager.get(entryDataKey);
@@ -352,7 +360,7 @@ public class PersistentCollectionManager {
         }).toList();
     }
 
-    public void addValueToDatabase(Connection connection, PersistentValueCollection<?> collection, Collection<CollectionEntry> entries) throws SQLException {
+    public void addValueEntryToDatabase(Connection connection, PersistentValueCollection<?> collection, Collection<CollectionEntry> entries) throws SQLException {
         if (entries.isEmpty()) {
             return;
         }
@@ -417,7 +425,7 @@ public class PersistentCollectionManager {
 
     }
 
-    public void addUniqueDataToDatabase(Connection connection, PersistentUniqueDataCollection<?> collection, Collection<CollectionEntry> entries) throws SQLException {
+    public void addUniqueDataEntryToDatabase(Connection connection, PersistentUniqueDataCollection<?> collection, Collection<CollectionEntry> entries) throws SQLException {
         if (entries.isEmpty()) {
             return;
         }
@@ -443,11 +451,10 @@ public class PersistentCollectionManager {
         } finally {
             connection.setAutoCommit(autoCommit);
         }
-
     }
 
 
-    public void removeValueFromDatabase(Connection connection, PersistentValueCollection<?> collection, List<CollectionEntry> entries) throws SQLException {
+    public void removeValueEntryFromDatabase(Connection connection, PersistentValueCollection<?> collection, List<CollectionEntry> entries) throws SQLException {
         if (entries.isEmpty()) {
             return;
         }
@@ -529,4 +536,132 @@ public class PersistentCollectionManager {
             statement.executeUpdate();
         }
     }
+
+
+    @Blocking
+    public void loadJunctionTablesFromDatabase(Connection connection, PersistentManyToManyCollection<?> dummyMMCollection) throws SQLException {
+        String junctionTable = dummyMMCollection.getSchema() + "." + dummyMMCollection.getJunctionTable();
+        JunctionTable jt = this.junctionTables.computeIfAbsent(junctionTable, k -> new JunctionTable());
+        String sql = "SELECT * FROM " + junctionTable;
+        dataManager.logSQL(sql);
+
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            ResultSet resultSet = statement.executeQuery();
+            Preconditions.checkArgument(resultSet.getMetaData().getColumnCount() == 2);
+            String leftColumn = resultSet.getMetaData().getColumnName(1);
+            String rightColumn = resultSet.getMetaData().getColumnName(2);
+
+            while (resultSet.next()) {
+                UUID leftId = (UUID) resultSet.getObject(leftColumn);
+                UUID rightId = (UUID) resultSet.getObject(rightColumn);
+                
+                jt.add(new CollectionEntryIdentifier(leftColumn, leftId), new CollectionEntryIdentifier(rightColumn, rightId));
+            }
+        }
+    }
+
+    public void addToJunctionTableInMemory(PersistentManyToManyCollection<?> collection, List<UUID> ids) {
+        String junctionTable = collection.getSchema() + "." + collection.getJunctionTable();
+        JunctionTable jt = junctionTables.get(junctionTable);
+        Preconditions.checkNotNull(jt, "Junction table not loaded: " + junctionTable);
+
+        for (UUID id : ids) {
+            CollectionEntryIdentifier thisIdentifier = CollectionEntryIdentifier.of(collection.getThisIdColumn(), collection.getRootHolder().getId());
+            CollectionEntryIdentifier thatIdentifier = CollectionEntryIdentifier.of(collection.getThatIdColumn(), id);
+            jt.add(thisIdentifier, thatIdentifier);
+        }
+    }
+
+    public void removeFromJunctionTableInMemory(PersistentManyToManyCollection<?> collection, List<UUID> ids) {
+        String junctionTable = collection.getSchema() + "." + collection.getJunctionTable();
+        JunctionTable jt = junctionTables.get(junctionTable);
+        Preconditions.checkNotNull(jt, "Junction table not loaded: " + junctionTable);
+
+        for (UUID id : ids) {
+            CollectionEntryIdentifier thisIdentifier = CollectionEntryIdentifier.of(collection.getThisIdColumn(), collection.getRootHolder().getId());
+            CollectionEntryIdentifier thatIdentifier = CollectionEntryIdentifier.of(collection.getThatIdColumn(), id);
+            jt.remove(thisIdentifier, thatIdentifier);
+        }
+    }
+
+    public List<UUID> getJunctionTableEntryIds(PersistentManyToManyCollection<?> collection) {
+        String junctionTable = collection.getSchema() + "." + collection.getJunctionTable();
+        JunctionTable jt = junctionTables.get(junctionTable);
+        Preconditions.checkNotNull(jt, "Junction table not loaded: " + junctionTable);
+
+        CollectionEntryIdentifier thisIdentifier = CollectionEntryIdentifier.of(collection.getThisIdColumn(), collection.getRootHolder().getId());
+        return jt.get(thisIdentifier).stream().map(CollectionEntryIdentifier::getId).toList();
+    }
+
+    @Blocking
+    public void removeFromJunctionTableInDatabase(Connection connection, PersistentManyToManyCollection<?> collection, List<UUID> ids) throws SQLException {
+        String junctionTable = collection.getSchema() + "." + collection.getJunctionTable();
+        if (ids.isEmpty()) {
+            return;
+        }
+
+        StringBuilder sqlBuilder = new StringBuilder("DELETE FROM ").append(junctionTable).append(" WHERE ");
+        sqlBuilder.append(collection.getThisIdColumn()).append(" = ? AND ");
+        sqlBuilder.append(collection.getThatIdColumn()).append(" IN (");
+
+        int totalValues = ids.size();
+
+        for (int i = 0; i < totalValues; i++) {
+            sqlBuilder.append("?");
+            if (i < totalValues - 1) {
+                sqlBuilder.append(", ");
+            }
+        }
+
+        sqlBuilder.append(")");
+
+        String sql = sqlBuilder.toString();
+        dataManager.logSQL(sql);
+
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            int i = 1;
+            statement.setObject(i++, collection.getRootHolder().getId());
+
+            for (UUID id : ids) {
+                statement.setObject(i++, id);
+            }
+
+            statement.executeUpdate();
+        }
+    }
+
+    @Blocking
+    public void addToJunctionTableInDatabase(Connection connection, PersistentManyToManyCollection<?> collection, List<UUID> ids) throws SQLException {
+        String junctionTable = collection.getSchema() + "." + collection.getJunctionTable();
+        if (ids.isEmpty()) {
+            return;
+        }
+
+        StringBuilder sqlBuilder = new StringBuilder("INSERT INTO ").append(junctionTable).append(" (");
+        sqlBuilder.append(collection.getThisIdColumn()).append(", ").append(collection.getThatIdColumn()).append(") VALUES ");
+
+        int totalValues = ids.size();
+
+        for (int i = 0; i < totalValues; i++) {
+            sqlBuilder.append("(?, ?)");
+            if (i < totalValues - 1) {
+                sqlBuilder.append(", ");
+            }
+        }
+
+        String sql = sqlBuilder.toString();
+        dataManager.logSQL(sql);
+
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            int i = 1;
+
+            for (UUID id : ids) {
+                statement.setObject(i++, collection.getRootHolder().getId());
+                statement.setObject(i++, id);
+            }
+
+            statement.executeUpdate();
+        }
+    }
+
 }
