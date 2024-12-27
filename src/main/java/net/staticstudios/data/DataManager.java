@@ -129,6 +129,10 @@ public class DataManager {
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
+
+            cache.clear();
+            uniqueDataCache.clear();
+            uniqueDataIds.clear();
         });
     }
 
@@ -445,6 +449,12 @@ public class DataManager {
 
         deleteFromCache(holder, dataList);
         removeUniqueData(holder.getClass(), holder.getId());
+        //todo: remove add, remove, and update handlers
+        //todo: handle foreign PVs
+        //todo: handle CVs
+        //todo: handle PVCs
+        //todo: handle PUDCs
+        //todo: handle PMTMCs
 
         ThreadUtils.submit(() -> {
             try (Connection connection = getConnection();
@@ -483,11 +493,6 @@ public class DataManager {
     }
 
     private void deleteFromDataSource(Connection connection, Jedis jedis, UniqueData holder) throws SQLException {
-        //todo: handle foreign PVs
-        //todo: handle CVs
-        //todo: handle PVCs
-        //todo: handle PUDCs
-        //todo: handle PMTMCs
         String sql = "DELETE FROM " + holder.getSchema() + "." + holder.getTable() + " WHERE " + holder.getIdentifier().getColumn() + " = ?";
         logSQL(sql);
 

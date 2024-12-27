@@ -5,14 +5,13 @@ import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.data.collection.PersistentCollection;
 import net.staticstudios.data.data.collection.SimplePersistentCollection;
 
-import java.util.Collection;
 import java.util.UUID;
 
 public class FacebookUser extends UniqueData {
-    private final PersistentCollection<FacebookUser> following = PersistentCollection.manyToMany(this, FacebookUser.class, "facebook", "user_following", "user_id", "following_id");
-    private final PersistentCollection<FacebookUser> followers = PersistentCollection.manyToMany(this, FacebookUser.class, "facebook", "user_following", "following_id", "user_id");
-    private final SimplePersistentCollection<FacebookPost> posts = PersistentCollection.oneToMany(this, FacebookPost.class, "facebook", "posts", "user_id");
-    private final SimplePersistentCollection<String> favoriteQuotes = PersistentCollection.of(this, String.class, "facebook", "favorite_quotes", "user_id", "quote");
+    public final PersistentCollection<FacebookUser> following = PersistentCollection.manyToMany(this, FacebookUser.class, "facebook", "user_following", "user_id", "following_id");
+    public final PersistentCollection<FacebookUser> followers = PersistentCollection.manyToMany(this, FacebookUser.class, "facebook", "user_following", "following_id", "user_id");
+    public final SimplePersistentCollection<FacebookPost> posts = PersistentCollection.oneToMany(this, FacebookPost.class, "facebook", "posts", "user_id");
+    public final SimplePersistentCollection<String> favoriteQuotes = PersistentCollection.of(this, String.class, "facebook", "favorite_quotes", "user_id", "quote");
 
     private FacebookUser(DataManager dataManager, UUID id) {
         super(dataManager, "facebook", "users", id);
@@ -25,19 +24,19 @@ public class FacebookUser extends UniqueData {
         return user;
     }
 
-    public Collection<FacebookPost> getPosts() {
+    public PersistentCollection<FacebookPost> getPosts() {
         return posts;
     }
 
-    public Collection<String> getFavoriteQuotes() {
+    public PersistentCollection<String> getFavoriteQuotes() {
         return favoriteQuotes;
     }
 
-    public Collection<FacebookUser> getFollowing() {
+    public PersistentCollection<FacebookUser> getFollowing() {
         return following;
     }
 
-    public Collection<FacebookUser> getFollowers() {
+    public PersistentCollection<FacebookUser> getFollowers() {
         return followers;
     }
 }

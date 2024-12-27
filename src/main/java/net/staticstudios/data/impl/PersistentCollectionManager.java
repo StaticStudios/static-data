@@ -1,6 +1,7 @@
 package net.staticstudios.data.impl;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
@@ -29,6 +30,8 @@ public class PersistentCollectionManager {
     private final Logger logger = LoggerFactory.getLogger(PersistentCollectionManager.class);
     private final DataManager dataManager;
     private final PostgresListener pgListener;
+    private final Multimap<CollectionKey, PersistentCollectionChangeHandler<?>> addHandlers;
+    private final Multimap<CollectionKey, PersistentCollectionChangeHandler<?>> removeHandlers;
     /**
      * Maps a collection key to a list of data keys for each entry in the collection
      */
@@ -39,6 +42,8 @@ public class PersistentCollectionManager {
         this.dataManager = dataManager;
         this.pgListener = pgListener;
         this.collectionEntryHolders = Multimaps.synchronizedSetMultimap(HashMultimap.create());
+        this.addHandlers = Multimaps.synchronizedListMultimap(ArrayListMultimap.create());
+        this.removeHandlers = Multimaps.synchronizedListMultimap(ArrayListMultimap.create());
         this.junctionTables = new ConcurrentHashMap<>();
 
         //todo: listen to changes on junction tables
@@ -136,6 +141,22 @@ public class PersistentCollectionManager {
                 });
             }
         });
+    }
+
+    public void addAddHandler(PersistentCollection<?> collection, PersistentCollectionChangeHandler<?> handler) {
+        if (collection.getRootHolder().getId() == null) {
+            return; //Dummy collection
+        }
+
+        addHandlers.put(collection.getKey(), handler);
+    }
+
+    public void addRemoveHandler(PersistentCollection<?> collection, PersistentCollectionChangeHandler<?> handler) {
+        if (collection.getRootHolder().getId() == null) {
+            return; //Dummy collection
+        }
+
+        removeHandlers.put(collection.getKey(), handler);
     }
 
     public void handlePersistentValueUncache(String schema, String table, String column, UUID holderId, String idColumn, Object oldValue) {
@@ -554,7 +575,7 @@ public class PersistentCollectionManager {
             while (resultSet.next()) {
                 UUID leftId = (UUID) resultSet.getObject(leftColumn);
                 UUID rightId = (UUID) resultSet.getObject(rightColumn);
-                
+
                 jt.add(new CollectionEntryIdentifier(leftColumn, leftId), new CollectionEntryIdentifier(rightColumn, rightId));
             }
         }

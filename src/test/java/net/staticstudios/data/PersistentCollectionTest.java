@@ -24,7 +24,6 @@ public class PersistentCollectionTest extends DataTest {
 
     //todo: we need to add add handlers add and remove handlers
     //todo: we need to test what happens when we manually edit the db. do the collections update?
-    //todo: test blocking #add, #addAll, ... calls
 
     @BeforeEach
     public void init() {
@@ -112,6 +111,55 @@ public class PersistentCollectionTest extends DataTest {
     }
 
     @RetryingTest(5)
+    public void testBlockingAddToUniqueDataCollection() throws SQLException {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        FacebookPost post1 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+        FacebookPost post2 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+
+        assertEquals(2, facebookUser.getPosts().size());
+        assertTrue(facebookUser.getPosts().contains(post1));
+        assertTrue(facebookUser.getPosts().contains(post2));
+        assertEquals(facebookUser, post1.getUser());
+        assertEquals(facebookUser, post2.getUser());
+
+        FacebookPost post3 = FacebookPost.createSync(dataManager, "Here's some post description", null);
+        facebookUser.getPosts().add(dataManager.getConnection(), post3);
+
+        assertEquals(3, facebookUser.getPosts().size());
+        assertTrue(facebookUser.getPosts().contains(post3));
+        assertEquals(facebookUser, post3.getUser());
+
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.posts WHERE id = ?")) {
+            statement.setObject(1, post1.getId());
+            assertTrue(statement.execute());
+            ResultSet resultSet = statement.getResultSet();
+            assertTrue(resultSet.next());
+            assertEquals(facebookUser.getId(), resultSet.getObject("user_id"));
+            assertEquals("Here's some post description", resultSet.getString("description"));
+            assertEquals(0, resultSet.getInt("likes"));
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.posts WHERE id = ?")) {
+            statement.setObject(1, post3.getId());
+            assertTrue(statement.execute());
+            ResultSet resultSet = statement.getResultSet();
+            assertTrue(resultSet.next());
+            assertEquals(facebookUser.getId(), resultSet.getObject("user_id"));
+            assertEquals("Here's some post description", resultSet.getString("description"));
+            assertEquals(0, resultSet.getInt("likes"));
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
     public void testAddAllToUniqueDataCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -133,6 +181,40 @@ public class PersistentCollectionTest extends DataTest {
         assertEquals(facebookUser, post2.getUser());
 
         waitForDataPropagation();
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.posts WHERE id = ?")) {
+            statement.setObject(1, post1.getId());
+            assertTrue(statement.execute());
+            ResultSet resultSet = statement.getResultSet();
+            assertTrue(resultSet.next());
+            assertEquals(facebookUser.getId(), resultSet.getObject("user_id"));
+            assertEquals("Here's some post description", resultSet.getString("description"));
+            assertEquals(0, resultSet.getInt("likes"));
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
+    public void testBlockingAddAllToUniqueDataCollection() throws SQLException {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        FacebookPost post1 = FacebookPost.createSync(dataManager, "Here's some post description", null);
+        FacebookPost post2 = FacebookPost.createSync(dataManager, "Here's some post description", null);
+
+        assertEquals(0, facebookUser.getPosts().size());
+
+        facebookUser.getPosts().addAll(dataManager.getConnection(), List.of(post1, post2));
+
+        assertEquals(2, facebookUser.getPosts().size());
+
+        assertTrue(facebookUser.getPosts().contains(post1));
+        assertTrue(facebookUser.getPosts().contains(post2));
+        assertEquals(facebookUser, post1.getUser());
+        assertEquals(facebookUser, post2.getUser());
 
         try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.posts WHERE id = ?")) {
             statement.setObject(1, post1.getId());
@@ -204,6 +286,43 @@ public class PersistentCollectionTest extends DataTest {
     }
 
     @RetryingTest(5)
+    public void testBlockingRemoveFromUniqueDataCollection() throws SQLException {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        FacebookPost post1 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+        FacebookPost post2 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+
+        assertEquals(2, facebookUser.getPosts().size());
+        assertTrue(facebookUser.getPosts().contains(post1));
+        assertTrue(facebookUser.getPosts().contains(post2));
+        assertEquals(facebookUser, post1.getUser());
+        assertEquals(facebookUser, post2.getUser());
+
+        assertTrue(facebookUser.getPosts().remove(dataManager.getConnection(), post1));
+
+        assertEquals(1, facebookUser.getPosts().size());
+        assertTrue(facebookUser.getPosts().contains(post2));
+        assertEquals(facebookUser, post2.getUser());
+
+        waitForDataPropagation();
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.posts WHERE id = ?")) {
+            statement.setObject(1, post1.getId());
+            assertTrue(statement.execute());
+            ResultSet resultSet = statement.getResultSet();
+            assertTrue(resultSet.next());
+            assertNull(resultSet.getObject("user_id"));
+            assertEquals("Here's some post description", resultSet.getString("description"));
+            assertEquals(0, resultSet.getInt("likes"));
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
     public void testRemoveAllFromUniqueDataCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -237,6 +356,105 @@ public class PersistentCollectionTest extends DataTest {
             ResultSet resultSet = statement.getResultSet();
             assertTrue(resultSet.next());
             assertFalse(resultSet.next());
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
+    public void testBlockingRemoveAllFromUniqueDataCollection() throws SQLException {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        FacebookPost post1 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+        FacebookPost post2 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+        FacebookPost post3 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+
+        assertEquals(3, facebookUser.getPosts().size());
+        assertTrue(facebookUser.getPosts().contains(post1));
+        assertTrue(facebookUser.getPosts().contains(post2));
+        assertTrue(facebookUser.getPosts().contains(post3));
+        assertEquals(facebookUser, post1.getUser());
+        assertEquals(facebookUser, post2.getUser());
+        assertEquals(facebookUser, post3.getUser());
+
+        assertTrue(facebookUser.getPosts().removeAll(dataManager.getConnection(), List.of(post1, post2)));
+
+        assertEquals(1, facebookUser.getPosts().size());
+        assertTrue(facebookUser.getPosts().contains(post3));
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.posts WHERE user_id = ?")) {
+            statement.setObject(1, facebookUser.getId());
+            assertTrue(statement.execute());
+            ResultSet resultSet = statement.getResultSet();
+            assertTrue(resultSet.next());
+            assertFalse(resultSet.next());
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
+    public void testClearInUniqueDataCollection() {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        FacebookPost post1 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+        FacebookPost post2 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+
+        assertEquals(2, facebookUser.getPosts().size());
+        assertTrue(facebookUser.getPosts().contains(post1));
+        assertTrue(facebookUser.getPosts().contains(post2));
+        assertEquals(facebookUser, post1.getUser());
+        assertEquals(facebookUser, post2.getUser());
+
+        facebookUser.getPosts().clear();
+
+        assertEquals(0, facebookUser.getPosts().size());
+
+        waitForDataPropagation();
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.posts WHERE id = ?")) {
+            statement.setObject(1, post1.getId());
+            assertTrue(statement.execute());
+            ResultSet resultSet = statement.getResultSet();
+            assertTrue(resultSet.next());
+            assertNull(resultSet.getObject("user_id"));
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
+    public void testBlockingClearInUniqueDataCollection() throws SQLException {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        FacebookPost post1 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+        FacebookPost post2 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+
+        assertEquals(2, facebookUser.getPosts().size());
+        assertTrue(facebookUser.getPosts().contains(post1));
+        assertTrue(facebookUser.getPosts().contains(post2));
+        assertEquals(facebookUser, post1.getUser());
+        assertEquals(facebookUser, post2.getUser());
+
+        facebookUser.getPosts().clear(dataManager.getConnection());
+
+        assertEquals(0, facebookUser.getPosts().size());
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.posts WHERE id = ?")) {
+            statement.setObject(1, post1.getId());
+            assertTrue(statement.execute());
+            ResultSet resultSet = statement.getResultSet();
+            assertTrue(resultSet.next());
+            assertNull(resultSet.getObject("user_id"));
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
@@ -417,6 +635,52 @@ public class PersistentCollectionTest extends DataTest {
     }
 
     @RetryingTest(5)
+    public void testBlockingIteratorInUniqueDataCollection() throws SQLException {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        FacebookPost post1 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+        FacebookPost post2 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+
+        assertEquals(2, facebookUser.getPosts().size());
+
+        Iterator<FacebookPost> iterator = facebookUser.getPosts().iterator(dataManager.getConnection());
+        assertTrue(iterator.hasNext());
+        FacebookPost next = iterator.next();
+        assertTrue(next.equals(post1) || next.equals(post2));
+        assertTrue(iterator.hasNext());
+        next = iterator.next();
+        assertTrue(next.equals(post1) || next.equals(post2));
+        assertFalse(iterator.hasNext());
+
+        iterator = facebookUser.getPosts().iterator(dataManager.getConnection());
+        assertTrue(iterator.hasNext());
+        iterator.next();
+        iterator.remove();
+
+        assertEquals(1, facebookUser.getPosts().size());
+
+        assertTrue(iterator.hasNext());
+        iterator.next();
+        iterator.remove();
+
+        assertEquals(0, facebookUser.getPosts().size());
+
+        assertFalse(iterator.hasNext());
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.posts WHERE user_id = ?")) {
+            statement.setObject(1, facebookUser.getId());
+            assertTrue(statement.execute());
+            ResultSet resultSet = statement.getResultSet();
+            assertFalse(resultSet.next());
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
     public void testLoadingUniqueDataCollection() {
         List<UUID> ids = new ArrayList<>();
         try (Statement statement = getConnection().createStatement()) {
@@ -483,6 +747,39 @@ public class PersistentCollectionTest extends DataTest {
     }
 
     @RetryingTest(5)
+    public void testBlockingAddToValueCollection() throws SQLException {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        //Duplicates are permitted
+        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's a quote");
+        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's a quote");
+        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's another quote");
+
+        assertEquals(3, facebookUser.getFavoriteQuotes().size());
+        assertTrue(facebookUser.getFavoriteQuotes().contains("Here's a quote"));
+        assertTrue(facebookUser.getFavoriteQuotes().contains("Here's another quote"));
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.favorite_quotes WHERE user_id = ?")) {
+            statement.setObject(1, facebookUser.getId());
+            assertTrue(statement.execute());
+            List<String> quotes = new ArrayList<>();
+            ResultSet resultSet = statement.getResultSet();
+            while (resultSet.next()) {
+                quotes.add(resultSet.getString("quote"));
+            }
+
+            assertEquals(3, quotes.size());
+            assertTrue(quotes.contains("Here's a quote"));
+            assertTrue(quotes.contains("Here's another quote"));
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
     public void testAddAllToValueCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -497,6 +794,37 @@ public class PersistentCollectionTest extends DataTest {
         assertTrue(facebookUser.getFavoriteQuotes().contains("Here's another quote"));
 
         waitForDataPropagation();
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.favorite_quotes WHERE user_id = ?")) {
+            statement.setObject(1, facebookUser.getId());
+            assertTrue(statement.execute());
+            List<String> quotes = new ArrayList<>();
+            ResultSet resultSet = statement.getResultSet();
+            while (resultSet.next()) {
+                quotes.add(resultSet.getString("quote"));
+            }
+
+            assertEquals(3, quotes.size());
+            assertTrue(quotes.contains("Here's a quote"));
+            assertTrue(quotes.contains("Here's another quote"));
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
+    public void testBlockingAddAllToValueCollection() throws SQLException {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        //Duplicates are permitted
+        facebookUser.getFavoriteQuotes().addAll(dataManager.getConnection(), List.of("Here's a quote", "Here's a quote", "Here's another quote"));
+
+        assertEquals(3, facebookUser.getFavoriteQuotes().size());
+        assertTrue(facebookUser.getFavoriteQuotes().contains("Here's a quote"));
+        assertTrue(facebookUser.getFavoriteQuotes().contains("Here's another quote"));
 
         try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.favorite_quotes WHERE user_id = ?")) {
             statement.setObject(1, facebookUser.getId());
@@ -563,6 +891,51 @@ public class PersistentCollectionTest extends DataTest {
     }
 
     @RetryingTest(5)
+    public void testBlockingRemoveFromValueCollection() throws SQLException {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        //Duplicates are permitted
+        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's a quote");
+        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's a quote");
+        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's another quote");
+
+        assertEquals(3, facebookUser.getFavoriteQuotes().size());
+        assertTrue(facebookUser.getFavoriteQuotes().contains("Here's a quote"));
+        assertTrue(facebookUser.getFavoriteQuotes().contains("Here's another quote"));
+
+        assertTrue(facebookUser.getFavoriteQuotes().remove(dataManager.getConnection(), "Here's a quote"));
+
+        assertEquals(2, facebookUser.getFavoriteQuotes().size());
+        assertTrue(facebookUser.getFavoriteQuotes().contains("Here's a quote"));
+        assertTrue(facebookUser.getFavoriteQuotes().contains("Here's another quote"));
+
+        assertTrue(facebookUser.getFavoriteQuotes().remove(dataManager.getConnection(), "Here's a quote"));
+
+        assertEquals(1, facebookUser.getFavoriteQuotes().size());
+        assertTrue(facebookUser.getFavoriteQuotes().contains("Here's another quote"));
+
+        assertFalse(facebookUser.getFavoriteQuotes().remove(dataManager.getConnection(), "Here's a quote"));
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.favorite_quotes WHERE user_id = ?")) {
+            statement.setObject(1, facebookUser.getId());
+            assertTrue(statement.execute());
+            List<String> quotes = new ArrayList<>();
+            ResultSet resultSet = statement.getResultSet();
+            while (resultSet.next()) {
+                quotes.add(resultSet.getString("quote"));
+            }
+
+            assertEquals(1, quotes.size());
+            assertTrue(quotes.contains("Here's another quote"));
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
     public void testRemoveAllFromValueCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -596,6 +969,105 @@ public class PersistentCollectionTest extends DataTest {
 
             assertEquals(1, quotes.size());
             assertTrue(quotes.contains("Here's a quote"));
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
+    public void testBlockingRemoveAllFromValueCollection() throws SQLException {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        //Duplicates are permitted
+        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's a quote");
+        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's a quote");
+        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's another quote");
+
+        assertEquals(3, facebookUser.getFavoriteQuotes().size());
+        assertTrue(facebookUser.getFavoriteQuotes().contains("Here's a quote"));
+        assertTrue(facebookUser.getFavoriteQuotes().contains("Here's another quote"));
+
+        assertTrue(facebookUser.getFavoriteQuotes().removeAll(dataManager.getConnection(), List.of("Here's a quote", "Here's another quote")));
+
+        assertEquals(1, facebookUser.getFavoriteQuotes().size());
+        assertTrue(facebookUser.getFavoriteQuotes().contains("Here's a quote"));
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.favorite_quotes WHERE user_id = ?")) {
+            statement.setObject(1, facebookUser.getId());
+            assertTrue(statement.execute());
+            List<String> quotes = new ArrayList<>();
+            ResultSet resultSet = statement.getResultSet();
+            while (resultSet.next()) {
+                quotes.add(resultSet.getString("quote"));
+            }
+
+            assertEquals(1, quotes.size());
+            assertTrue(quotes.contains("Here's a quote"));
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
+    public void testClearInValueCollection() {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        //Duplicates are permitted
+        facebookUser.getFavoriteQuotes().add("Here's a quote");
+        facebookUser.getFavoriteQuotes().add("Here's a quote");
+        facebookUser.getFavoriteQuotes().add("Here's another quote");
+
+        assertEquals(3, facebookUser.getFavoriteQuotes().size());
+        assertTrue(facebookUser.getFavoriteQuotes().contains("Here's a quote"));
+        assertTrue(facebookUser.getFavoriteQuotes().contains("Here's another quote"));
+
+        facebookUser.getFavoriteQuotes().clear();
+
+        assertEquals(0, facebookUser.getFavoriteQuotes().size());
+
+        waitForDataPropagation();
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.favorite_quotes WHERE user_id = ?")) {
+            statement.setObject(1, facebookUser.getId());
+            assertTrue(statement.execute());
+            ResultSet resultSet = statement.getResultSet();
+            assertFalse(resultSet.next());
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
+    public void testBlockingClearInValueCollection() throws SQLException {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        //Duplicates are permitted
+        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's a quote");
+        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's a quote");
+        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's another quote");
+
+        assertEquals(3, facebookUser.getFavoriteQuotes().size());
+        assertTrue(facebookUser.getFavoriteQuotes().contains("Here's a quote"));
+        assertTrue(facebookUser.getFavoriteQuotes().contains("Here's another quote"));
+
+        facebookUser.getFavoriteQuotes().clear(dataManager.getConnection());
+
+        assertEquals(0, facebookUser.getFavoriteQuotes().size());
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.favorite_quotes WHERE user_id = ?")) {
+            statement.setObject(1, facebookUser.getId());
+            assertTrue(statement.execute());
+            ResultSet resultSet = statement.getResultSet();
+            assertFalse(resultSet.next());
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
@@ -783,6 +1255,65 @@ public class PersistentCollectionTest extends DataTest {
     }
 
     @RetryingTest(5)
+    public void testBlockingIteratorInValueCollection() throws SQLException {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        //Duplicates are permitted
+        facebookUser.getFavoriteQuotes().add("Here's a quote");
+        facebookUser.getFavoriteQuotes().add("Here's a quote");
+        facebookUser.getFavoriteQuotes().add("Here's another quote");
+
+        assertEquals(3, facebookUser.getFavoriteQuotes().size());
+
+        Iterator<String> iterator = facebookUser.getFavoriteQuotes().iterator(dataManager.getConnection());
+        assertTrue(iterator.hasNext());
+        String next = iterator.next();
+        assertTrue(next.equals("Here's a quote") || next.equals("Here's another quote"));
+        assertTrue(iterator.hasNext());
+        next = iterator.next();
+        assertTrue(next.equals("Here's a quote") || next.equals("Here's another quote"));
+        assertTrue(iterator.hasNext());
+        next = iterator.next();
+        assertTrue(next.equals("Here's a quote") || next.equals("Here's another quote"));
+        assertFalse(iterator.hasNext());
+
+        iterator = facebookUser.getFavoriteQuotes().iterator(dataManager.getConnection());
+        assertTrue(iterator.hasNext());
+        iterator.next();
+        iterator.remove();
+
+        assertEquals(2, facebookUser.getFavoriteQuotes().size());
+
+        assertTrue(iterator.hasNext());
+        iterator.next();
+        iterator.remove();
+
+        assertEquals(1, facebookUser.getFavoriteQuotes().size());
+
+        assertTrue(iterator.hasNext());
+        iterator.next();
+        iterator.remove();
+
+        assertEquals(0, facebookUser.getFavoriteQuotes().size());
+
+        assertFalse(iterator.hasNext());
+
+        waitForDataPropagation();
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.favorite_quotes WHERE user_id = ?")) {
+            statement.setObject(1, facebookUser.getId());
+            assertTrue(statement.execute());
+            ResultSet resultSet = statement.getResultSet();
+            assertFalse(resultSet.next());
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
     public void testLoadingValueCollection() {
         List<UUID> ids = new ArrayList<>();
         try (Statement statement = getConnection().createStatement()) {
@@ -810,6 +1341,8 @@ public class PersistentCollectionTest extends DataTest {
             assertTrue(user.getFavoriteQuotes().contains("quote 2 - " + id));
         }
     }
+
+    // ----- Test PersistentManyToManyCollections ----- //
 
     @RetryingTest(5)
     public void testAddToManyToManyCollection() {
@@ -851,6 +1384,43 @@ public class PersistentCollectionTest extends DataTest {
         }
     }
 
+    @RetryingTest(5)
+    public void testBlockingAddToManyToManyCollection() throws SQLException {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        FacebookUser following1 = FacebookUser.createSync(dataManager);
+        FacebookUser following2 = FacebookUser.createSync(dataManager);
+
+        facebookUser.getFollowing().add(dataManager.getConnection(), following1);
+        assertEquals(1, facebookUser.getFollowing().size());
+        facebookUser.getFollowing().add(dataManager.getConnection(), following2);
+        assertEquals(2, facebookUser.getFollowing().size());
+
+        assertTrue(facebookUser.getFollowing().contains(following1));
+        assertTrue(facebookUser.getFollowing().contains(following2));
+
+        assertTrue(following1.getFollowers().contains(facebookUser));
+        assertTrue(following2.getFollowers().contains(facebookUser));
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.user_following WHERE user_id = ?")) {
+            statement.setObject(1, facebookUser.getId());
+            assertTrue(statement.execute());
+            List<UUID> followingIds = new ArrayList<>();
+            ResultSet resultSet = statement.getResultSet();
+            while (resultSet.next()) {
+                followingIds.add(resultSet.getObject("following_id", UUID.class));
+            }
+
+            assertEquals(2, followingIds.size());
+            assertTrue(followingIds.contains(following1.getId()));
+            assertTrue(followingIds.contains(following2.getId()));
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     @RetryingTest(5)
     public void testAddAllToManyToManyCollection() {
@@ -872,6 +1442,42 @@ public class PersistentCollectionTest extends DataTest {
         assertTrue(following2.getFollowers().contains(facebookUser));
 
         waitForDataPropagation();
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.user_following WHERE user_id = ?")) {
+            statement.setObject(1, facebookUser.getId());
+            assertTrue(statement.execute());
+            List<UUID> followingIds = new ArrayList<>();
+            ResultSet resultSet = statement.getResultSet();
+            while (resultSet.next()) {
+                followingIds.add(resultSet.getObject("following_id", UUID.class));
+            }
+
+            assertEquals(2, followingIds.size());
+            assertTrue(followingIds.contains(following1.getId()));
+            assertTrue(followingIds.contains(following2.getId()));
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
+    public void testBlockingAddAllToManyToManyCollection() throws SQLException {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        FacebookUser following1 = FacebookUser.createSync(dataManager);
+        FacebookUser following2 = FacebookUser.createSync(dataManager);
+
+        facebookUser.getFollowing().addAll(dataManager.getConnection(), List.of(following1, following2));
+        assertEquals(2, facebookUser.getFollowing().size());
+
+        assertTrue(facebookUser.getFollowing().contains(following1));
+        assertTrue(facebookUser.getFollowing().contains(following2));
+
+        assertTrue(following1.getFollowers().contains(facebookUser));
+        assertTrue(following2.getFollowers().contains(facebookUser));
 
         try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.user_following WHERE user_id = ?")) {
             statement.setObject(1, facebookUser.getId());
@@ -936,6 +1542,49 @@ public class PersistentCollectionTest extends DataTest {
     }
 
     @RetryingTest(5)
+    public void testBlockingRemoveFromManyToManyCollection() throws SQLException {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        FacebookUser following1 = FacebookUser.createSync(dataManager);
+        FacebookUser following2 = FacebookUser.createSync(dataManager);
+
+        facebookUser.getFollowing().add(dataManager.getConnection(), following1);
+        facebookUser.getFollowing().add(dataManager.getConnection(), following2);
+
+        assertEquals(2, facebookUser.getFollowing().size());
+        assertTrue(facebookUser.getFollowing().contains(following1));
+        assertTrue(facebookUser.getFollowing().contains(following2));
+
+        assertTrue(facebookUser.getFollowing().remove(dataManager.getConnection(), following1));
+
+        assertEquals(1, facebookUser.getFollowing().size());
+        assertFalse(facebookUser.getFollowing().contains(following1));
+        assertTrue(facebookUser.getFollowing().contains(following2));
+
+        assertFalse(following1.getFollowers().contains(facebookUser));
+        assertTrue(following2.getFollowers().contains(facebookUser));
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.user_following WHERE user_id = ?")) {
+            statement.setObject(1, facebookUser.getId());
+            assertTrue(statement.execute());
+            List<UUID> followingIds = new ArrayList<>();
+            ResultSet resultSet = statement.getResultSet();
+            while (resultSet.next()) {
+                followingIds.add(resultSet.getObject("following_id", UUID.class));
+            }
+
+            assertEquals(1, followingIds.size());
+            assertFalse(followingIds.contains(following1.getId()));
+            assertTrue(followingIds.contains(following2.getId()));
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
     public void testRemoveAllFromManyToManyCollection() {
         MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
         DataManager dataManager = mockEnvironment.dataManager();
@@ -981,6 +1630,125 @@ public class PersistentCollectionTest extends DataTest {
             assertFalse(followingIds.contains(following1.getId()));
             assertFalse(followingIds.contains(following2.getId()));
             assertTrue(followingIds.contains(following3.getId()));
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
+    public void testBlockingRemoveAllFromManyToManyCollection() throws SQLException {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        FacebookUser following1 = FacebookUser.createSync(dataManager);
+        FacebookUser following2 = FacebookUser.createSync(dataManager);
+        FacebookUser following3 = FacebookUser.createSync(dataManager);
+
+        facebookUser.getFollowing().add(dataManager.getConnection(), following1);
+        facebookUser.getFollowing().add(dataManager.getConnection(), following2);
+        facebookUser.getFollowing().add(dataManager.getConnection(), following3);
+
+        assertEquals(3, facebookUser.getFollowing().size());
+        assertTrue(facebookUser.getFollowing().contains(following1));
+        assertTrue(facebookUser.getFollowing().contains(following2));
+        assertTrue(facebookUser.getFollowing().contains(following3));
+
+        assertTrue(facebookUser.getFollowing().removeAll(dataManager.getConnection(), List.of(following1, following2)));
+
+        assertEquals(1, facebookUser.getFollowing().size());
+        assertFalse(facebookUser.getFollowing().contains(following1));
+        assertFalse(facebookUser.getFollowing().contains(following2));
+        assertTrue(facebookUser.getFollowing().contains(following3));
+
+        assertFalse(following1.getFollowers().contains(facebookUser));
+        assertFalse(following2.getFollowers().contains(facebookUser));
+        assertTrue(following3.getFollowers().contains(facebookUser));
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.user_following WHERE user_id = ?")) {
+            statement.setObject(1, facebookUser.getId());
+            assertTrue(statement.execute());
+            List<UUID> followingIds = new ArrayList<>();
+            ResultSet resultSet = statement.getResultSet();
+            while (resultSet.next()) {
+                followingIds.add(resultSet.getObject("following_id", UUID.class));
+            }
+
+            assertEquals(1, followingIds.size());
+            assertFalse(followingIds.contains(following1.getId()));
+            assertFalse(followingIds.contains(following2.getId()));
+            assertTrue(followingIds.contains(following3.getId()));
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
+    public void testClearInManyToManyCollection() {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        FacebookUser following1 = FacebookUser.createSync(dataManager);
+        FacebookUser following2 = FacebookUser.createSync(dataManager);
+
+        facebookUser.getFollowing().add(following1);
+        facebookUser.getFollowing().add(following2);
+
+        assertEquals(2, facebookUser.getFollowing().size());
+        assertTrue(facebookUser.getFollowing().contains(following1));
+        assertTrue(facebookUser.getFollowing().contains(following2));
+
+        facebookUser.getFollowing().clear();
+
+        assertEquals(0, facebookUser.getFollowing().size());
+
+        assertFalse(following1.getFollowers().contains(facebookUser));
+        assertFalse(following2.getFollowers().contains(facebookUser));
+
+        waitForDataPropagation();
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.user_following WHERE user_id = ?")) {
+            statement.setObject(1, facebookUser.getId());
+            assertTrue(statement.execute());
+            ResultSet resultSet = statement.getResultSet();
+            assertFalse(resultSet.next());
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
+    public void testBlockingClearInManyToManyCollection() throws SQLException {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        FacebookUser following1 = FacebookUser.createSync(dataManager);
+        FacebookUser following2 = FacebookUser.createSync(dataManager);
+
+        facebookUser.getFollowing().add(dataManager.getConnection(), following1);
+        facebookUser.getFollowing().add(dataManager.getConnection(), following2);
+
+        assertEquals(2, facebookUser.getFollowing().size());
+        assertTrue(facebookUser.getFollowing().contains(following1));
+        assertTrue(facebookUser.getFollowing().contains(following2));
+
+        facebookUser.getFollowing().clear(dataManager.getConnection());
+
+        assertEquals(0, facebookUser.getFollowing().size());
+
+        assertFalse(following1.getFollowers().contains(facebookUser));
+        assertFalse(following2.getFollowers().contains(facebookUser));
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.user_following WHERE user_id = ?")) {
+            statement.setObject(1, facebookUser.getId());
+            assertTrue(statement.execute());
+            ResultSet resultSet = statement.getResultSet();
+            assertFalse(resultSet.next());
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
@@ -1174,6 +1942,55 @@ public class PersistentCollectionTest extends DataTest {
     }
 
     @RetryingTest(5)
+    public void testBlockingIteratorInManyToManyCollection() throws SQLException {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser1 = FacebookUser.createSync(dataManager);
+
+        FacebookUser following1 = FacebookUser.createSync(dataManager);
+        FacebookUser following2 = FacebookUser.createSync(dataManager);
+
+        facebookUser1.getFollowing().add(dataManager.getConnection(), following1);
+        facebookUser1.getFollowing().add(dataManager.getConnection(), following2);
+
+        assertEquals(2, facebookUser1.getFollowing().size());
+
+        Iterator<FacebookUser> iterator = facebookUser1.getFollowing().iterator(dataManager.getConnection());
+        assertTrue(iterator.hasNext());
+        FacebookUser next = iterator.next();
+        assertTrue(next.equals(following1) || next.equals(following2));
+        assertTrue(iterator.hasNext());
+        next = iterator.next();
+        assertTrue(next.equals(following1) || next.equals(following2));
+        assertFalse(iterator.hasNext());
+
+        iterator = facebookUser1.getFollowing().iterator(dataManager.getConnection());
+        assertTrue(iterator.hasNext());
+        iterator.next();
+        iterator.remove();
+
+        assertEquals(1, facebookUser1.getFollowing().size());
+
+        assertTrue(iterator.hasNext());
+        iterator.next();
+        iterator.remove();
+
+        assertEquals(0, facebookUser1.getFollowing().size());
+
+        assertFalse(iterator.hasNext());
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.user_following WHERE user_id = ?")) {
+            statement.setObject(1, facebookUser1.getId());
+            assertTrue(statement.execute());
+            ResultSet resultSet = statement.getResultSet();
+            assertFalse(resultSet.next());
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
     public void testLoadingManyToManyCollection() {
         Multimap<UUID, UUID> followingMap = HashMultimap.create();
         try (Statement statement = getConnection().createStatement()) {
@@ -1205,15 +2022,4 @@ public class PersistentCollectionTest extends DataTest {
             assertTrue(user.getFollowing().stream().anyMatch(following -> followingMap.get(userId).contains(following.getId())));
         }
     }
-
-    //todo: test:
-    // blocking add - ALL PCs
-    // blocking addAll - ALL PCs
-    // blocking remove - ALL PCs
-    // blocking removeAll - ALL PCs
-    // clear - ALL PCs
-    // blocking clear - ALL PCs
-    // blocking iterator - ALL PCs
-
-
 }

@@ -214,7 +214,15 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Simple
 
     @Override
     public void clear() {
-        removeAll(new ArrayList<>(holderIds));
+        List<UUID> toRemove = new ArrayList<>(holderIds);
+        holderIds.getManager().removeFromUniqueDataCollectionInMemory(holderIds, toRemove);
+        ThreadUtils.submit(() -> {
+            try (Connection connection = getHolder().getDataManager().getConnection()) {
+                holderIds.getManager().removeFromUniqueDataCollectionInDatabase(connection, holderIds, toRemove);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
     }
 
     @Override

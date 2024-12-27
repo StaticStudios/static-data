@@ -3,6 +3,7 @@ package net.staticstudios.data.data.collection;
 import net.staticstudios.data.data.Data;
 import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.data.UniqueData;
+import net.staticstudios.data.key.CollectionKey;
 import org.jetbrains.annotations.Blocking;
 
 import java.sql.Connection;
@@ -46,6 +47,18 @@ public interface PersistentCollection<T> extends Collection<T>, DataHolder, Data
 
     @Blocking
     Iterator<T> iterator(Connection connection);
+
+    default PersistentCollection<T> onAdd(PersistentCollectionChangeHandler<T> handler) {
+        getDataManager().getPersistentCollectionManager().addAddHandler(this, handler);
+        return this;
+    }
+
+    default PersistentCollection<T> onRemove(PersistentCollectionChangeHandler<T> handler) {
+        getDataManager().getPersistentCollectionManager().addRemoveHandler(this, handler);
+        return this;
+    }
+
+    CollectionKey getKey();
 
     @Blocking
     default boolean removeIf(Connection connection, Predicate<? super T> filter) throws SQLException {
