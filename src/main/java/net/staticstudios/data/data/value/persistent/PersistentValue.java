@@ -1,6 +1,7 @@
 package net.staticstudios.data.data.value.persistent;
 
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.ValueUpdate;
 import net.staticstudios.data.ValueUpdateHandler;
 import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.data.UniqueData;
@@ -60,8 +61,9 @@ public class PersistentValue<T> implements Value<T> {
         return new InitialPersistentValue(this, value);
     }
 
+    @SuppressWarnings("unchecked")
     public PersistentValue<T> onUpdate(ValueUpdateHandler<T> updateHandler) {
-        dataManager.registerValueUpdateHandler(this.getKey(), updateHandler);
+        dataManager.registerValueUpdateHandler(this.getKey(), update -> ThreadUtils.submit(() -> updateHandler.handle((ValueUpdate<T>) update)));
         return this;
     }
 

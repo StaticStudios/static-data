@@ -19,7 +19,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class PersistentValueTest extends DataTest {
 
-    //todo: update handlers need to be submitted to the thread pool and called there
     //todo: we need to test what happens when we manually edit the db. do the values get set on insert, update, and delete
     //todo: test default values
     //todo: test blocking #set calls
@@ -188,6 +187,7 @@ public class PersistentValueTest extends DataTest {
 
     @RetryingTest(5)
     public void testPersistentValueUpdateHandlers() {
+        //Note that update handlers are called async
         MockEnvironment environment = getMockEnvironments().getFirst();
         DataManager dataManager = environment.dataManager();
 
@@ -196,23 +196,25 @@ public class PersistentValueTest extends DataTest {
         assertEquals(0, user.getEnableFriendRequestsUpdatesCalled());
 
         user.setName("Jane Doe");
+        waitForDataPropagation();
         assertEquals(1, user.getNameUpdatesCalled());
 
-        //Note that getEnableFriendRequestsUpdatesCalled has 2 update handlers, so this will increment by 2
-
         user.setEnableFriendRequests(false);
-        assertEquals(2, user.getEnableFriendRequestsUpdatesCalled());
+        waitForDataPropagation();
+        assertEquals(1, user.getEnableFriendRequestsUpdatesCalled());
 
         user.setEnableFriendRequests(true);
-        assertEquals(4, user.getEnableFriendRequestsUpdatesCalled());
+        waitForDataPropagation();
+        assertEquals(2, user.getEnableFriendRequestsUpdatesCalled());
 
         user.setName("John Doe");
+        waitForDataPropagation();
         assertEquals(2, user.getNameUpdatesCalled());
 
         waitForDataPropagation();
 
         assertEquals(2, user.getNameUpdatesCalled());
-        assertEquals(4, user.getEnableFriendRequestsUpdatesCalled());
+        assertEquals(2, user.getEnableFriendRequestsUpdatesCalled());
 
         try (Statement statement = getConnection().createStatement()) {
             statement.executeUpdate("update discord.users set name = 'Jane Doe' where id = '" + user.getId() + "'");
@@ -229,7 +231,7 @@ public class PersistentValueTest extends DataTest {
         waitForDataPropagation();
 
         assertEquals(3, user.getNameUpdatesCalled());
-        assertEquals(6, user.getEnableFriendRequestsUpdatesCalled());
+        assertEquals(3, user.getEnableFriendRequestsUpdatesCalled());
     }
 
     @RetryingTest(5)

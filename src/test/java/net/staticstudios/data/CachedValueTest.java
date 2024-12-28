@@ -150,6 +150,7 @@ public class CachedValueTest extends DataTest {
 
     @RetryingTest(5)
     public void testUpdateHandler() {
+        //Note that update handlers are called async
         MockEnvironment environment = getMockEnvironments().getFirst();
         DataManager dataManager = environment.dataManager();
 
@@ -160,6 +161,7 @@ public class CachedValueTest extends DataTest {
         assertEquals(0, user.getStatusUpdates());
 
         user.setStatus("Hello, World!");
+        waitForDataPropagation();
         assertEquals(1, user.getStatusUpdates());
 
         // Unlike persistent values, we can't ignore updates from ourselves.
@@ -168,6 +170,7 @@ public class CachedValueTest extends DataTest {
         waitForDataPropagation();
 
         user.setStatus("Goodbye, World!");
+        waitForDataPropagation();
         assertEquals(2, user.getStatusUpdates());
 
         waitForDataPropagation();

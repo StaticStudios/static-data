@@ -1,6 +1,7 @@
 package net.staticstudios.data;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
@@ -74,7 +75,7 @@ public class DataManager {
     public DataManager(HikariConfig poolConfig, JedisProvider jedisProvider) {
         this.applicationName = "static_data_manager-" + UUID.randomUUID();
         this.cache = new ConcurrentHashMap<>();
-        this.valueUpdateHandlers = Multimaps.synchronizedSetMultimap(HashMultimap.create());
+        this.valueUpdateHandlers = Multimaps.synchronizedListMultimap(ArrayListMultimap.create());
         this.uniqueDataCache = new ConcurrentHashMap<>();
         this.dummyValueMap = Multimaps.synchronizedSetMultimap(HashMultimap.create());
         this.dummySimplePersistentCollectionMap = Multimaps.synchronizedSetMultimap(HashMultimap.create());

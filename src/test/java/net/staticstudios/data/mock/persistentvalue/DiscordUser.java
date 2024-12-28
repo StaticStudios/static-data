@@ -25,12 +25,6 @@ public class DiscordUser extends UniqueData {
                     return;
                 }
                 enableFriendRequestsUpdatesCalled.set(enableFriendRequestsUpdatesCalled.get() + 1);
-            })
-            .onUpdate(update -> {
-                if (update.oldValue() == null) {
-                    return;
-                }
-                enableFriendRequestsUpdatesCalled.set(enableFriendRequestsUpdatesCalled.get() + 1);
             });
 
     private DiscordUser(DataManager dataManager, UUID id) {

@@ -2,6 +2,7 @@ package net.staticstudios.data.data.value.redis;
 
 import net.staticstudios.data.DataDoesNotExistException;
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.ValueUpdate;
 import net.staticstudios.data.ValueUpdateHandler;
 import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.data.UniqueData;
@@ -45,8 +46,9 @@ public class CachedValue<T> implements Value<T> {
         return new InitialCachedValue(this, value);
     }
 
+    @SuppressWarnings("unchecked")
     public CachedValue<T> onUpdate(ValueUpdateHandler<T> updateHandler) {
-        dataManager.registerValueUpdateHandler(this.getKey(), updateHandler);
+        dataManager.registerValueUpdateHandler(this.getKey(), update -> ThreadUtils.submit(() -> updateHandler.handle((ValueUpdate<T>) update)));
         return this;
     }
 
