@@ -22,8 +22,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class PersistentCollectionTest extends DataTest {
 
-    //todo: we need to test what happens when we manually edit the db. do the collections update?
-
     @BeforeEach
     public void init() {
         try (Statement statement = getConnection().createStatement()) {
@@ -708,6 +706,53 @@ public class PersistentCollectionTest extends DataTest {
         }
     }
 
+    @RetryingTest(5)
+    public void testUpdatingUniqueDataCollectionInDatabase() {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        assertEquals(0, facebookUser.getPosts().size());
+        assertEquals(0, facebookUser.postAdditions.get());
+
+        try (Statement statement = getConnection().createStatement()) {
+            statement.executeUpdate("insert into facebook.posts (id, user_id, description) values ('" + UUID.randomUUID() + "', '" + facebookUser.getId() + "', 'post - " + facebookUser.getId() + "')");
+            statement.executeUpdate("insert into facebook.posts (id, user_id, description) values ('" + UUID.randomUUID() + "', '" + facebookUser.getId() + "', 'post 2 - " + facebookUser.getId() + "')");
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        waitForDataPropagation();
+
+        assertEquals(2, facebookUser.getPosts().size());
+        assertEquals(2, facebookUser.postAdditions.get());
+
+        try (Statement statement = getConnection().createStatement()) {
+            statement.executeUpdate("update facebook.posts set user_id = null where user_id = '" + facebookUser.getId() + "' and id = (select id from facebook.posts where user_id = '" + facebookUser.getId() + "' limit 1)");
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        waitForDataPropagation();
+
+        assertEquals(1, facebookUser.getPosts().size());
+        assertEquals(2, facebookUser.postAdditions.get());
+        assertEquals(1, facebookUser.postRemovals.get());
+
+        try (Statement statement = getConnection().createStatement()) {
+            statement.executeUpdate("delete from facebook.posts where user_id = '" + facebookUser.getId() + "'");
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        waitForDataPropagation();
+
+        assertEquals(0, facebookUser.getPosts().size());
+        assertEquals(2, facebookUser.postAdditions.get());
+        assertEquals(2, facebookUser.postRemovals.get());
+    }
+
     // ----- Test PersistentValueCollections ----- //
 
     @RetryingTest(5)
@@ -1339,6 +1384,53 @@ public class PersistentCollectionTest extends DataTest {
             assertTrue(user.getFavoriteQuotes().contains("quote - " + id));
             assertTrue(user.getFavoriteQuotes().contains("quote 2 - " + id));
         }
+    }
+
+    @RetryingTest(5)
+    public void testUpdatingValueCollectionInDatabase() {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        assertEquals(0, facebookUser.getFavoriteQuotes().size());
+        assertEquals(0, facebookUser.favoriteQuoteAdditions.get());
+
+        try (Statement statement = getConnection().createStatement()) {
+            statement.executeUpdate("insert into facebook.favorite_quotes (id, user_id, quote) values ('" + UUID.randomUUID() + "', '" + facebookUser.getId() + "', 'quote - " + facebookUser.getId() + "')");
+            statement.executeUpdate("insert into facebook.favorite_quotes (id, user_id, quote) values ('" + UUID.randomUUID() + "', '" + facebookUser.getId() + "', 'quote 2 - " + facebookUser.getId() + "')");
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        waitForDataPropagation();
+
+        assertEquals(2, facebookUser.getFavoriteQuotes().size());
+        assertEquals(2, facebookUser.favoriteQuoteAdditions.get());
+
+        try (Statement statement = getConnection().createStatement()) {
+            statement.executeUpdate("update facebook.favorite_quotes set user_id = null where user_id = '" + facebookUser.getId() + "' and id = (select id from facebook.favorite_quotes where user_id = '" + facebookUser.getId() + "' limit 1)");
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        waitForDataPropagation();
+
+        assertEquals(1, facebookUser.getFavoriteQuotes().size());
+        assertEquals(2, facebookUser.favoriteQuoteAdditions.get());
+        assertEquals(1, facebookUser.favoriteQuoteRemovals.get());
+
+        try (Statement statement = getConnection().createStatement()) {
+            statement.executeUpdate("delete from facebook.favorite_quotes where user_id = '" + facebookUser.getId() + "'");
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        waitForDataPropagation();
+
+        assertEquals(0, facebookUser.getFavoriteQuotes().size());
+        assertEquals(2, facebookUser.favoriteQuoteAdditions.get());
+        assertEquals(2, facebookUser.favoriteQuoteRemovals.get());
     }
 
     // ----- Test PersistentManyToManyCollections ----- //
@@ -2020,6 +2112,70 @@ public class PersistentCollectionTest extends DataTest {
             assertEquals(2, user.getFollowing().size());
             assertTrue(user.getFollowing().stream().anyMatch(following -> followingMap.get(userId).contains(following.getId())));
         }
+    }
+
+    @RetryingTest(5)
+    public void testUpdatingManyToManyCollectionInDatabase() {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+        FacebookUser following1 = FacebookUser.createSync(dataManager);
+        FacebookUser following2 = FacebookUser.createSync(dataManager);
+
+        assertEquals(0, facebookUser.followingAdditions.get());
+        assertEquals(0, facebookUser.followingRemovals.get());
+
+        try (PreparedStatement statement = getConnection().prepareStatement("insert into facebook.user_following (user_id, following_id) values (?, ?)")) {
+            statement.setObject(1, facebookUser.getId());
+            statement.setObject(2, following1.getId());
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        waitForDataPropagation();
+
+        assertEquals(1, facebookUser.followingAdditions.get());
+
+        assertEquals(1, facebookUser.getFollowing().size());
+        assertTrue(facebookUser.getFollowing().contains(following1));
+        assertEquals(1, following1.getFollowers().size());
+        assertTrue(following1.getFollowers().contains(facebookUser));
+
+        try (PreparedStatement statement = getConnection().prepareStatement("update facebook.user_following set following_id = ? where user_id = ?")) {
+            statement.setObject(1, following2.getId());
+            statement.setObject(2, facebookUser.getId());
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        waitForDataPropagation();
+
+        assertEquals(2, facebookUser.followingAdditions.get());
+        assertEquals(1, facebookUser.followingRemovals.get());
+
+        assertEquals(1, facebookUser.getFollowing().size());
+        assertFalse(facebookUser.getFollowing().contains(following1));
+        assertTrue(facebookUser.getFollowing().contains(following2));
+        assertEquals(1, following2.getFollowers().size());
+        assertTrue(following2.getFollowers().contains(facebookUser));
+        assertEquals(0, following1.getFollowers().size());
+
+        try (PreparedStatement statement = getConnection().prepareStatement("delete from facebook.user_following where user_id = ?")) {
+            statement.setObject(1, facebookUser.getId());
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        waitForDataPropagation();
+
+        assertEquals(2, facebookUser.followingAdditions.get());
+
+        assertEquals(0, facebookUser.getFollowing().size());
+        assertEquals(0, following2.getFollowers().size());
     }
 
     @RetryingTest(5)

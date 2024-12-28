@@ -88,17 +88,7 @@ public class DataManager {
 
         pgListener = new PostgresListener(this, poolConfig);
 
-        this.persistentValueManager = new PersistentValueManager(this, pgListener);
-        this.persistentCollectionManager = new PersistentCollectionManager(this, pgListener);
-        this.cachedValueManager = new CachedValueManager(this);
-
-        HikariConfig customizedPoolConfig = new HikariConfig();
-        poolConfig.copyStateTo(customizedPoolConfig);
-        customizedPoolConfig.addDataSourceProperty("ApplicationName", applicationName);
-
-        this.connectionPool = new HikariPool(customizedPoolConfig);
-
-        pgListener.addHandler(notification -> {
+        pgListener.addHandler(notification -> { //Call insert handler first so that we can access the data in the other handlers
             if (notification.getOperation() == PostgresOperation.INSERT) {
                 logger.trace("Handing INSERT operation");
                 Collection<? extends UniqueData> dummyUniqueData = dummyUniqueDataMap.get(notification.getSchema() + "." + notification.getTable());
@@ -111,7 +101,13 @@ public class DataManager {
                     addUniqueData(instance);
                 }
             }
+        });
 
+        this.persistentValueManager = new PersistentValueManager(this, pgListener);
+        this.persistentCollectionManager = new PersistentCollectionManager(this, pgListener);
+        this.cachedValueManager = new CachedValueManager(this);
+
+        pgListener.addHandler(notification -> { //Call delete handler last so that we can access the data in the other handlers
             if (notification.getOperation() == PostgresOperation.DELETE) {
                 logger.trace("Handling DELETE operation");
                 Collection<? extends UniqueData> dummyUniqueData = dummyUniqueDataMap.get(notification.getSchema() + "." + notification.getTable());
@@ -123,6 +119,12 @@ public class DataManager {
                 }
             }
         });
+
+        HikariConfig customizedPoolConfig = new HikariConfig();
+        poolConfig.copyStateTo(customizedPoolConfig);
+        customizedPoolConfig.addDataSourceProperty("ApplicationName", applicationName);
+
+        this.connectionPool = new HikariPool(customizedPoolConfig);
 
         ThreadUtils.onShutdownRunSync(ShutdownStage.CLEANUP, () -> {
             try {
@@ -611,7 +613,7 @@ public class DataManager {
             }
         }
 
-        throw new DataDoesNotExistException("Data does not exist: " + id);
+        throw new DataDoesNotExistException("UniqueData does not exist: " + id);
     }
 
     public void addUniqueData(UniqueData data) {

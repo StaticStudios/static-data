@@ -45,8 +45,8 @@ public class PersistentCollectionManager {
         this.removeHandlers = Multimaps.synchronizedListMultimap(ArrayListMultimap.create());
         this.junctionTables = new ConcurrentHashMap<>();
 
-        //todo: listen to changes on junction tables
         //todo: delete entries from junction tables when the root holder is deleted, OR one of the referenced entries is deleted
+        // (this needs to happen when a local deletion happens, not when a deletion from the db occurs)
 
 
         pgListener.addHandler(notification -> {
@@ -70,10 +70,19 @@ public class PersistentCollectionManager {
                             UUID.fromString(encodedLinkingId)
                     );
 
-                    addEntry(collectionKey, CollectionEntryIdentifier.of(
-                            dummyCollection.getRootHolder().getIdentifier().getColumn(),
+                    CollectionEntryIdentifier idIdentifier = CollectionEntryIdentifier.of(
+                            dummyCollection.getEntryIdColumn(),
                             UUID.fromString(notification.getData().newDataValueMap().get(dummyCollection.getEntryIdColumn()))
-                    ));
+                    );
+
+                    //Ensure that the entry data is there
+                    //For other collections, the PersistentValueManager will handle this
+                    if (dummyCollection instanceof PersistentValueCollection<?>) {
+                        CellKey entryDataKey = getEntryDataKey(dummyCollection, idIdentifier.getId(), dummyCollection.getRootHolder().getIdentifier());
+                        dataManager.cache(entryDataKey, dummyCollection.getDataType(), notification.getData().newDataValueMap().get(dummyCollection.getDataColumn()), Instant.now());
+                    }
+
+                    addEntry(collectionKey, idIdentifier);
                 });
                 case UPDATE -> dummyCollections.forEach(dummyCollection -> {
                     String linkingColumn = dummyCollection.getLinkingColumn();
@@ -85,9 +94,7 @@ public class PersistentCollectionManager {
                         return;
                     }
 
-
                     UUID entryId = UUID.fromString(notification.getData().newDataValueMap().get(dummyCollection.getEntryIdColumn()));
-
 
                     UUID oldLinkingId = oldLinkingValue == null ? null : UUID.fromString(oldLinkingValue);
                     UUID newLinkingId = newLinkingValue == null ? null : UUID.fromString(newLinkingValue);
@@ -100,8 +107,20 @@ public class PersistentCollectionManager {
                                 UUID.fromString(oldLinkingValue)
                         );
 
-                        CollectionEntryIdentifier oldIdentifier = CollectionEntryIdentifier.of(dummyCollection.getRootHolder().getIdentifier().getColumn(), entryId);
+                        CollectionEntryIdentifier oldIdentifier = CollectionEntryIdentifier.of(
+                                dummyCollection.getEntryIdColumn(),
+                                entryId
+                        );
+
+                        removeEntry(collectionKey, oldIdentifier);
                         logger.trace("Removed collection entry holder from map: {} -> {}", collectionKey, oldIdentifier);
+
+                        //Ensure that the entry data is gone
+                        //For other collections, the PersistentValueManager will handle this
+                        if (dummyCollection instanceof PersistentValueCollection<?>) {
+                            CellKey entryDataKey = getEntryDataKey(dummyCollection, entryId, dummyCollection.getRootHolder().getIdentifier());
+                            dataManager.uncache(entryDataKey);
+                        }
                     }
 
                     if (newLinkingId != null) {
@@ -113,11 +132,21 @@ public class PersistentCollectionManager {
                                 UUID.fromString(newLinkingValue)
                         );
 
-                        CollectionEntryIdentifier newIdentifier = CollectionEntryIdentifier.of(dummyCollection.getRootHolder().getIdentifier().getColumn(), entryId);
+                        CollectionEntryIdentifier newIdentifier = CollectionEntryIdentifier.of(
+                                dummyCollection.getEntryIdColumn(),
+                                entryId
+                        );
+
+                        //Ensure that the entry data is there
+                        //For other collections, the PersistentValueManager will handle this
+                        if (dummyCollection instanceof PersistentValueCollection<?>) {
+                            CellKey entryDataKey = getEntryDataKey(dummyCollection, entryId, dummyCollection.getRootHolder().getIdentifier());
+                            dataManager.cache(entryDataKey, dummyCollection.getDataType(), notification.getData().newDataValueMap().get(dummyCollection.getDataColumn()), Instant.now());
+                        }
+
                         addEntry(collectionKey, newIdentifier);
                         logger.trace("Added collection entry holder to map: {} -> {}", collectionKey, newIdentifier);
                     }
-
                 });
                 case DELETE -> dummyCollections.forEach(dummyCollection -> {
                     String encodedLinkingId = notification.getData().oldDataValueMap().get(dummyCollection.getLinkingColumn());
@@ -133,11 +162,147 @@ public class PersistentCollectionManager {
                             UUID.fromString(encodedLinkingId)
                     );
 
-                    removeEntry(collectionKey, CollectionEntryIdentifier.of(
-                            dummyCollection.getRootHolder().getIdentifier().getColumn(),
+                    CollectionEntryIdentifier idIdentifier = CollectionEntryIdentifier.of(
+                            dummyCollection.getEntryIdColumn(),
                             UUID.fromString(notification.getData().oldDataValueMap().get(dummyCollection.getEntryIdColumn()))
-                    ));
+                    );
+
+                    removeEntry(collectionKey, idIdentifier);
+
+                    //Ensure that the entry data is gone
+                    //For other collections, the PersistentValueManager will handle this
+                    if (dummyCollection instanceof PersistentValueCollection<?>) {
+                        CellKey entryDataKey = getEntryDataKey(dummyCollection, idIdentifier.getId(), dummyCollection.getRootHolder().getIdentifier());
+                        dataManager.uncache(entryDataKey);
+                    }
                 });
+            }
+        });
+
+        //Handle junction table updates
+        pgListener.addHandler(notification -> {
+            String junctionTable = notification.getSchema() + "." + notification.getTable();
+            JunctionTable jt = junctionTables.get(junctionTable);
+            if (jt == null) {
+                return;
+            }
+
+            switch (notification.getOperation()) {
+                case INSERT -> {
+                    List<String> columns = notification.getData().newDataValueMap().keySet().stream().toList();
+                    UUID leftId = UUID.fromString(notification.getData().newDataValueMap().get(columns.get(0)));
+                    UUID rightId = UUID.fromString(notification.getData().newDataValueMap().get(columns.get(1)));
+
+                    CollectionEntryIdentifier leftIdentifier = CollectionEntryIdentifier.of(columns.get(0), leftId);
+                    CollectionEntryIdentifier rightIdentifier = CollectionEntryIdentifier.of(columns.get(1), rightId);
+
+                    CollectionKey leftCollectionKey = new CollectionKey(
+                            notification.getSchema(),
+                            notification.getTable(),
+                            columns.get(0),
+                            columns.get(1),
+                            leftId
+                    );
+
+                    CollectionKey rightCollectionKey = new CollectionKey(
+                            notification.getSchema(),
+                            notification.getTable(),
+                            columns.get(1),
+                            columns.get(0),
+                            rightId
+                    );
+
+                    jt.add(leftIdentifier, rightIdentifier);
+
+                    callAddHandlers(leftCollectionKey, rightId);
+                    callAddHandlers(rightCollectionKey, leftId);
+                }
+                case UPDATE -> {
+                    List<String> oldColumns = notification.getData().oldDataValueMap().keySet().stream().toList();
+                    UUID oldLeftId = UUID.fromString(notification.getData().oldDataValueMap().get(oldColumns.get(0)));
+                    UUID oldRightId = UUID.fromString(notification.getData().oldDataValueMap().get(oldColumns.get(1)));
+
+                    List<String> newColumns = notification.getData().newDataValueMap().keySet().stream().toList();
+                    UUID newLeftId = UUID.fromString(notification.getData().newDataValueMap().get(newColumns.get(0)));
+                    UUID newRightId = UUID.fromString(notification.getData().newDataValueMap().get(newColumns.get(1)));
+
+                    CollectionEntryIdentifier oldLeftIdentifier = CollectionEntryIdentifier.of(oldColumns.get(0), oldLeftId);
+                    CollectionEntryIdentifier oldRightIdentifier = CollectionEntryIdentifier.of(oldColumns.get(1), oldRightId);
+
+                    CollectionEntryIdentifier newLeftIdentifier = CollectionEntryIdentifier.of(newColumns.get(0), newLeftId);
+                    CollectionEntryIdentifier newRightIdentifier = CollectionEntryIdentifier.of(newColumns.get(1), newRightId);
+
+                    CollectionKey oldLeftCollectionKey = new CollectionKey(
+                            notification.getSchema(),
+                            notification.getTable(),
+                            oldColumns.get(0),
+                            oldColumns.get(1),
+                            oldLeftId
+                    );
+
+                    CollectionKey oldRightCollectionKey = new CollectionKey(
+                            notification.getSchema(),
+                            notification.getTable(),
+                            oldColumns.get(1),
+                            oldColumns.get(0),
+                            oldRightId
+                    );
+
+                    CollectionKey newLeftCollectionKey = new CollectionKey(
+                            notification.getSchema(),
+                            notification.getTable(),
+                            newColumns.get(0),
+                            newColumns.get(1),
+                            newLeftId
+                    );
+
+                    CollectionKey newRightCollectionKey = new CollectionKey(
+                            notification.getSchema(),
+                            notification.getTable(),
+                            newColumns.get(1),
+                            newColumns.get(0),
+                            newRightId
+                    );
+
+                    callRemoveHandlers(oldLeftCollectionKey, oldRightId);
+                    callRemoveHandlers(oldRightCollectionKey, oldLeftId);
+
+                    jt.remove(oldLeftIdentifier, oldRightIdentifier);
+
+                    jt.add(newLeftIdentifier, newRightIdentifier);
+
+                    callAddHandlers(newLeftCollectionKey, newRightId);
+                    callAddHandlers(newRightCollectionKey, newLeftId);
+                }
+                case DELETE -> {
+                    List<String> columns = notification.getData().oldDataValueMap().keySet().stream().toList();
+                    UUID leftId = UUID.fromString(notification.getData().oldDataValueMap().get(columns.get(0)));
+                    UUID rightId = UUID.fromString(notification.getData().oldDataValueMap().get(columns.get(1)));
+
+                    CollectionEntryIdentifier leftIdentifier = CollectionEntryIdentifier.of(columns.get(0), leftId);
+                    CollectionEntryIdentifier rightIdentifier = CollectionEntryIdentifier.of(columns.get(1), rightId);
+
+                    CollectionKey leftCollectionKey = new CollectionKey(
+                            notification.getSchema(),
+                            notification.getTable(),
+                            columns.get(0),
+                            columns.get(1),
+                            leftId
+                    );
+
+                    CollectionKey rightCollectionKey = new CollectionKey(
+                            notification.getSchema(),
+                            notification.getTable(),
+                            columns.get(1),
+                            columns.get(0),
+                            rightId
+                    );
+
+                    callRemoveHandlers(leftCollectionKey, rightId);
+                    callRemoveHandlers(rightCollectionKey, leftId);
+
+                    jt.remove(leftIdentifier, rightIdentifier);
+                }
             }
         });
     }
@@ -292,7 +457,6 @@ public class PersistentCollectionManager {
     }
 
     @Blocking
-    @SuppressWarnings("unchecked")
     public void loadAllFromDatabase(Connection connection, UniqueData dummyHolder, SimplePersistentCollection<?> dummyCollection) throws SQLException {
         logger.trace("Loading all collection entries for {}", dummyCollection.getKey());
         String schemaTable = dummyCollection.getSchema() + "." + dummyCollection.getTable();
@@ -607,6 +771,7 @@ public class PersistentCollectionManager {
     public void loadJunctionTablesFromDatabase(Connection connection, PersistentManyToManyCollection<?> dummyMMCollection) throws SQLException {
         String junctionTable = dummyMMCollection.getSchema() + "." + dummyMMCollection.getJunctionTable();
         JunctionTable jt = this.junctionTables.computeIfAbsent(junctionTable, k -> new JunctionTable());
+        pgListener.ensureTableHasTrigger(connection, junctionTable);
         String sql = "SELECT * FROM " + junctionTable;
         dataManager.logSQL(sql);
 

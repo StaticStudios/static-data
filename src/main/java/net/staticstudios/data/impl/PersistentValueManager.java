@@ -54,13 +54,15 @@ public class PersistentValueManager {
                         String idColumn = dummyPV.getIdColumn();
                         UUID id = UUID.fromString(newDataValueMap.get(idColumn));
 
-                        CellKey key = new CellKey(schema, table, column, id, idColumn);
+                        CellKey dataKey = new CellKey(schema, table, column, id, idColumn);
+                        CellKey idKey = new CellKey(schema, table, idColumn, id, idColumn);
 
                         String encodedValue = newDataValueMap.get(column); //Raw value as string
                         Object rawValue = dataManager.decode(dummyPV.getDataType(), encodedValue);
                         Object deserialized = dataManager.deserialize(dummyPV.getDataType(), rawValue);
 
-                        dataManager.cache(key, dummyPV.getDataType(), deserialized, notification.getInstant());
+                        dataManager.cache(dataKey, dummyPV.getDataType(), deserialized, notification.getInstant());
+                        dataManager.cache(idKey, UUID.class, id, notification.getInstant());
                     }
                 }
                 case PostgresOperation.DELETE -> {
