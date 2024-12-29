@@ -604,7 +604,7 @@ public class DataManager {
         return (T) value;
     }
 
-    public <T extends UniqueData> T get(Class<T> clazz, UUID id) throws DataDoesNotExistException {
+    public <T extends UniqueData> T get(Class<T> clazz, UUID id) {
         Map<UUID, UniqueData> uniqueData = uniqueDataCache.get(clazz);
         if (uniqueData != null) {
             UniqueData data = uniqueData.get(id);
@@ -613,7 +613,7 @@ public class DataManager {
             }
         }
 
-        throw new DataDoesNotExistException("UniqueData does not exist: " + id);
+        return null;
     }
 
     public void addUniqueData(UniqueData data) {

@@ -55,7 +55,7 @@ public class UniqueData implements DataHolder {
     }
 
     @Override
-    public boolean equals(Object obj) {
+    public final boolean equals(Object obj) {
         if (this == obj) return true;
         if (obj == null || getClass() != obj.getClass()) return false;
         UniqueData that = (UniqueData) obj;
@@ -63,7 +63,7 @@ public class UniqueData implements DataHolder {
     }
 
     @Override
-    public int hashCode() {
+    public final int hashCode() {
         UUID id = getId();
         return id != null ? id.hashCode() : 0;
     }

@@ -9,4 +9,6 @@ public class DataManagerTest extends DataTest {
     //todo: test inheritance
     //todo: test value serializers
     //todo: test references
+
+    //todo: when inserting an FPV, if no explicit initial value was specified (ignore defaults), then if an entry already exists in the db/cache, do not change it. use the existing one.
 }
