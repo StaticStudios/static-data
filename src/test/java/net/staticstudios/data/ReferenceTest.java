@@ -5,6 +5,7 @@ import net.staticstudios.data.misc.MockEnvironment;
 import net.staticstudios.data.mock.reference.SnapchatUser;
 import net.staticstudios.data.mock.reference.SnapchatUserSettings;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junitpioneer.jupiter.RetryingTest;
 
 import java.sql.SQLException;
@@ -74,7 +75,7 @@ public class ReferenceTest extends DataTest {
         assertFalse(user.getSettings().getEnableFriendRequests());
     }
 
-    @RetryingTest(5)
+    @Test
     public void testSetReference() {
         MockEnvironment environment = getMockEnvironments().getFirst();
         DataManager dataManager = environment.dataManager();
@@ -88,5 +89,17 @@ public class ReferenceTest extends DataTest {
 
         user.setFavoriteUser(null);
         assertNull(user.getFavoriteUser());
+
+        waitForDataPropagation();
+
+        try (Statement statement = getConnection().createStatement()) {
+            statement.executeUpdate("update snapchat.users set favorite_user_id = '" + favoriteUser.getId() + "' where id = '" + user.getId() + "'");
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        waitForDataPropagation();
+
+        assertEquals(favoriteUser, user.getFavoriteUser());
     }
 }

@@ -89,4 +89,8 @@ public class Reference<T extends UniqueData> implements DataHolder, Data<T> {
     public UniqueData getRootHolder() {
         return holder.getRootHolder();
     }
+
+    public PersistentValue<UUID> getBackingValue() {
+        return id;
+    }
 }

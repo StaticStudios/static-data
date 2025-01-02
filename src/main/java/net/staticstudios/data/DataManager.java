@@ -9,6 +9,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.pool.HikariPool;
 import net.staticstudios.data.data.Data;
 import net.staticstudios.data.data.InitialValue;
+import net.staticstudios.data.data.Reference;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.data.collection.PersistentManyToManyCollection;
 import net.staticstudios.data.data.collection.PersistentUniqueDataCollection;
@@ -199,6 +200,11 @@ public class DataManager extends SQLLogger {
 
                     // This is our first time seeing this value, so we add it to the map for later use
                     if (data instanceof PersistentValue<?> value) {
+                        dummyValueMap.put(value.getSchema() + "." + value.getTable(), value);
+                    }
+
+                    if (data instanceof Reference<?> reference) {
+                        PersistentValue<?> value = reference.getBackingValue();
                         dummyValueMap.put(value.getSchema() + "." + value.getTable(), value);
                     }
 
