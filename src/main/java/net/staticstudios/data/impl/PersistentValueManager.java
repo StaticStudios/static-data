@@ -11,6 +11,7 @@ import net.staticstudios.data.impl.pg.PostgresListener;
 import net.staticstudios.data.impl.pg.PostgresOperation;
 import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.DataKey;
+import net.staticstudios.data.util.SQLLogger;
 import org.jetbrains.annotations.Blocking;
 
 import java.sql.Connection;
@@ -20,7 +21,7 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.util.*;
 
-public class PersistentValueManager {
+public class PersistentValueManager extends SQLLogger {
     private final DataManager dataManager;
     private final PostgresListener pgListener;
 
@@ -195,7 +196,7 @@ public class PersistentValueManager {
             }
             String sql = sqlBuilder.toString();
 
-            dataManager.logSQL(sql);
+            logSQL(sql);
 
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 statement.setObject(1, holder.getId());
@@ -220,7 +221,7 @@ public class PersistentValueManager {
         String column = persistentValue.getColumn();
 
         String sql = "UPDATE " + schemaTable + " SET " + column + " = ? WHERE " + idColumn + " = ?";
-        dataManager.logSQL(sql);
+        logSQL(sql);
 
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             Object serialized = dataManager.serialize(value);
@@ -298,7 +299,7 @@ public class PersistentValueManager {
             sql = sqlBuilder.toString();
         }
 
-        dataManager.logSQL(sql);
+        logSQL(sql);
 
         List<PersistentValue> dummyPersistentValues = dataManager.getDummyValues(schemaTable).stream()
                 .filter(value -> value.getClass() == PersistentValue.class)

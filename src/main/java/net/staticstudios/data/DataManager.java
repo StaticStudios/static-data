@@ -29,6 +29,7 @@ import net.staticstudios.data.key.DataKey;
 import net.staticstudios.data.key.DatabaseKey;
 import net.staticstudios.data.primative.Primitives;
 import net.staticstudios.data.util.ReflectionUtils;
+import net.staticstudios.data.util.SQLLogger;
 import net.staticstudios.utils.JedisProvider;
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
@@ -50,7 +51,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-public class DataManager {
+public class DataManager extends SQLLogger {
     private static final Object NULL_MARKER = new Object();
     private final Logger logger = LoggerFactory.getLogger(DataManager.class);
     private final Map<DataKey, CacheEntry> cache;
@@ -153,10 +154,6 @@ public class DataManager {
 
     public String getApplicationName() {
         return applicationName;
-    }
-
-    public void logSQL(String sql) {
-        logger.debug("Executing SQL: {}", sql);
     }
 
     public Collection<Value<?>> getDummyValues(String schemaTable) {

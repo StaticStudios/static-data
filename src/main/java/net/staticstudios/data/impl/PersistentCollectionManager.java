@@ -13,6 +13,7 @@ import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.CollectionKey;
 import net.staticstudios.data.key.UniqueIdentifier;
 import net.staticstudios.data.util.JunctionTable;
+import net.staticstudios.data.util.SQLLogger;
 import org.jetbrains.annotations.Blocking;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,7 +26,7 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class PersistentCollectionManager {
+public class PersistentCollectionManager extends SQLLogger {
     private final Logger logger = LoggerFactory.getLogger(PersistentCollectionManager.class);
     private final DataManager dataManager;
     private final PostgresListener pgListener;
@@ -475,7 +476,7 @@ public class PersistentCollectionManager {
 
         sql += " FROM " + dummyCollection.getSchema() + "." + dummyCollection.getTable();
 
-        dataManager.logSQL(sql);
+        logSQL(sql);
 
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             ResultSet resultSet = statement.executeQuery();
@@ -627,7 +628,7 @@ public class PersistentCollectionManager {
         sqlBuilder.append(collection.getLinkingColumn()).append(" = EXCLUDED.").append(collection.getLinkingColumn());
 
         String sql = sqlBuilder.toString();
-        dataManager.logSQL(sql);
+        logSQL(sql);
 
 
         boolean autoCommit = connection.getAutoCommit();
@@ -661,7 +662,7 @@ public class PersistentCollectionManager {
         sqlBuilder.append(collection.getEntryIdColumn()).append(" = ?");
 
         String sql = sqlBuilder.toString();
-        dataManager.logSQL(sql);
+        logSQL(sql);
 
         boolean autoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
@@ -705,7 +706,7 @@ public class PersistentCollectionManager {
 
 
         String sql = sqlBuilder.toString();
-        dataManager.logSQL(sql);
+        logSQL(sql);
 
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             int i = 1;
@@ -753,7 +754,7 @@ public class PersistentCollectionManager {
         sqlBuilder.append(")");
 
         String sql = sqlBuilder.toString();
-        dataManager.logSQL(sql);
+        logSQL(sql);
 
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             int i = 1;
@@ -773,7 +774,7 @@ public class PersistentCollectionManager {
         JunctionTable jt = this.junctionTables.computeIfAbsent(junctionTable, k -> new JunctionTable());
         pgListener.ensureTableHasTrigger(connection, junctionTable);
         String sql = "SELECT * FROM " + junctionTable;
-        dataManager.logSQL(sql);
+        logSQL(sql);
 
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             ResultSet resultSet = statement.executeQuery();
@@ -873,7 +874,7 @@ public class PersistentCollectionManager {
         sqlBuilder.append(")");
 
         String sql = sqlBuilder.toString();
-        dataManager.logSQL(sql);
+        logSQL(sql);
 
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             int i = 1;
@@ -907,7 +908,7 @@ public class PersistentCollectionManager {
         }
 
         String sql = sqlBuilder.toString();
-        dataManager.logSQL(sql);
+        logSQL(sql);
 
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             int i = 1;
