@@ -138,7 +138,7 @@ public class PersistentValueManager {
     }
 
     @Blocking
-    public void setInDatabase(Connection connection, List<InitialPersistentValue> initialData) throws SQLException {
+    public void insertInDatabase(Connection connection, UniqueData holder, List<InitialPersistentValue> initialData) throws SQLException {
         if (initialData.isEmpty()) {
             return;
         }
@@ -159,6 +159,7 @@ public class PersistentValueManager {
             String idColumn = idSchemaTable.split("\\.", 2)[0];
             String schemaTable = idSchemaTable.split("\\.", 2)[1];
             Collection<InitialPersistentValue> initialDataValues = initialDataMap.get(idSchemaTable);
+            initialDataValues.removeIf(i -> i.getValue().getColumn().equals(idColumn));
 
             StringBuilder sqlBuilder = new StringBuilder("INSERT INTO ");
             sqlBuilder.append(schemaTable);
@@ -174,23 +175,30 @@ public class PersistentValueManager {
             sqlBuilder.append(") VALUES (?, ");
             sqlBuilder.append("?, ".repeat(initialDataValues.size()));
             sqlBuilder.setLength(sqlBuilder.length() - 2);
-            sqlBuilder.append(") ON CONFLICT (");
-            sqlBuilder.append(idColumn);
-            sqlBuilder.append(") DO UPDATE SET ");
-            for (InitialPersistentValue initial : initialDataValues) {
-                sqlBuilder.append(initial.getValue().getColumn());
-                sqlBuilder.append(" = EXCLUDED.");
-                sqlBuilder.append(initial.getValue().getColumn());
-                sqlBuilder.append(", ");
+            sqlBuilder.append(")");
+
+            if (!initialDataValues.isEmpty()) { //todo: reconsider the conflict thing
+                sqlBuilder.append(" ON CONFLICT (");
+                sqlBuilder.append(idColumn);
+                sqlBuilder.append(") DO UPDATE SET ");
+                for (InitialPersistentValue initial : initialDataValues) {
+                    sqlBuilder.append(initial.getValue().getColumn());
+                    sqlBuilder.append(" = EXCLUDED.");
+                    sqlBuilder.append(initial.getValue().getColumn());
+                    sqlBuilder.append(", ");
+                }
+                sqlBuilder.setLength(sqlBuilder.length() - 2);
+            } else {
+                sqlBuilder.append(" ON CONFLICT (");
+                sqlBuilder.append(idColumn);
+                sqlBuilder.append(") DO NOTHING");
             }
-            sqlBuilder.setLength(sqlBuilder.length() - 2);
             String sql = sqlBuilder.toString();
 
             dataManager.logSQL(sql);
 
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                InitialPersistentValue first = initialDataValues.iterator().next();
-                statement.setObject(1, first.getValue().getHolder().getRootHolder().getId());
+                statement.setObject(1, holder.getId());
                 int i = 2;
                 for (InitialPersistentValue initial : initialDataValues) {
                     Object initialDataValue = initial.getInitialDataValue();
@@ -203,6 +211,24 @@ public class PersistentValueManager {
         }
 
         connection.setAutoCommit(autoCommit);
+    }
+
+    @Blocking
+    public void updateInDatabase(Connection connection, PersistentValue<?> persistentValue, Object value) throws SQLException {
+        String schemaTable = persistentValue.getSchema() + "." + persistentValue.getTable();
+        String idColumn = persistentValue.getIdColumn();
+        String column = persistentValue.getColumn();
+
+        String sql = "UPDATE " + schemaTable + " SET " + column + " = ? WHERE " + idColumn + " = ?";
+        dataManager.logSQL(sql);
+
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            Object serialized = dataManager.serialize(value);
+            statement.setObject(1, serialized);
+            statement.setObject(2, persistentValue.getHolder().getRootHolder().getId());
+
+            statement.executeUpdate();
+        }
     }
 
     /**

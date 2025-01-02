@@ -5,10 +5,12 @@ import net.staticstudios.data.DataDoesNotExistException;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.data.value.persistent.InitialPersistentValue;
 import net.staticstudios.data.data.value.persistent.PersistentValue;
+import net.staticstudios.data.key.DataKey;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
 
-public class Reference<T extends UniqueData> implements DataHolder {
+public class Reference<T extends UniqueData> implements DataHolder, Data<T> {
     private final DataHolder holder;
     private final PersistentValue<UUID> id;
     private final Class<T> clazz;
@@ -55,7 +57,7 @@ public class Reference<T extends UniqueData> implements DataHolder {
         id.set(data.getId());
     }
 
-    public T get() {
+    public @Nullable T get() {
         try {
             return getDataManager().get(clazz, id.get());
         } catch (DataDoesNotExistException e) {
@@ -64,8 +66,23 @@ public class Reference<T extends UniqueData> implements DataHolder {
     }
 
     @Override
+    public Class<T> getDataType() {
+        return clazz;
+    }
+
+    @Override
     public DataManager getDataManager() {
         return holder.getDataManager();
+    }
+
+    @Override
+    public DataKey getKey() {
+        return id.getKey();
+    }
+
+    @Override
+    public DataHolder getHolder() {
+        return holder;
     }
 
     @Override

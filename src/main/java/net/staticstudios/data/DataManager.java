@@ -430,7 +430,7 @@ public class DataManager {
     }
 
     private void insertIntoDataSource(Connection connection, Jedis jedis, InsertContext context) throws SQLException {
-        persistentValueManager.setInDatabase(connection, new ArrayList<>(context.initialPersistentValues().values()));
+        persistentValueManager.insertInDatabase(connection, context.holder(), new ArrayList<>(context.initialPersistentValues().values()));
         cachedValueManager.setInRedis(jedis, new ArrayList<>(context.initialCachedValues().values()));
     }
 
@@ -582,6 +582,8 @@ public class DataManager {
                 addUniqueData(instance);
             }
         }
+
+        logger.info("Loaded {} instances of {}", uniqueDataIds.get(dummyHolder.getClass()).size(), dummyHolder.getClass().getName());
     }
 
     public <T> T get(Data<T> data) throws DataDoesNotExistException {
@@ -605,6 +607,9 @@ public class DataManager {
     }
 
     public <T extends UniqueData> T get(Class<T> clazz, UUID id) {
+        if (id == null) {
+            return null;
+        }
         Map<UUID, UniqueData> uniqueData = uniqueDataCache.get(clazz);
         if (uniqueData != null) {
             UniqueData data = uniqueData.get(id);

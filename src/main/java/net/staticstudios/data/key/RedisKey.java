@@ -1,5 +1,6 @@
 package net.staticstudios.data.key;
 
+import com.google.common.base.Preconditions;
 import net.staticstudios.data.data.value.redis.CachedValue;
 
 import java.util.UUID;
@@ -13,6 +14,7 @@ public class RedisKey extends DataKey {
 
     public RedisKey(String holderSchema, String holderTable, String holderIdColumn, UUID rootHolderId, String identifyingKey) {
         super(holderSchema, holderTable, holderIdColumn, rootHolderId, identifyingKey);
+        Preconditions.checkArgument(!identifyingKey.contains(":"), "Identifying key cannot contain ':'");
         this.identifyingKey = identifyingKey;
         this.holderSchema = holderSchema;
         this.holderTable = holderTable;
@@ -31,8 +33,15 @@ public class RedisKey extends DataKey {
     }
 
     public static RedisKey fromString(String key) {
+        if (!key.startsWith("static-data:")) {
+            return null;
+        }
         String[] parts = key.split(":");
-        return new RedisKey(parts[0], parts[1], parts[2], UUID.fromString(parts[3]), parts[4]);
+        return new RedisKey(parts[1], parts[2], parts[3], UUID.fromString(parts[4]), parts[5]);
+    }
+
+    public static boolean isRedisKey(String key) {
+        return fromString(key) != null;
     }
 
     /**
@@ -41,7 +50,7 @@ public class RedisKey extends DataKey {
      * @return the partial key
      */
     public String toPartialKey() {
-        return String.format("%s:%s:%s:*:%s", holderSchema, holderTable, holderIdColumn, identifyingKey);
+        return String.format("static-data:%s:%s:%s:*:%s", holderSchema, holderTable, holderIdColumn, identifyingKey);
     }
 
     public String getIdentifyingKey() {
@@ -66,6 +75,6 @@ public class RedisKey extends DataKey {
 
     @Override
     public String toString() {
-        return String.format("%s:%s:%s:%s:%s", holderSchema, holderTable, holderIdColumn, rootHolderId, identifyingKey);
+        return String.format("static-data:%s:%s:%s:%s:%s", holderSchema, holderTable, holderIdColumn, rootHolderId, identifyingKey);
     }
 }

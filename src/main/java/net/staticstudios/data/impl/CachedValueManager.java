@@ -70,6 +70,9 @@ public class CachedValueManager {
         try (Jedis jedis = dataManager.getJedis()) {
             Set<String> matchedKeys = jedis.keys(dummyValue.getKey().toPartialKey());
             for (String matchedKey : matchedKeys) {
+                if (!RedisKey.isRedisKey(matchedKey)) {
+                    continue;
+                }
                 String encoded = jedis.get(matchedKey);
 
                 Object serialized = dataManager.decode(dummyValue.getDataType(), encoded);
@@ -92,6 +95,9 @@ public class CachedValueManager {
             String eventString = channel.split(":")[1];
             RedisEvent event = RedisEvent.valueOf(eventString.toUpperCase());
             String key = message;
+            if (!RedisKey.isRedisKey(key)) {
+                return;
+            }
             RedisKey redisKey = RedisKey.fromString(key);
             Instant now = Instant.now();
 

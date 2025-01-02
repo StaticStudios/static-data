@@ -14,7 +14,6 @@ import org.jetbrains.annotations.Blocking;
 
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.List;
 import java.util.function.Supplier;
 
 public class PersistentValue<T> implements Value<T> {
@@ -96,7 +95,7 @@ public class PersistentValue<T> implements Value<T> {
 
         ThreadUtils.submit(() -> {
             try (Connection connection = dataManager.getConnection()) {
-                manager.setInDatabase(connection, List.of(new InitialPersistentValue(this, value)));
+                manager.updateInDatabase(connection, this, value);
             } catch (SQLException e) {
                 e.printStackTrace();
             }
@@ -108,7 +107,7 @@ public class PersistentValue<T> implements Value<T> {
         PersistentValueManager manager = dataManager.getPersistentValueManager();
         manager.updateCache(this, value);
 
-        manager.setInDatabase(connection, List.of(new InitialPersistentValue(this, value)));
+        manager.updateInDatabase(connection, this, value);
     }
 
     public String getSchema() {
