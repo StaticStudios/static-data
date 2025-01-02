@@ -14,20 +14,20 @@ import java.util.function.Predicate;
 
 public interface PersistentCollection<T> extends Collection<T>, DataHolder, Data<T> {
 
-    static <T> SimplePersistentCollection<T> of(DataHolder holder, Class<T> data, String schema, String table, String linkingColumn, String dataColumn) {
-        return new PersistentValueCollection<>(holder, data, schema, table, "id", linkingColumn, dataColumn);
+    static <T> SimplePersistentCollection<T> of(DataHolder holder, Class<T> dataType, String schema, String table, String linkingColumn, String dataColumn) {
+        return new PersistentValueCollection<>(holder, dataType, schema, table, "id", linkingColumn, dataColumn);
     }
 
-    static <T> SimplePersistentCollection<T> of(DataHolder holder, Class<T> data, String schema, String table, String entryIdColumn, String linkingColumn, String dataColumn) {
-        return new PersistentValueCollection<>(holder, data, schema, table, entryIdColumn, linkingColumn, dataColumn);
+    static <T> SimplePersistentCollection<T> of(DataHolder holder, Class<T> dataType, String schema, String table, String entryIdColumn, String linkingColumn, String dataColumn) {
+        return new PersistentValueCollection<>(holder, dataType, schema, table, entryIdColumn, linkingColumn, dataColumn);
     }
 
-    static <T extends UniqueData> SimplePersistentCollection<T> oneToMany(DataHolder holder, Class<T> data, String schema, String table, String linkingColumn) {
-        return new PersistentUniqueDataCollection<>(holder, data, schema, table, linkingColumn, "id");
+    static <T extends UniqueData> SimplePersistentCollection<T> oneToMany(DataHolder holder, Class<T> dataType, String schema, String table, String linkingColumn) {
+        return new PersistentUniqueDataCollection<>(holder, dataType, schema, table, linkingColumn, holder.getDataManager().getIdColumn(dataType));
     }
 
-    static <T extends UniqueData> PersistentCollection<T> manyToMany(DataHolder holder, Class<T> data, String schema, String junctionTable, String thisIdColumn, String dataIdColumn) {
-        return new PersistentManyToManyCollection<>(holder, data, schema, junctionTable, thisIdColumn, dataIdColumn);
+    static <T extends UniqueData> PersistentCollection<T> manyToMany(DataHolder holder, Class<T> dataType, String schema, String junctionTable, String thisIdColumn, String dataIdColumn) {
+        return new PersistentManyToManyCollection<>(holder, dataType, schema, junctionTable, thisIdColumn, dataIdColumn);
     }
 
     @Blocking

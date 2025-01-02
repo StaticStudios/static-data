@@ -463,19 +463,26 @@ public class PersistentCollectionManager extends SQLLogger {
         String schemaTable = dummyCollection.getSchema() + "." + dummyCollection.getTable();
         pgListener.ensureTableHasTrigger(connection, schemaTable);
 
+        Set<String> columns = new HashSet<>();
+
         String entryIdColumn = dummyCollection.getEntryIdColumn();
         String entryDataColumn = dummyCollection.getDataColumn();
         String collectionLinkingColumn = dummyCollection.getLinkingColumn();
 
-        String sql = "SELECT " + entryIdColumn + ", " + collectionLinkingColumn;
+        columns.add(entryIdColumn);
+        columns.add(collectionLinkingColumn);
+        columns.add(entryDataColumn);
 
-        if (!entryIdColumn.equals(entryDataColumn)) {
-            // For PersistentUniqueDataCollection the entry id will be the data, since that's what we're interested in
-            sql += ", " + entryDataColumn;
+        StringBuilder sqlBuilder = new StringBuilder("SELECT ");
+
+        for (String column : columns) {
+            sqlBuilder.append(column).append(", ");
         }
+        sqlBuilder.setLength(sqlBuilder.length() - 2);
 
-        sql += " FROM " + dummyCollection.getSchema() + "." + dummyCollection.getTable();
+        sqlBuilder.append(" FROM ").append(schemaTable);
 
+        String sql = sqlBuilder.toString();
         logSQL(sql);
 
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
