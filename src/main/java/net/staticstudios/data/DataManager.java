@@ -171,7 +171,7 @@ public class DataManager extends SQLLogger {
 
     @Blocking
     public <T extends UniqueData> List<T> loadAll(Class<T> clazz) {
-        logger.debug("Loading all data for class: {}", clazz);
+        logger.debug("Registering: {}", clazz.getName());
         try {
             // A dependency is just another UniqueData that is referenced in some way.
             // This clazz is also treated as a dependency, these will all be loaded at the same time
@@ -668,7 +668,7 @@ public class DataManager extends SQLLogger {
         }
 
         if (existing != null) {
-            logger.debug("Caching value to replace existing entry. Difference in instants: {} vs {} (existing)", instant, existing.instant());
+            logger.trace("Caching value to replace existing entry. Difference in instants: {} vs {} (existing)", instant, existing.instant());
         }
 
         cache.put(key, CacheEntry.of(Objects.requireNonNullElse(value, NULL_MARKER), instant));
