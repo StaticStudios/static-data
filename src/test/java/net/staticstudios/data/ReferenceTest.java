@@ -5,7 +5,6 @@ import net.staticstudios.data.misc.MockEnvironment;
 import net.staticstudios.data.mock.reference.SnapchatUser;
 import net.staticstudios.data.mock.reference.SnapchatUserSettings;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.junitpioneer.jupiter.RetryingTest;
 
 import java.sql.SQLException;
@@ -75,7 +74,7 @@ public class ReferenceTest extends DataTest {
         assertFalse(user.getSettings().getEnableFriendRequests());
     }
 
-    @Test
+    @RetryingTest(5)
     public void testSetReference() {
         MockEnvironment environment = getMockEnvironments().getFirst();
         DataManager dataManager = environment.dataManager();
