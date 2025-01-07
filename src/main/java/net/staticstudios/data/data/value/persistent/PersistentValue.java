@@ -1,9 +1,6 @@
 package net.staticstudios.data.data.value.persistent;
 
-import net.staticstudios.data.DataManager;
-import net.staticstudios.data.DeletionStrategy;
-import net.staticstudios.data.ValueUpdate;
-import net.staticstudios.data.ValueUpdateHandler;
+import net.staticstudios.data.*;
 import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.data.value.Value;
@@ -28,6 +25,7 @@ public class PersistentValue<T> implements Value<T> {
     private final DataManager dataManager;
     private Supplier<T> defaultValueSupplier;
     private DeletionStrategy deletionStrategy;
+    private InsertionStrategy insertionStrategy;
 
     public PersistentValue(String schema, String table, String column, String idColumn, Class<T> dataType, DataHolder holder, DataManager dataManager) {
         if (!holder.getDataManager().isSupportedType(dataType)) {
@@ -56,12 +54,14 @@ public class PersistentValue<T> implements Value<T> {
         }
         PersistentValue<T> pv = new PersistentValue<>(parts[0], parts[1], parts[2], foreignIdColumn, dataType, holder, holder.getDataManager());
         pv.deletionStrategy = DeletionStrategy.NO_ACTION;
+        pv.insertionStrategy = InsertionStrategy.PREFER_EXISTING;
         return pv;
     }
 
     public static <T> PersistentValue<T> foreign(UniqueData holder, Class<T> dataType, String schema, String table, String column, String foreignIdColumn) {
         PersistentValue<T> pv = new PersistentValue<>(schema, table, column, foreignIdColumn, dataType, holder, holder.getDataManager());
         pv.deletionStrategy = DeletionStrategy.NO_ACTION;
+        pv.insertionStrategy = InsertionStrategy.PREFER_EXISTING;
         return pv;
     }
 
@@ -159,9 +159,21 @@ public class PersistentValue<T> implements Value<T> {
         return this;
     }
 
+    public PersistentValue<T> insertionStrategy(InsertionStrategy strategy) {
+        if (holder.getRootHolder().getSchema().equals(schema) && holder.getRootHolder().getTable().equals(table)) {
+            throw new IllegalArgumentException("Cannot set deletion strategy for a PersistentValue in the same table as it's holder!");
+        }
+        this.insertionStrategy = strategy;
+        return this;
+    }
+
     @Override
     public @NotNull DeletionStrategy getDeletionStrategy() {
         return deletionStrategy == null ? DeletionStrategy.NO_ACTION : deletionStrategy;
+    }
+
+    public InsertionStrategy getInsertionStrategy() {
+        return insertionStrategy == null ? InsertionStrategy.OVERWRITE_EXISTING : insertionStrategy;
     }
 
     @Override

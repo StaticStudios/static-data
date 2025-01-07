@@ -59,7 +59,7 @@ public class PersistentValueTest extends DataTest {
         MockEnvironment environment = getMockEnvironments().getFirst();
         DataManager dataManager = environment.dataManager();
 
-        DiscordUser user = DiscordUser.createSync(dataManager, "John Doe");
+        DiscordUser user = DiscordUser.createSync(dataManager, "John Doe", UUID.randomUUID());
         assertEquals("John Doe", user.getName());
 
         waitForDataPropagation();
@@ -93,7 +93,7 @@ public class PersistentValueTest extends DataTest {
         MockEnvironment environment = getMockEnvironments().getFirst();
         DataManager dataManager = environment.dataManager();
 
-        DiscordUser user = DiscordUser.createSync(dataManager, "John Doe");
+        DiscordUser user = DiscordUser.createSync(dataManager, "John Doe", UUID.randomUUID());
         assertTrue(user.getEnableFriendRequests()); //defaults to true
 
         waitForDataPropagation();
@@ -144,12 +144,45 @@ public class PersistentValueTest extends DataTest {
     }
 
     @RetryingTest(5)
+    public void testForeignPersistentValuePerferExistingInsertionStrategy() {
+        UUID id = UUID.randomUUID();
+        try (Statement statement = getConnection().createStatement()) {
+            statement.executeUpdate("insert into discord.user_settings (user_id, enable_friend_requests) values ('" + id + "', false)");
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        MockEnvironment environment = createMockEnvironment();
+        DataManager dataManager = environment.dataManager();
+
+        dataManager.loadAll(DiscordUser.class);
+        dataManager.loadAll(DiscordUserSettings.class);
+
+        assertNull(dataManager.get(DiscordUser.class, id));
+
+        DiscordUser user = DiscordUser.createSync(dataManager, "John Doe", id);
+        assertFalse(user.getEnableFriendRequests());
+
+        user.setEnableFriendRequests(true);
+        assertTrue(user.getEnableFriendRequests());
+
+        waitForDataPropagation();
+
+        try (Statement statement = getConnection().createStatement()) {
+            ResultSet resultSet = statement.executeQuery("select enable_friend_requests from discord.user_settings where user_id = '" + id + "'");
+            resultSet.next();
+            assertTrue(resultSet.getBoolean("enable_friend_requests"));
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RetryingTest(5)
     @Disabled("see todo message. the datamanager no longer receives its own pg notifications, so this will never work until we implement the TODO")
     public void testSetForeignPersistentValueAndSeePersistentValueUpdate() {
         MockEnvironment environment = getMockEnvironments().getFirst();
         DataManager dataManager = environment.dataManager();
 
-        DiscordUser user = DiscordUser.createSync(dataManager, "John Doe");
+        DiscordUser user = DiscordUser.createSync(dataManager, "John Doe", UUID.randomUUID());
         assertTrue(user.getEnableFriendRequests()); //defaults to true
 
         //todo: the settings should be created as soon as the user is, but this is not the case since they are completely separate entities
@@ -191,7 +224,7 @@ public class PersistentValueTest extends DataTest {
         MockEnvironment environment = getMockEnvironments().getFirst();
         DataManager dataManager = environment.dataManager();
 
-        DiscordUser user = DiscordUser.createSync(dataManager, "John Doe");
+        DiscordUser user = DiscordUser.createSync(dataManager, "John Doe", UUID.randomUUID());
         assertEquals(0, user.getNameUpdatesCalled());
         assertEquals(0, user.getEnableFriendRequestsUpdatesCalled());
 

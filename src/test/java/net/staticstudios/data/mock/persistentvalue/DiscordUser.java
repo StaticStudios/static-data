@@ -1,6 +1,7 @@
 package net.staticstudios.data.mock.persistentvalue;
 
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.InsertionStrategy;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.data.value.persistent.PersistentValue;
 
@@ -20,6 +21,7 @@ public class DiscordUser extends UniqueData {
             });
     private final PersistentValue<Boolean> enableFriendRequests = PersistentValue.foreign(this, Boolean.class, "discord", "user_settings", "enable_friend_requests", "user_id")
             .withDefault(true)
+            .insertionStrategy(InsertionStrategy.PREFER_EXISTING)
             .onUpdate(update -> {
                 if (update.oldValue() == null) {
                     return;
@@ -31,8 +33,8 @@ public class DiscordUser extends UniqueData {
         super(dataManager, "discord", "users", id);
     }
 
-    public static DiscordUser createSync(DataManager dataManager, String name) {
-        DiscordUser user = new DiscordUser(dataManager, UUID.randomUUID());
+    public static DiscordUser createSync(DataManager dataManager, String name, UUID id) {
+        DiscordUser user = new DiscordUser(dataManager, id);
         dataManager.insert(user, user.name.initial(name));
 
         return user;

@@ -5,6 +5,7 @@ import com.google.common.collect.Multimaps;
 import net.staticstudios.data.DataDoesNotExistException;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.DeleteContext;
+import net.staticstudios.data.InsertionStrategy;
 import net.staticstudios.data.data.Data;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.data.value.persistent.InitialPersistentValue;
@@ -199,6 +200,12 @@ public class PersistentValueManager extends SQLLogger {
             String schemaTable = idSchemaTable.split("\\.", 2)[1];
             Collection<InitialPersistentValue> initialDataValues = initialDataMap.get(idSchemaTable);
             initialDataValues.removeIf(i -> i.getValue().getColumn().equals(idColumn));
+            List<InitialPersistentValue> overwriteExisting = new ArrayList<>();
+            for (InitialPersistentValue initial : initialDataValues) {
+                if (initial.getValue().getInsertionStrategy() == InsertionStrategy.OVERWRITE_EXISTING) {
+                    overwriteExisting.add(initial);
+                }
+            }
 
             StringBuilder sqlBuilder = new StringBuilder("INSERT INTO ");
             sqlBuilder.append(schemaTable);
@@ -216,11 +223,11 @@ public class PersistentValueManager extends SQLLogger {
             sqlBuilder.setLength(sqlBuilder.length() - 2);
             sqlBuilder.append(")");
 
-            if (!initialDataValues.isEmpty()) { //todo: reconsider the conflict thing, conflicts should only happen on FPVs. we should only have this if we have an FPV
+            if (!overwriteExisting.isEmpty()) {
                 sqlBuilder.append(" ON CONFLICT (");
                 sqlBuilder.append(idColumn);
                 sqlBuilder.append(") DO UPDATE SET ");
-                for (InitialPersistentValue initial : initialDataValues) {
+                for (InitialPersistentValue initial : overwriteExisting) {
                     sqlBuilder.append(initial.getValue().getColumn());
                     sqlBuilder.append(" = EXCLUDED.");
                     sqlBuilder.append(initial.getValue().getColumn());
@@ -254,7 +261,6 @@ public class PersistentValueManager extends SQLLogger {
 
     @Blocking
     public void updateInDatabase(Connection connection, PersistentValue<?> persistentValue, Object value) throws SQLException {
-        //todo: when using FPVs, we need to insert if it doesnt exist. handle this case. write a sql function and check if its an fpv to allow this functionality
         String schemaTable = persistentValue.getSchema() + "." + persistentValue.getTable();
         String idColumn = persistentValue.getIdColumn();
         String column = persistentValue.getColumn();

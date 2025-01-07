@@ -413,22 +413,40 @@ public class DataManager extends SQLLogger {
                     pvHolder.getIdentifier().getColumn()
             );
 
+            InsertionStrategy insertionStrategy = data.getValue().getInsertionStrategy();
+
             //do not call PersistentValueManager#updateCache since we need to cache both values
             //before PersistentCollectionManager#handlePersistentValueCacheUpdated is called, otherwise we get unexpected behavior
-            cache(data.getValue().getKey(), data.getValue().getDataType(), data.getInitialDataValue(), Instant.now());
+            boolean updateCache = !cache.containsKey(data.getValue().getKey()) || insertionStrategy == InsertionStrategy.OVERWRITE_EXISTING;
+            Object oldValue;
+
+            try {
+                oldValue = get(data.getValue().getKey());
+                if (oldValue == NULL_MARKER) {
+                    oldValue = null;
+                }
+            } catch (DataDoesNotExistException e) {
+                oldValue = null;
+            }
+
+            if (updateCache) {
+                cache(data.getValue().getKey(), data.getValue().getDataType(), data.getInitialDataValue(), Instant.now());
+            }
             cache(idColumn, UUID.class, context.holder().getId(), Instant.now());
 
 
             //Alert the collection manager of this change so it can update what it's keeping track of
-            persistentCollectionManager.handlePersistentValueCacheUpdated(
-                    data.getValue().getSchema(),
-                    data.getValue().getTable(),
-                    data.getValue().getColumn(),
-                    context.holder().getId(),
-                    data.getValue().getIdColumn(),
-                    null,
-                    data.getInitialDataValue()
-            );
+            if (updateCache) {
+                persistentCollectionManager.handlePersistentValueCacheUpdated(
+                        data.getValue().getSchema(),
+                        data.getValue().getTable(),
+                        data.getValue().getColumn(),
+                        context.holder().getId(),
+                        data.getValue().getIdColumn(),
+                        oldValue,
+                        data.getInitialDataValue()
+                );
+            }
 
             persistentCollectionManager.handlePersistentValueCacheUpdated(
                     idColumn.getSchema(),
