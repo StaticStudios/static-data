@@ -403,6 +403,7 @@ public class DataManager extends SQLLogger {
         addUniqueData(context.holder());
         //todo: REFACTOR: similar to deletions, delegate this to the managers
 
+        List<InitialPersistentDataWrapper> initialPersistentDataWrappers = new ArrayList<>();
         for (InitialPersistentValue data : context.initialPersistentValues().values()) {
             UniqueData pvHolder = data.getValue().getHolder().getRootHolder();
             CellKey idColumn = new CellKey(
@@ -428,12 +429,26 @@ public class DataManager extends SQLLogger {
             } catch (DataDoesNotExistException e) {
                 oldValue = null;
             }
+            initialPersistentDataWrappers.add(new InitialPersistentDataWrapper(data, updateCache, oldValue));
 
             if (updateCache) {
                 cache(data.getValue().getKey(), data.getValue().getDataType(), data.getInitialDataValue(), Instant.now());
             }
             cache(idColumn, UUID.class, context.holder().getId(), Instant.now());
+        }
 
+        for (InitialPersistentDataWrapper wrapper : initialPersistentDataWrappers) {
+            InitialPersistentValue data = wrapper.data;
+            boolean updateCache = wrapper.updateCache;
+            Object oldValue = wrapper.oldValue;
+            UniqueData pvHolder = data.getValue().getHolder().getRootHolder();
+            CellKey idColumn = new CellKey(
+                    pvHolder.getSchema(),
+                    pvHolder.getTable(),
+                    pvHolder.getIdentifier().getColumn(),
+                    pvHolder.getId(),
+                    pvHolder.getIdentifier().getColumn()
+            );
 
             //Alert the collection manager of this change so it can update what it's keeping track of
             if (updateCache) {
@@ -949,5 +964,8 @@ public class DataManager extends SQLLogger {
             }
         }
         return dummyInstances.get(clazz).getIdentifier().getColumn();
+    }
+
+    private record InitialPersistentDataWrapper(InitialPersistentValue data, boolean updateCache, Object oldValue) {
     }
 }

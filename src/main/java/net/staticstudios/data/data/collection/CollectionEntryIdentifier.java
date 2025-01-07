@@ -6,24 +6,24 @@ import java.util.Objects;
 import java.util.UUID;
 
 public class CollectionEntryIdentifier {
-    private final String column;
-    private final UUID id;
+    private final String entryIdColumn;
+    private final UUID entryId;
 
-    public CollectionEntryIdentifier(String column, UUID id) {
-        this.column = Preconditions.checkNotNull(column);
-        this.id = id; //can be null for dummy instances
+    public CollectionEntryIdentifier(String entryIdColumn, UUID entryId) {
+        this.entryIdColumn = Preconditions.checkNotNull(entryIdColumn);
+        this.entryId = entryId; //can be null for dummy instances
     }
 
     public static CollectionEntryIdentifier of(String column, UUID value) {
         return new CollectionEntryIdentifier(column, value);
     }
 
-    public String getColumn() {
-        return column;
+    public String getEntryIdColumn() {
+        return entryIdColumn;
     }
 
-    public UUID getId() {
-        return id;
+    public UUID getEntryId() {
+        return entryId;
     }
 
     @Override
@@ -37,19 +37,19 @@ public class CollectionEntryIdentifier {
         }
 
         CollectionEntryIdentifier entryIdentifier = (CollectionEntryIdentifier) obj;
-        return this.column.equals(entryIdentifier.column) && this.id.equals(entryIdentifier.id);
+        return this.entryIdColumn.equals(entryIdentifier.entryIdColumn) && this.entryId.equals(entryIdentifier.entryId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(column, id);
+        return Objects.hash(entryIdColumn, entryId);
     }
 
     @Override
     public String toString() {
         return "CollectionEntryIdentifier{" +
-                "column='" + column + '\'' +
-                ", id=" + id +
+                "entryIdColumn='" + entryIdColumn + '\'' +
+                ", entryId=" + entryId +
                 '}';
     }
 }
