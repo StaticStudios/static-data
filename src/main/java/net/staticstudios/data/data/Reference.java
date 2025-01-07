@@ -3,9 +3,11 @@ package net.staticstudios.data.data;
 
 import net.staticstudios.data.DataDoesNotExistException;
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.DeletionStrategy;
 import net.staticstudios.data.data.value.persistent.InitialPersistentValue;
 import net.staticstudios.data.data.value.persistent.PersistentValue;
 import net.staticstudios.data.key.DataKey;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;
@@ -14,15 +16,28 @@ public class Reference<T extends UniqueData> implements DataHolder, Data<T> {
     private final DataHolder holder;
     private final PersistentValue<UUID> id;
     private final Class<T> clazz;
+    private DeletionStrategy deletionStrategy;
 
     public Reference(UniqueData holder, Class<T> clazz, String foreignIdColumn) {
         this.holder = holder;
         this.clazz = clazz;
         this.id = PersistentValue.of(holder, UUID.class, foreignIdColumn);
+        this.deletionStrategy = DeletionStrategy.NO_ACTION;
     }
 
     public static <T extends UniqueData> Reference<T> of(UniqueData holder, Class<T> clazz, String foreignIdColumn) {
         return new Reference<>(holder, clazz, foreignIdColumn);
+    }
+
+    @Override
+    public Reference<T> deletionStrategy(DeletionStrategy strategy) {
+        this.deletionStrategy = strategy;
+        return this;
+    }
+
+    @Override
+    public @NotNull DeletionStrategy getDeletionStrategy() {
+        return this.deletionStrategy == null ? DeletionStrategy.NO_ACTION : this.deletionStrategy;
     }
 
     public void setForeignId(UUID id) {
@@ -92,5 +107,13 @@ public class Reference<T extends UniqueData> implements DataHolder, Data<T> {
 
     public PersistentValue<UUID> getBackingValue() {
         return id;
+    }
+
+    @Override
+    public String toString() {
+        return "Reference{" +
+                "dataType=" + clazz.getSimpleName() +
+                ", id=" + id.get() +
+                '}';
     }
 }

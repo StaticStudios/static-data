@@ -1,5 +1,6 @@
 package net.staticstudios.data.data.collection;
 
+import net.staticstudios.data.DeletionStrategy;
 import net.staticstudios.data.data.Data;
 import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.data.UniqueData;
@@ -53,6 +54,8 @@ public interface PersistentCollection<T> extends Collection<T>, DataHolder, Data
     PersistentCollection<T> onRemove(PersistentCollectionChangeHandler<T> handler);
 
     CollectionKey getKey();
+
+    PersistentCollection<T> deletionStrategy(DeletionStrategy strategy);
 
     @Blocking
     default boolean removeIf(Connection connection, Predicate<? super T> filter) throws SQLException {

@@ -4,14 +4,16 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
 import net.staticstudios.data.DataDoesNotExistException;
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.DeleteContext;
+import net.staticstudios.data.data.Data;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.data.value.persistent.InitialPersistentValue;
 import net.staticstudios.data.data.value.persistent.PersistentValue;
 import net.staticstudios.data.impl.pg.PostgresListener;
 import net.staticstudios.data.impl.pg.PostgresOperation;
 import net.staticstudios.data.key.CellKey;
-import net.staticstudios.data.key.DataKey;
 import net.staticstudios.data.util.SQLLogger;
+import net.staticstudios.utils.Pair;
 import org.jetbrains.annotations.Blocking;
 
 import java.sql.Connection;
@@ -91,26 +93,62 @@ public class PersistentValueManager extends SQLLogger {
         });
     }
 
-    public void uncache(PersistentValue<?> persistentValue) {
-        uncache(persistentValue.getSchema(),
-                persistentValue.getTable(),
-                persistentValue.getColumn(),
-                persistentValue.getHolder().getRootHolder().getId(),
-                persistentValue.getIdColumn()
-        );
+    public void deleteFromCache(DeleteContext context) {
+        //Since the whole table is being deleted, we can just remove all the values from the cache
+        Set<Pair<String, UUID>> schemaTableIdSet = new HashSet<>();
+        for (Data<?> data : context.toDelete()) {
+            if (data instanceof PersistentValue<?> pv) {
+                schemaTableIdSet.add(Pair.of(pv.getSchema() + "." + pv.getTable(), pv.getHolder().getRootHolder().getId()));
+            }
+        }
+
+        dataManager.removeFromCacheIf(key -> {
+            if (!(key instanceof CellKey cellKey)) {
+                return false;
+            }
+            return schemaTableIdSet.contains(Pair.of(cellKey.getSchema() + "." + cellKey.getTable(), cellKey.getRootHolderId()));
+
+//            Object oldValue = dataManager.get(key);
+//            try {
+//                oldValue = dataManager.get(key);
+//            } catch (DataDoesNotExistException ignored) {
+//            }
+//            dataManager.getPersistentCollectionManager().handlePersistentValueUncache(
+//                    cellKey.getSchema(),
+//                    cellKey.getTable(),
+//                    cellKey.getColumn(),
+//                    cellKey.getRootHolderId(),
+//                    cellKey.getIdColumn(),
+//                    oldValue
+//            );
+        });
     }
 
-    public void uncache(String schema, String table, String column, UUID holderId, String idColumn) {
-        Object oldValue = null;
-
-        DataKey key = new CellKey(schema, table, column, holderId, idColumn);
-
-        try {
-            oldValue = dataManager.get(key);
-        } catch (DataDoesNotExistException ignored) {
+    @Blocking
+    public void deleteFromDatabase(Connection connection, DeleteContext context) throws SQLException {
+        Map<String, PersistentValue<?>> schemaTableMap = new HashMap<>();
+        for (Data<?> data : context.toDelete()) {
+            if (data instanceof PersistentValue<?> pv) {
+                schemaTableMap.put(pv.getSchema() + "." + pv.getTable(), pv);
+            }
         }
-        dataManager.getPersistentCollectionManager().handlePersistentValueUncache(schema, table, column, holderId, idColumn, oldValue);
-        dataManager.uncache(key);
+
+        boolean autoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+
+        for (String schemaTable : schemaTableMap.keySet()) {
+            PersistentValue<?> pv = schemaTableMap.get(schemaTable);
+            String idColumn = pv.getIdColumn();
+            String sql = "DELETE FROM " + schemaTable + " WHERE " + idColumn + " = ?";
+            logSQL(sql);
+
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setObject(1, pv.getHolder().getRootHolder().getId());
+                statement.executeUpdate();
+            }
+        }
+
+        connection.setAutoCommit(autoCommit);
     }
 
     public void updateCache(PersistentValue<?> persistentValue, Object value) {
@@ -178,7 +216,7 @@ public class PersistentValueManager extends SQLLogger {
             sqlBuilder.setLength(sqlBuilder.length() - 2);
             sqlBuilder.append(")");
 
-            if (!initialDataValues.isEmpty()) { //todo: reconsider the conflict thing
+            if (!initialDataValues.isEmpty()) { //todo: reconsider the conflict thing, conflicts should only happen on FPVs. we should only have this if we have an FPV
                 sqlBuilder.append(" ON CONFLICT (");
                 sqlBuilder.append(idColumn);
                 sqlBuilder.append(") DO UPDATE SET ");
@@ -216,6 +254,7 @@ public class PersistentValueManager extends SQLLogger {
 
     @Blocking
     public void updateInDatabase(Connection connection, PersistentValue<?> persistentValue, Object value) throws SQLException {
+        //todo: when using FPVs, we need to insert if it doesnt exist. handle this case. write a sql function and check if its an fpv to allow this functionality
         String schemaTable = persistentValue.getSchema() + "." + persistentValue.getTable();
         String idColumn = persistentValue.getIdColumn();
         String column = persistentValue.getColumn();

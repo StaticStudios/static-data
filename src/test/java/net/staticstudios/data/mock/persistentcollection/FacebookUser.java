@@ -18,6 +18,7 @@ public class FacebookUser extends UniqueData {
     public final PersistentCollection<FacebookUser> following = PersistentCollection.manyToMany(this, FacebookUser.class, "facebook", "user_following", "user_id", "following_id")
             .onAdd(change -> followingAdditions.set(followingAdditions.get() + 1))
             .onRemove(change -> followingRemovals.set(followingRemovals.get() + 1));
+    public final PersistentCollection<FacebookPost> liked = PersistentCollection.manyToMany(this, FacebookPost.class, "facebook", "user_liked_posts", "user_id", "post_id");
     public final PersistentCollection<FacebookUser> followers = PersistentCollection.manyToMany(this, FacebookUser.class, "facebook", "user_following", "following_id", "user_id");
     public final PersistentCollection<FacebookPost> posts = PersistentCollection.oneToMany(this, FacebookPost.class, "facebook", "posts", "user_id")
             .onAdd(change -> postAdditions.set(postAdditions.get() + 1))
@@ -51,5 +52,9 @@ public class FacebookUser extends UniqueData {
 
     public PersistentCollection<FacebookUser> getFollowers() {
         return followers;
+    }
+
+    public PersistentCollection<FacebookPost> getLiked() {
+        return liked;
     }
 }

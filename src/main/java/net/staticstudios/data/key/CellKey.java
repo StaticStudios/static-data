@@ -9,6 +9,7 @@ public class CellKey extends DatabaseKey {
     private final String table;
     private final String column;
     private final String idColumn;
+    private final UUID rootHolderId;
 
     public CellKey(String schema, String table, String column, UUID rootHolderId, String idColumn) {
         super(schema, table, column, rootHolderId, idColumn);
@@ -16,6 +17,7 @@ public class CellKey extends DatabaseKey {
         this.table = table;
         this.column = column;
         this.idColumn = idColumn;
+        this.rootHolderId = rootHolderId;
     }
 
     public CellKey(PersistentValue<?> data) {
@@ -38,5 +40,9 @@ public class CellKey extends DatabaseKey {
 
     public String getIdColumn() {
         return idColumn;
+    }
+
+    public UUID getRootHolderId() {
+        return rootHolderId;
     }
 }

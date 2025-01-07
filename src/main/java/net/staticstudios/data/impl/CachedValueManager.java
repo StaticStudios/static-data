@@ -1,6 +1,8 @@
 package net.staticstudios.data.impl;
 
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.DeleteContext;
+import net.staticstudios.data.data.Data;
 import net.staticstudios.data.data.value.redis.CachedValue;
 import net.staticstudios.data.data.value.redis.InitialCachedValue;
 import net.staticstudios.data.key.RedisKey;
@@ -37,6 +39,24 @@ public class CachedValueManager {
             listener.punsubscribe();
             listenerThread.interrupt();
         });
+    }
+
+    public void deleteFromCache(DeleteContext context) {
+        for (Data<?> data : context.toDelete()) {
+            if (data instanceof CachedValue<?> cv) {
+                dataManager.uncache(cv.getKey());
+            }
+        }
+    }
+
+    @Blocking
+    public void deleteFromRedis(Jedis jedis, DeleteContext context) {
+        for (Data<?> data : context.toDelete()) {
+            if (data instanceof CachedValue<?> cv) {
+                jedis.del(cv.getKey().toString());
+                logger.trace("Deleted {}", cv.getKey());
+            }
+        }
     }
 
     @Blocking

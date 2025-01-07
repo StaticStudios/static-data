@@ -1,6 +1,7 @@
 package net.staticstudios.data.data;
 
 
+import com.google.common.base.Preconditions;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.data.collection.SimplePersistentCollection;
 import net.staticstudios.data.data.value.Value;
@@ -22,6 +23,7 @@ public class UniqueData implements DataHolder {
     }
 
     public UniqueData(DataManager dataManager, String schema, String table, String idColumn, UUID id) {
+        Preconditions.checkArgument(dataManager.get(this.getClass(), id) == null, "Data with id %s already exists", id);
         this.dataManager = dataManager;
         this.schema = schema;
         this.table = table;
@@ -82,7 +84,6 @@ public class UniqueData implements DataHolder {
                 continue;
             }
 
-
             try {
                 Data<?> data = (Data<?>) field.get(this);
 
@@ -94,7 +95,12 @@ public class UniqueData implements DataHolder {
                     sb.append(field.getName()).append("=Collection<").append(collection.getDataType().getSimpleName()).append(">{size=").append(collection.size()).append("}");
                 } else if (data instanceof Reference<?> reference) {
                     sb.append(", ");
-                    sb.append(field.getName()).append("=").append(reference.get().getClass().getSimpleName()).append("{id=").append(reference.get().getId()).append("}");
+                    UniqueData ref = reference.get();
+                    if (ref == null) {
+                        sb.append(field.getName()).append("=null");
+                    } else {
+                        sb.append(field.getName()).append("=").append(ref.getClass().getSimpleName()).append("{id=").append(ref.getId()).append("}");
+                    }
                 }
 
             } catch (IllegalAccessException e) {

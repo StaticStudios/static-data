@@ -5,9 +5,14 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
+import net.staticstudios.data.DataDoesNotExistException;
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.DeleteContext;
+import net.staticstudios.data.DeletionStrategy;
+import net.staticstudios.data.data.Data;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.data.collection.*;
+import net.staticstudios.data.data.value.persistent.PersistentValue;
 import net.staticstudios.data.impl.pg.PostgresListener;
 import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.CollectionKey;
@@ -45,10 +50,6 @@ public class PersistentCollectionManager extends SQLLogger {
         this.addHandlers = Multimaps.synchronizedListMultimap(ArrayListMultimap.create());
         this.removeHandlers = Multimaps.synchronizedListMultimap(ArrayListMultimap.create());
         this.junctionTables = new ConcurrentHashMap<>();
-
-        //todo: delete entries from junction tables when the root holder is deleted, OR one of the referenced entries is deleted
-        // (this needs to happen when a local deletion happens, not when a deletion from the db occurs)
-
 
         pgListener.addHandler(notification -> {
             // The PersistentValueManager will handle updating the main cache
@@ -194,9 +195,6 @@ public class PersistentCollectionManager extends SQLLogger {
                     UUID leftId = UUID.fromString(notification.getData().newDataValueMap().get(columns.get(0)));
                     UUID rightId = UUID.fromString(notification.getData().newDataValueMap().get(columns.get(1)));
 
-                    CollectionEntryIdentifier leftIdentifier = CollectionEntryIdentifier.of(columns.get(0), leftId);
-                    CollectionEntryIdentifier rightIdentifier = CollectionEntryIdentifier.of(columns.get(1), rightId);
-
                     CollectionKey leftCollectionKey = new CollectionKey(
                             notification.getSchema(),
                             notification.getTable(),
@@ -213,7 +211,9 @@ public class PersistentCollectionManager extends SQLLogger {
                             rightId
                     );
 
-                    jt.add(leftIdentifier, rightIdentifier);
+                    dataManager.getDummyPersistentManyToManyCollection(junctionTable).forEach(dummyCollection -> {
+                        jt.add(dummyCollection.getThisIdColumn(), leftId, rightId);
+                    });
 
                     callAddHandlers(leftCollectionKey, rightId);
                     callAddHandlers(rightCollectionKey, leftId);
@@ -226,12 +226,6 @@ public class PersistentCollectionManager extends SQLLogger {
                     List<String> newColumns = notification.getData().newDataValueMap().keySet().stream().toList();
                     UUID newLeftId = UUID.fromString(notification.getData().newDataValueMap().get(newColumns.get(0)));
                     UUID newRightId = UUID.fromString(notification.getData().newDataValueMap().get(newColumns.get(1)));
-
-                    CollectionEntryIdentifier oldLeftIdentifier = CollectionEntryIdentifier.of(oldColumns.get(0), oldLeftId);
-                    CollectionEntryIdentifier oldRightIdentifier = CollectionEntryIdentifier.of(oldColumns.get(1), oldRightId);
-
-                    CollectionEntryIdentifier newLeftIdentifier = CollectionEntryIdentifier.of(newColumns.get(0), newLeftId);
-                    CollectionEntryIdentifier newRightIdentifier = CollectionEntryIdentifier.of(newColumns.get(1), newRightId);
 
                     CollectionKey oldLeftCollectionKey = new CollectionKey(
                             notification.getSchema(),
@@ -268,20 +262,19 @@ public class PersistentCollectionManager extends SQLLogger {
                     callRemoveHandlers(oldLeftCollectionKey, oldRightId);
                     callRemoveHandlers(oldRightCollectionKey, oldLeftId);
 
-                    jt.remove(oldLeftIdentifier, oldRightIdentifier);
-
-                    jt.add(newLeftIdentifier, newRightIdentifier);
+                    dataManager.getDummyPersistentManyToManyCollection(junctionTable).forEach(dummyCollection -> {
+                        jt.remove(dummyCollection.getThisIdColumn(), oldLeftId, oldRightId);
+                        jt.add(dummyCollection.getThisIdColumn(), newLeftId, newRightId);
+                    });
 
                     callAddHandlers(newLeftCollectionKey, newRightId);
                     callAddHandlers(newRightCollectionKey, newLeftId);
+
                 }
                 case DELETE -> {
                     List<String> columns = notification.getData().oldDataValueMap().keySet().stream().toList();
                     UUID leftId = UUID.fromString(notification.getData().oldDataValueMap().get(columns.get(0)));
                     UUID rightId = UUID.fromString(notification.getData().oldDataValueMap().get(columns.get(1)));
-
-                    CollectionEntryIdentifier leftIdentifier = CollectionEntryIdentifier.of(columns.get(0), leftId);
-                    CollectionEntryIdentifier rightIdentifier = CollectionEntryIdentifier.of(columns.get(1), rightId);
 
                     CollectionKey leftCollectionKey = new CollectionKey(
                             notification.getSchema(),
@@ -302,10 +295,73 @@ public class PersistentCollectionManager extends SQLLogger {
                     callRemoveHandlers(leftCollectionKey, rightId);
                     callRemoveHandlers(rightCollectionKey, leftId);
 
-                    jt.remove(leftIdentifier, rightIdentifier);
+                    dataManager.getDummyPersistentManyToManyCollection(junctionTable).forEach(dummyCollection -> {
+                        jt.remove(dummyCollection.getThisIdColumn(), leftId, rightId);
+                    });
                 }
             }
         });
+    }
+
+    public void deleteFromCache(DeleteContext context) {
+        for (Data<?> data : context.toDelete()) {
+            if (data instanceof PersistentValueCollection<?> collection) {
+                removeEntriesFromCache(collection, getCollectionEntries(collection));
+            } else if (data instanceof PersistentUniqueDataCollection<?> collection) {
+                if (collection.getDeletionStrategy() == DeletionStrategy.CASCADE) {
+                    removeEntriesFromCache(collection, getCollectionEntries(collection));
+                } else if (collection.getDeletionStrategy() == DeletionStrategy.UNLINK) {
+                    PersistentValueCollection<UUID> ids = collection.getHolderIds();
+                    removeFromUniqueDataCollectionInMemory(ids, new ArrayList<>(ids));
+                }
+            } else if (data instanceof PersistentManyToManyCollection<?> collection) {
+                removeFromJunctionTableInMemory(collection, getJunctionTableEntryIds(collection));
+            } else if (data instanceof PersistentValue<?> pv) {
+                handlePersistentValueDeletionInMemory(pv);
+            }
+        }
+    }
+
+    public void deleteFromDatabase(Connection connection, DeleteContext context) throws SQLException {
+        for (Data<?> data : context.toDelete()) {
+            if (data instanceof PersistentValueCollection<?> collection) {
+                String sql = "DELETE FROM " + collection.getSchema() + "." + collection.getTable() + " WHERE " + collection.getLinkingColumn() + " = ?";
+                logSQL(sql);
+
+                try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                    statement.setObject(1, collection.getRootHolder().getId());
+                    statement.executeUpdate();
+                }
+            } else if (data instanceof PersistentUniqueDataCollection<?> collection) {
+                if (collection.getDeletionStrategy() == DeletionStrategy.CASCADE) {
+                    String sql = "DELETE FROM " + collection.getSchema() + "." + collection.getTable() + " WHERE " + collection.getLinkingColumn() + " = ?";
+                    logSQL(sql);
+
+                    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                        statement.setObject(1, collection.getRootHolder().getId());
+                        statement.executeUpdate();
+                    }
+                } else if (collection.getDeletionStrategy() == DeletionStrategy.UNLINK) {
+                    String sql = "UPDATE " + collection.getSchema() + "." + collection.getTable() + " SET " + collection.getLinkingColumn() + " = NULL WHERE " + collection.getLinkingColumn() + " = ?";
+                    logSQL(sql);
+
+                    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                        statement.setObject(1, collection.getRootHolder().getId());
+                        statement.executeUpdate();
+                    }
+                }
+            } else if (data instanceof PersistentManyToManyCollection<?> collection) {
+                String sql = "DELETE FROM " + collection.getSchema() + "." + collection.getJunctionTable() + " WHERE " + collection.getThisIdColumn() + " = ?";
+                logSQL(sql);
+
+                try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                    statement.setObject(1, collection.getRootHolder().getId());
+                    statement.executeUpdate();
+                }
+            } else if (data instanceof PersistentValue<?> pv) {
+                handlePersistentValueDeletionInDatabase(connection, context, pv);
+            }
+        }
     }
 
     private void addEntry(CollectionKey key, CollectionEntryIdentifier identifier) {
@@ -361,26 +417,32 @@ public class PersistentCollectionManager extends SQLLogger {
         removeHandlers.put(collection.getKey(), handler);
     }
 
-    public void handlePersistentValueUncache(String schema, String table, String column, UUID holderId, String idColumn, Object oldValue) {
-        // This will look at the linking column, and if it's been removed, then we need to remove the entry from the collection
-        if (oldValue == null || !oldValue.getClass().equals(UUID.class)) {
+    private void handlePersistentValueDeletionInMemory(PersistentValue<?> pv) {
+        //when a PV is uncached, if it is our linking column, we need to remove the entry from the collection
+        if (pv.getDataType() != UUID.class) {
             return;
         }
 
-        logger.trace("Handling PersistentValue uncache: ({}.{}.{}) {}", schema, table, column, oldValue);
-        UUID oldEntryId = (UUID) oldValue;
+        try {
+            if (pv.get() == null) {
+                return;
+            }
+        } catch (DataDoesNotExistException e) {
+            return;
+        }
 
+        UUID oldEntryId = (UUID) pv.get();
 
-        dataManager.getDummyPersistentCollections(schema + "." + table).stream()
-                .filter(dummyCollection -> dummyCollection.getEntryIdColumn().equals(column))
+        dataManager.getDummyPersistentCollections(pv.getSchema() + "." + pv.getTable()).stream()
+                .filter(dummyCollection -> dummyCollection.getEntryIdColumn().equals(pv.getColumn()))
                 .forEach(dummyCollection -> {
 
                     CollectionEntryIdentifier oldIdentifier = CollectionEntryIdentifier.of(dummyCollection.getRootHolder().getIdentifier().getColumn(), oldEntryId);
                     CellKey linkingKey = getEntryLinkingKey(dummyCollection, oldEntryId);
 
                     CollectionKey oldCollectionKey = new CollectionKey(
-                            schema,
-                            table,
+                            dummyCollection.getSchema(),
+                            dummyCollection.getTable(),
                             dummyCollection.getLinkingColumn(),
                             dummyCollection.getDataColumn(),
                             dataManager.get(linkingKey)
@@ -388,6 +450,55 @@ public class PersistentCollectionManager extends SQLLogger {
 
                     removeEntry(oldCollectionKey, oldIdentifier);
                     logger.trace("Removed collection entry holder from map: {} -> {}", oldCollectionKey, oldIdentifier);
+                });
+
+        UniqueData holder = pv.getHolder().getRootHolder();
+        dataManager.getAllDummyPersistentManyToManyCollections().stream()
+                .filter(dummyCollection -> dummyCollection.getDataType().equals(holder.getClass()))
+                .forEach(dummyCollection -> {
+                    JunctionTable jt = junctionTables.get(dummyCollection.getSchema() + "." + dummyCollection.getJunctionTable());
+                    jt.removeIf(dummyCollection.getThisIdColumn(), (left, right) -> {
+                        if (right.equals(holder.getId())) {
+                            CollectionKey collectionKey = new CollectionKey(
+                                    dummyCollection.getSchema(),
+                                    dummyCollection.getJunctionTable(),
+                                    dummyCollection.getThisIdColumn(),
+                                    dummyCollection.getThatIdColumn(),
+                                    left
+                            );
+
+                            callRemoveHandlers(collectionKey, right);
+                            return true;
+                        }
+                        return false;
+                    });
+                });
+    }
+
+    private void handlePersistentValueDeletionInDatabase(Connection connection, DeleteContext context, PersistentValue<?> pv) {
+        //when a PV is uncached, if it is our linking column, we need to remove the entry from the collection
+        if (pv.getDataType() != UUID.class) {
+            return;
+        }
+
+        UUID oldEntryId = (UUID) context.oldValues().get(pv.getKey());
+        if (oldEntryId == null) {
+            return;
+        }
+
+        UniqueData holder = pv.getHolder().getRootHolder();
+        dataManager.getAllDummyPersistentManyToManyCollections().stream()
+                .filter(dummyCollection -> dummyCollection.getDataType().equals(holder.getClass()))
+                .forEach(dummyCollection -> {
+                    String sql = "DELETE FROM " + dummyCollection.getSchema() + "." + dummyCollection.getJunctionTable() + " WHERE " + dummyCollection.getThatIdColumn() + " = ?";
+                    logSQL(sql);
+
+                    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                        statement.setObject(1, oldEntryId);
+                        statement.executeUpdate();
+                    } catch (SQLException e) {
+                        e.printStackTrace();
+                    }
                 });
     }
 
@@ -555,13 +666,7 @@ public class PersistentCollectionManager extends SQLLogger {
         for (CollectionEntry entry : entries) {
             removeEntry(collectionKey, CollectionEntryIdentifier.of(collection.getRootHolder().getIdentifier().getColumn(), entry.id()));
             dataManager.uncache(getEntryDataKey(collection, entry.id(), collection.getRootHolder().getIdentifier()));
-        }
-    }
-
-    public void removeEntriesFromInternalMap(SimplePersistentCollection<?> collection, List<CollectionEntry> entries) {
-        CollectionKey collectionKey = collection.getKey();
-        for (CollectionEntry entry : entries) {
-            removeEntry(collectionKey, CollectionEntryIdentifier.of(collection.getRootHolder().getIdentifier().getColumn(), entry.id()));
+            dataManager.uncache(getEntryLinkingKey(collection, entry.id()));
         }
     }
 
@@ -778,7 +883,7 @@ public class PersistentCollectionManager extends SQLLogger {
     @Blocking
     public void loadJunctionTablesFromDatabase(Connection connection, PersistentManyToManyCollection<?> dummyMMCollection) throws SQLException {
         String junctionTable = dummyMMCollection.getSchema() + "." + dummyMMCollection.getJunctionTable();
-        JunctionTable jt = this.junctionTables.computeIfAbsent(junctionTable, k -> new JunctionTable());
+        JunctionTable jt = this.junctionTables.computeIfAbsent(junctionTable, k -> new JunctionTable(dummyMMCollection.getThisIdColumn(), dummyMMCollection.getThatIdColumn()));
         pgListener.ensureTableHasTrigger(connection, junctionTable);
         String sql = "SELECT * FROM " + junctionTable;
         logSQL(sql);
@@ -786,14 +891,14 @@ public class PersistentCollectionManager extends SQLLogger {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             ResultSet resultSet = statement.executeQuery();
             Preconditions.checkArgument(resultSet.getMetaData().getColumnCount() == 2);
-            String leftColumn = resultSet.getMetaData().getColumnName(1);
-            String rightColumn = resultSet.getMetaData().getColumnName(2);
+            String leftColumn = dummyMMCollection.getThisIdColumn();
+            String rightColumn = dummyMMCollection.getThatIdColumn();
 
             while (resultSet.next()) {
                 UUID leftId = (UUID) resultSet.getObject(leftColumn);
                 UUID rightId = (UUID) resultSet.getObject(rightColumn);
 
-                jt.add(new CollectionEntryIdentifier(leftColumn, leftId), new CollectionEntryIdentifier(rightColumn, rightId));
+                jt.add(leftColumn, leftId, rightId);
             }
         }
     }
@@ -804,9 +909,7 @@ public class PersistentCollectionManager extends SQLLogger {
         Preconditions.checkNotNull(jt, "Junction table not loaded: " + junctionTable);
 
         for (UUID id : ids) {
-            CollectionEntryIdentifier thisIdentifier = CollectionEntryIdentifier.of(collection.getThisIdColumn(), collection.getRootHolder().getId());
-            CollectionEntryIdentifier thatIdentifier = CollectionEntryIdentifier.of(collection.getThatIdColumn(), id);
-            jt.add(thisIdentifier, thatIdentifier);
+            jt.add(collection.getThisIdColumn(), collection.getRootHolder().getId(), id);
         }
 
         for (UUID id : ids) {
@@ -843,9 +946,7 @@ public class PersistentCollectionManager extends SQLLogger {
 
         //remove after handlers are called to avoid DDNEEs
         for (UUID id : ids) {
-            CollectionEntryIdentifier thisIdentifier = CollectionEntryIdentifier.of(collection.getThisIdColumn(), collection.getRootHolder().getId());
-            CollectionEntryIdentifier thatIdentifier = CollectionEntryIdentifier.of(collection.getThatIdColumn(), id);
-            jt.remove(thisIdentifier, thatIdentifier);
+            jt.remove(collection.getThisIdColumn(), collection.getRootHolder().getId(), id);
         }
     }
 
@@ -854,8 +955,7 @@ public class PersistentCollectionManager extends SQLLogger {
         JunctionTable jt = junctionTables.get(junctionTable);
         Preconditions.checkNotNull(jt, "Junction table not loaded: " + junctionTable);
 
-        CollectionEntryIdentifier thisIdentifier = CollectionEntryIdentifier.of(collection.getThisIdColumn(), collection.getRootHolder().getId());
-        return jt.get(thisIdentifier).stream().map(CollectionEntryIdentifier::getId).toList();
+        return jt.get(collection.getThisIdColumn(), collection.getRootHolder().getId()).stream().toList();
     }
 
     @Blocking

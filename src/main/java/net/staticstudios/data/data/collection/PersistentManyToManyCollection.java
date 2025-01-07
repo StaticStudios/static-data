@@ -1,6 +1,7 @@
 package net.staticstudios.data.data.collection;
 
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.DeletionStrategy;
 import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.impl.PersistentCollectionManager;
@@ -20,6 +21,7 @@ public class PersistentManyToManyCollection<T extends UniqueData> implements Per
     private final String junctionTable;
     private final String thisIdColumn;
     private final String thatIdColumn;
+    private DeletionStrategy deletionStrategy;
 
     public PersistentManyToManyCollection(DataHolder holder, Class<T> dataType, String schema, String junctionTable, String thisIdColumn, String thatIdColumn) {
         this.holder = holder;
@@ -28,6 +30,7 @@ public class PersistentManyToManyCollection<T extends UniqueData> implements Per
         this.junctionTable = junctionTable;
         this.thisIdColumn = thisIdColumn;
         this.thatIdColumn = thatIdColumn;
+        this.deletionStrategy = DeletionStrategy.UNLINK;
     }
 
     public String getSchema() {
@@ -327,6 +330,17 @@ public class PersistentManyToManyCollection<T extends UniqueData> implements Per
     @Override
     public int hashCode() {
         return getKey().hashCode();
+    }
+
+    @Override
+    public PersistentManyToManyCollection<T> deletionStrategy(DeletionStrategy strategy) {
+        this.deletionStrategy = strategy;
+        return this;
+    }
+
+    @Override
+    public @NotNull DeletionStrategy getDeletionStrategy() {
+        return deletionStrategy == null ? DeletionStrategy.NO_ACTION : deletionStrategy;
     }
 
     private class NonBlockingItr implements Iterator<T> {

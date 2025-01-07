@@ -4,6 +4,7 @@ import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import net.staticstudios.data.misc.DataTest;
 import net.staticstudios.data.misc.MockEnvironment;
+import net.staticstudios.data.misc.TestUtils;
 import net.staticstudios.data.mock.persistentcollection.FacebookPost;
 import net.staticstudios.data.mock.persistentcollection.FacebookUser;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,6 +46,10 @@ public class PersistentCollectionTest extends DataTest {
                     create table if not exists facebook.user_following (
                                                               user_id uuid,
                                                               following_id uuid
+                    );
+                    create table if not exists facebook.user_liked_posts (
+                                                              user_id uuid,
+                                                              post_id uuid
                     );
                     """);
         } catch (SQLException e) {
@@ -263,23 +268,48 @@ public class PersistentCollectionTest extends DataTest {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+    }
 
+    @RetryingTest(5)
+    public void testRemoveFromUniqueDataCollectionViaDeletion() {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
 
-        assertEquals(1, facebookUser.getPosts().size());
-        dataManager.delete(post2);
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
 
-        assertEquals(0, facebookUser.getPosts().size());
+        FacebookPost post1 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+        FacebookPost post2 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+        FacebookPost post3 = FacebookPost.createSync(dataManager, "Here's some post description", facebookUser);
+
+        assertEquals(3, facebookUser.getPosts().size());
+        assertTrue(facebookUser.getPosts().contains(post1));
+        assertTrue(facebookUser.getPosts().contains(post2));
+        assertTrue(facebookUser.getPosts().contains(post3));
+        assertEquals(facebookUser, post1.getUser());
+        assertEquals(facebookUser, post2.getUser());
+        assertEquals(facebookUser, post3.getUser());
+
+        dataManager.delete(post3);
+
+        assertEquals(2, facebookUser.getPosts().size());
 
         waitForDataPropagation();
 
-        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.posts WHERE id = ?")) {
-            statement.setObject(1, post2.getId());
-            assertTrue(statement.execute());
-            ResultSet resultSet = statement.getResultSet();
-            assertFalse(resultSet.next());
+        try (Statement statement = getConnection().createStatement()) {
+            assertEquals(2, TestUtils.getResultCount(statement.executeQuery("SELECT * FROM facebook.posts WHERE user_id = '" + facebookUser.getId() + "'")));
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+
+        try (Statement statement = getConnection().createStatement()) {
+            statement.executeUpdate("DELETE FROM facebook.posts WHERE id = '" + post1.getId() + "'");
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        waitForDataPropagation();
+
+        assertEquals(1, facebookUser.getPosts().size());
     }
 
     @RetryingTest(5)
@@ -1630,6 +1660,65 @@ public class PersistentCollectionTest extends DataTest {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    @RetryingTest(5)
+    public void testRemoveFromManyToManyCollectionViaDeletion() {
+        MockEnvironment mockEnvironment = getMockEnvironments().getFirst();
+        DataManager dataManager = mockEnvironment.dataManager();
+
+        FacebookUser facebookUser = FacebookUser.createSync(dataManager);
+
+        FacebookPost post1 = FacebookPost.createSync(dataManager, "Some post", null);
+        FacebookPost post2 = FacebookPost.createSync(dataManager, "Some post", null);
+        FacebookPost post3 = FacebookPost.createSync(dataManager, "Some post", null);
+
+        facebookUser.getLiked().add(post1);
+        facebookUser.getLiked().add(post2);
+        facebookUser.getLiked().add(post3);
+
+
+        assertEquals(3, facebookUser.getLiked().size());
+        assertTrue(facebookUser.getLiked().contains(post1));
+        assertTrue(facebookUser.getLiked().contains(post2));
+        assertTrue(facebookUser.getLiked().contains(post3));
+
+        dataManager.delete(post1);
+
+        assertEquals(2, facebookUser.getLiked().size());
+
+        assertFalse(facebookUser.getLiked().contains(post1));
+        assertTrue(facebookUser.getLiked().contains(post2));
+        assertTrue(facebookUser.getLiked().contains(post3));
+
+        waitForDataPropagation();
+
+        try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.user_liked_posts WHERE user_id = ?")) {
+            statement.setObject(1, facebookUser.getId());
+            assertTrue(statement.execute());
+            List<UUID> likedIds = new ArrayList<>();
+            ResultSet resultSet = statement.getResultSet();
+            while (resultSet.next()) {
+                likedIds.add(resultSet.getObject("post_id", UUID.class));
+            }
+
+            assertEquals(2, likedIds.size());
+            assertFalse(likedIds.contains(post1.getId()));
+            assertTrue(likedIds.contains(post2.getId()));
+            assertTrue(likedIds.contains(post3.getId()));
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        try (Statement statement = getConnection().createStatement()) {
+            statement.executeUpdate("delete from facebook.user_liked_posts where post_id = '" + post2.getId() + "'");
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        waitForDataPropagation();
+
+        assertEquals(1, facebookUser.getLiked().size());
     }
 
     @RetryingTest(5)

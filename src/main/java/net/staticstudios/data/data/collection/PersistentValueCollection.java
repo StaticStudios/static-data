@@ -1,5 +1,6 @@
 package net.staticstudios.data.data.collection;
 
+import net.staticstudios.data.DeletionStrategy;
 import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.impl.PersistentCollectionManager;
 import net.staticstudios.utils.ThreadUtils;
@@ -12,6 +13,7 @@ import java.util.function.Consumer;
 
 public class PersistentValueCollection<T> extends SimplePersistentCollection<T> {
     private final DataHolder holder;
+    private DeletionStrategy deletionStrategy;
 
     public PersistentValueCollection(DataHolder holder, Class<T> dataType, String schema, String table, String entryIdColumn, String linkingColumn, String dataColumn) {
         super(holder, dataType, schema, table, entryIdColumn, linkingColumn, dataColumn);
@@ -312,6 +314,17 @@ public class PersistentValueCollection<T> extends SimplePersistentCollection<T> 
     public PersistentCollection<T> onRemove(PersistentCollectionChangeHandler<T> handler) {
         getDataManager().getPersistentCollectionManager().addRemoveHandler(this, change -> ThreadUtils.submit(() -> handler.onChange((T) change)));
         return this;
+    }
+
+    @Override
+    public PersistentValueCollection<T> deletionStrategy(DeletionStrategy strategy) {
+        this.deletionStrategy = strategy;
+        return this;
+    }
+
+    @Override
+    public @NotNull DeletionStrategy getDeletionStrategy() {
+        return deletionStrategy == null ? DeletionStrategy.NO_ACTION : deletionStrategy;
     }
 
     private class NonBlockingItr implements Iterator<T> {

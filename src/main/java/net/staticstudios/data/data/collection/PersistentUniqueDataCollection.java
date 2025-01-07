@@ -1,5 +1,6 @@
 package net.staticstudios.data.data.collection;
 
+import net.staticstudios.data.DeletionStrategy;
 import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.impl.PersistentCollectionManager;
@@ -24,6 +25,12 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Simple
                 linkingColumn,
                 dataColumn);
         holderIds = new PersistentValueCollection<>(holder, UUID.class, schema, table, getEntryIdColumn(), linkingColumn, dataColumn);
+        holderIds.deletionStrategy(DeletionStrategy.NO_ACTION);
+        this.deletionStrategy(DeletionStrategy.UNLINK);
+    }
+
+    public PersistentValueCollection<UUID> getHolderIds() {
+        return holderIds;
     }
 
     @Override
@@ -324,6 +331,17 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Simple
     @Override
     public int hashCode() {
         return holderIds.hashCode();
+    }
+
+    @Override
+    public PersistentUniqueDataCollection<T> deletionStrategy(DeletionStrategy strategy) {
+        holderIds.deletionStrategy(strategy);
+        return this;
+    }
+
+    @Override
+    public @NotNull DeletionStrategy getDeletionStrategy() {
+        return holderIds.getDeletionStrategy();
     }
 
     private class NonBlockingItr implements Iterator<T> {

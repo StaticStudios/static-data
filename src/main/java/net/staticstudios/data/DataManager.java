@@ -1,6 +1,7 @@
 package net.staticstudios.data;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Predicate;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
@@ -13,7 +14,6 @@ import net.staticstudios.data.data.Reference;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.data.collection.PersistentManyToManyCollection;
 import net.staticstudios.data.data.collection.PersistentUniqueDataCollection;
-import net.staticstudios.data.data.collection.PersistentValueCollection;
 import net.staticstudios.data.data.collection.SimplePersistentCollection;
 import net.staticstudios.data.data.value.Value;
 import net.staticstudios.data.data.value.persistent.InitialPersistentValue;
@@ -51,6 +51,7 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.stream.Collectors;
 
 public class DataManager extends SQLLogger {
     private static final Object NULL_MARKER = new Object();
@@ -165,8 +166,20 @@ public class DataManager extends SQLLogger {
         return dummyUniqueDataMap.get(schemaTable);
     }
 
+    public UniqueData getDummyInstance(Class<?> clazz) {
+        return dummyInstances.get(clazz);
+    }
+
     public Collection<SimplePersistentCollection<?>> getDummyPersistentCollections(String schemaTable) {
         return dummySimplePersistentCollectionMap.get(schemaTable);
+    }
+
+    public Collection<PersistentManyToManyCollection<?>> getDummyPersistentManyToManyCollection(String schemaTable) {
+        return dummyPersistentManyToManyCollectionMap.get(schemaTable);
+    }
+
+    public Collection<PersistentManyToManyCollection<?>> getAllDummyPersistentManyToManyCollections() {
+        return new HashSet<>(dummyPersistentManyToManyCollectionMap.values());
     }
 
     @Blocking
@@ -388,6 +401,7 @@ public class DataManager extends SQLLogger {
 
     private void insertIntoCache(InsertContext context) {
         addUniqueData(context.holder());
+        //todo: REFACTOR: similar to deletions, delegate this to the managers
 
         for (InitialPersistentValue data : context.initialPersistentValues().values()) {
             UniqueData pvHolder = data.getValue().getHolder().getRootHolder();
@@ -433,40 +447,31 @@ public class DataManager extends SQLLogger {
     }
 
     private void insertIntoDataSource(Connection connection, Jedis jedis, InsertContext context) throws SQLException {
+        if (context.initialPersistentValues().isEmpty() && context.initialCachedValues().isEmpty()) {
+            String sql = "INSERT INTO " + context.holder().getSchema() + "." + context.holder().getTable() + " (" + context.holder().getIdentifier().getColumn() + ") VALUES (?)";
+            logSQL(sql);
+
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setObject(1, context.holder().getId());
+                statement.executeUpdate();
+            }
+            return;
+        }
         persistentValueManager.insertInDatabase(connection, context.holder(), new ArrayList<>(context.initialPersistentValues().values()));
         cachedValueManager.setInRedis(jedis, new ArrayList<>(context.initialCachedValues().values()));
     }
 
-    public <T extends UniqueData> void delete(T holder) {
-        List<Data<?>> dataList = new ArrayList<>();
-
-        for (Field field : ReflectionUtils.getFields(holder.getClass())) {
-            field.setAccessible(true);
-
-            if (Data.class.isAssignableFrom(field.getType())) {
-                try {
-                    Data<?> data = (Data<?>) field.get(holder);
-                    dataList.add(data);
-                } catch (IllegalAccessException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-        }
-
-        deleteFromCache(holder, dataList);
-        removeUniqueData(holder.getClass(), holder.getId());
-        //todo: remove add, remove, and update handlers
-        //todo: handle foreign PVs
-        //todo: handle CVs
-        //todo: handle PVCs
-        //todo: handle PUDCs
-        //todo: handle PMTMCs
+    public void delete(UniqueData holder) {
+        DeleteContext context = buildDeleteContext(holder);
+        logger.trace("Deleting: {}", context);
+        deleteFromCache(context);
+        //todo: i really dislike that update handlers are called when things are deleted. revisit this
 
         ThreadUtils.submit(() -> {
             try (Connection connection = getConnection();
                  Jedis jedis = jedisProvider.getJedis()
             ) {
-                deleteFromDataSource(connection, jedis, holder);
+                deleteFromDataSource(connection, jedis, context);
             } catch (SQLException e) {
                 logger.error("Error deleting data", e);
                 throw new RuntimeException(e);
@@ -474,38 +479,123 @@ public class DataManager extends SQLLogger {
         });
     }
 
-    private void deleteFromCache(UniqueData holder, List<Data<?>> dataList) {
-        for (Data<?> data : dataList) {
-            if (data instanceof PersistentValue<?> value) {
-                persistentValueManager.uncache(value);
+    public void deleteSync(UniqueData holder) {
+        DeleteContext context = buildDeleteContext(holder);
+        logger.trace("Deleting: {}", context);
+        deleteFromCache(context);
 
-                //Uncache the id column as well
-                persistentValueManager.uncache(
-                        value.getSchema(),
-                        value.getTable(),
-                        value.getIdColumn(),
-                        holder.getId(),
-                        value.getIdColumn()
-                );
-            } else if (data instanceof CachedValue<?> value) {
-                cache.remove(value.getKey());
-            } else if (data instanceof PersistentValueCollection<?> collection) {
-                persistentCollectionManager.removeEntriesFromCache(collection, persistentCollectionManager.getCollectionEntries(collection));
-            } else if (data instanceof PersistentUniqueDataCollection<?> collection) {
-                persistentCollectionManager.removeEntriesFromInternalMap(collection, persistentCollectionManager.getCollectionEntries(collection));
+        try (Connection connection = getConnection();
+             Jedis jedis = jedisProvider.getJedis()
+        ) {
+            deleteFromDataSource(connection, jedis, context);
+        } catch (SQLException e) {
+            logger.error("Error deleting data", e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    private DeleteContext buildDeleteContext(UniqueData holder) {
+        Set<Data<?>> toDelete = new HashSet<>();
+        Set<UniqueData> holders = new HashSet<>();
+        extractDataToDelete(holder, holders, toDelete);
+        Map<DataKey, Object> oldValues = new HashMap<>();
+        for (Data<?> data : toDelete) {
+            if (data instanceof PersistentValue<?> || data instanceof CachedValue<?>) {
+                try {
+                    Object value = get(data.getKey());
+                    oldValues.put(data.getKey(), value == NULL_MARKER ? null : value);
+                } catch (DataDoesNotExistException e) {
+                    // This is fine, it just means the value was null
+                }
             }
         }
 
+        return new DeleteContext(holders, toDelete, oldValues);
     }
 
-    private void deleteFromDataSource(Connection connection, Jedis jedis, UniqueData holder) throws SQLException {
-        String sql = "DELETE FROM " + holder.getSchema() + "." + holder.getTable() + " WHERE " + holder.getIdentifier().getColumn() + " = ?";
-        logSQL(sql);
-
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, holder.getId());
-            statement.execute();
+    private void extractDataToDelete(UniqueData holder, Set<UniqueData> holders, Set<Data<?>> toDelete) {
+        if (holders.contains(holder)) {
+            return;
         }
+        holders.add(holder);
+
+        //Add the root holder's id column to the list of things to delete, just in case the holder is empty
+        toDelete.add(PersistentValue.of(holder.getRootHolder(), UUID.class, holder.getRootHolder().getIdentifier().getColumn()));
+
+        for (Field field : ReflectionUtils.getFields(holder.getClass())) {
+            field.setAccessible(true);
+
+            if (Data.class.isAssignableFrom(field.getType())) {
+                try {
+                    Data<?> data = (Data<?>) field.get(holder);
+
+                    //Always delete the backing value since it's in the same table as the holder
+                    if (data instanceof Reference<?> reference) {
+                        toDelete.add(reference.getBackingValue());
+                    }
+
+                    if (data.getDeletionStrategy() == DeletionStrategy.NO_ACTION) {
+                        continue;
+                    }
+
+                    if (data instanceof Reference<?> reference) {
+                        UUID id = reference.getForeignId();
+                        if (id != null) {
+                            UniqueData foreignData = reference.get();
+                            if (foreignData != null) {
+                                extractDataToDelete(foreignData, holders, toDelete);
+                            }
+                        }
+                    }
+
+                    if (data instanceof PersistentUniqueDataCollection<?> collection) {
+                        if (collection.getDeletionStrategy() == DeletionStrategy.CASCADE) {
+                            for (UniqueData dataInCollection : collection) {
+                                extractDataToDelete(dataInCollection, holders, toDelete);
+                            }
+                        }
+                    }
+
+                    if (data instanceof PersistentManyToManyCollection<?> collection) {
+                        if (collection.getDeletionStrategy() == DeletionStrategy.CASCADE) {
+                            for (UniqueData dataInCollection : collection) {
+                                extractDataToDelete(dataInCollection, holders, toDelete);
+                            }
+                        }
+                    }
+
+                    toDelete.add(data);
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
+    }
+
+    private void deleteFromCache(DeleteContext context) {
+        persistentCollectionManager.deleteFromCache(context);
+        persistentValueManager.deleteFromCache(context);
+        cachedValueManager.deleteFromCache(context);
+
+        for (UniqueData holder : context.holders()) {
+            removeUniqueData(holder.getClass(), holder.getId());
+        }
+    }
+
+    @Blocking
+    private void deleteFromDataSource(Connection connection, Jedis jedis, DeleteContext context) throws SQLException {
+        for (UniqueData holder : context.holders()) {
+            String sql = "DELETE FROM " + holder.getSchema() + "." + holder.getTable() + " WHERE " + holder.getIdentifier().getColumn() + " = ?";
+            logSQL(sql);
+
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setObject(1, holder.getId());
+                statement.executeUpdate();
+            }
+        }
+        persistentValueManager.deleteFromDatabase(connection, context);
+        persistentCollectionManager.deleteFromDatabase(connection, context);
+        cachedValueManager.deleteFromRedis(jedis, context);
     }
 
     public <T extends UniqueData> List<T> getAll(Class<T> clazz) {
@@ -567,7 +657,13 @@ public class DataManager extends SQLLogger {
         return dependencies;
     }
 
+    public synchronized void removeFromCacheIf(Predicate<DataKey> predicate) {
+        Set<DataKey> keysToRemove = cache.keySet().stream().filter(predicate).collect(Collectors.toSet());
+        keysToRemove.forEach(cache::remove);
+    }
+
     public void dump() {
+        logger.debug("Dumping cache:");
         for (Map.Entry<DataKey, CacheEntry> entry : cache.entrySet()) {
             logger.debug("{} -> {}", entry.getKey(), entry.getValue().value());
         }
@@ -689,6 +785,10 @@ public class DataManager extends SQLLogger {
                 logger.error("Error handling value update. Key: {}", key, e);
             }
         }
+    }
+
+    public int getCacheSize() {
+        return cache.size();
     }
 
     public void uncache(DataKey key) {

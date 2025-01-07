@@ -1,9 +1,6 @@
 package net.staticstudios.data.data.value.redis;
 
-import net.staticstudios.data.DataDoesNotExistException;
-import net.staticstudios.data.DataManager;
-import net.staticstudios.data.ValueUpdate;
-import net.staticstudios.data.ValueUpdateHandler;
+import net.staticstudios.data.*;
 import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.data.value.Value;
@@ -13,6 +10,7 @@ import net.staticstudios.data.primative.Primitive;
 import net.staticstudios.data.primative.Primitives;
 import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.Blocking;
+import org.jetbrains.annotations.NotNull;
 import redis.clients.jedis.Jedis;
 
 import java.time.Instant;
@@ -26,8 +24,9 @@ public class CachedValue<T> implements Value<T> {
     private final DataManager dataManager;
     private int expirySeconds = -1;
     private Supplier<T> fallbackValue;
+    private DeletionStrategy deletionStrategy;
 
-    public CachedValue(String key, Class<T> dataType, DataHolder holder, DataManager dataManager) {
+    private CachedValue(String key, Class<T> dataType, DataHolder holder, DataManager dataManager) {
         if (!holder.getDataManager().isSupportedType(dataType)) {
             throw new IllegalArgumentException("Unsupported data type: " + dataType);
         }
@@ -39,7 +38,9 @@ public class CachedValue<T> implements Value<T> {
     }
 
     public static <T> CachedValue<T> of(UniqueData holder, Class<T> dataType, String key) {
-        return new CachedValue<>(key, dataType, holder, holder.getDataManager());
+        CachedValue<T> cv = new CachedValue<>(key, dataType, holder, holder.getDataManager());
+        cv.deletionStrategy = DeletionStrategy.CASCADE;
+        return cv;
     }
 
     public InitialCachedValue initial(T value) {
@@ -173,5 +174,34 @@ public class CachedValue<T> implements Value<T> {
         return "CachedValue{" +
                 "identifyingKey='" + identifyingKey +
                 '}';
+    }
+
+    @Override
+    public int hashCode() {
+        return getKey().hashCode();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj == this) {
+            return true;
+        }
+
+        if (!(obj instanceof CachedValue<?> other)) {
+            return false;
+        }
+
+        return getKey().equals(other.getKey());
+    }
+
+    @Override
+    public CachedValue<T> deletionStrategy(DeletionStrategy strategy) {
+        this.deletionStrategy = strategy;
+        return this;
+    }
+
+    @Override
+    public @NotNull DeletionStrategy getDeletionStrategy() {
+        return deletionStrategy == null ? DeletionStrategy.NO_ACTION : deletionStrategy;
     }
 }

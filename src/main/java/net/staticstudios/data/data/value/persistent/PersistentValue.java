@@ -1,6 +1,7 @@
 package net.staticstudios.data.data.value.persistent;
 
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.DeletionStrategy;
 import net.staticstudios.data.ValueUpdate;
 import net.staticstudios.data.ValueUpdateHandler;
 import net.staticstudios.data.data.DataHolder;
@@ -11,6 +12,7 @@ import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.DataKey;
 import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.Blocking;
+import org.jetbrains.annotations.NotNull;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -25,6 +27,7 @@ public class PersistentValue<T> implements Value<T> {
     private final String idColumn;
     private final DataManager dataManager;
     private Supplier<T> defaultValueSupplier;
+    private DeletionStrategy deletionStrategy;
 
     public PersistentValue(String schema, String table, String column, String idColumn, Class<T> dataType, DataHolder holder, DataManager dataManager) {
         if (!holder.getDataManager().isSupportedType(dataType)) {
@@ -41,7 +44,9 @@ public class PersistentValue<T> implements Value<T> {
     }
 
     public static <T> PersistentValue<T> of(UniqueData holder, Class<T> dataType, String column) {
-        return new PersistentValue<>(holder.getSchema(), holder.getTable(), column, holder.getRootHolder().getIdentifier().getColumn(), dataType, holder, holder.getDataManager());
+        PersistentValue<T> pv = new PersistentValue<>(holder.getSchema(), holder.getTable(), column, holder.getRootHolder().getIdentifier().getColumn(), dataType, holder, holder.getDataManager());
+        pv.deletionStrategy = DeletionStrategy.CASCADE;
+        return pv;
     }
 
     public static <T> PersistentValue<T> foreign(UniqueData holder, Class<T> dataType, String schemaTableColumn, String foreignIdColumn) {
@@ -49,11 +54,15 @@ public class PersistentValue<T> implements Value<T> {
         if (parts.length != 3) {
             throw new IllegalArgumentException("Invalid schema.table.column format: " + schemaTableColumn);
         }
-        return new PersistentValue<>(parts[0], parts[1], parts[2], foreignIdColumn, dataType, holder, holder.getDataManager());
+        PersistentValue<T> pv = new PersistentValue<>(parts[0], parts[1], parts[2], foreignIdColumn, dataType, holder, holder.getDataManager());
+        pv.deletionStrategy = DeletionStrategy.NO_ACTION;
+        return pv;
     }
 
     public static <T> PersistentValue<T> foreign(UniqueData holder, Class<T> dataType, String schema, String table, String column, String foreignIdColumn) {
-        return new PersistentValue<>(schema, table, column, foreignIdColumn, dataType, holder, holder.getDataManager());
+        PersistentValue<T> pv = new PersistentValue<>(schema, table, column, foreignIdColumn, dataType, holder, holder.getDataManager());
+        pv.deletionStrategy = DeletionStrategy.NO_ACTION;
+        return pv;
     }
 
     public InitialPersistentValue initial(T value) {
@@ -139,6 +148,38 @@ public class PersistentValue<T> implements Value<T> {
     @Override
     public DataHolder getHolder() {
         return holder;
+    }
+
+    @Override
+    public PersistentValue<T> deletionStrategy(DeletionStrategy strategy) {
+        if (holder.getRootHolder().getSchema().equals(schema) && holder.getRootHolder().getTable().equals(table)) {
+            throw new IllegalArgumentException("Cannot set deletion strategy for a PersistentValue in the same table as it's holder!");
+        }
+        this.deletionStrategy = strategy;
+        return this;
+    }
+
+    @Override
+    public @NotNull DeletionStrategy getDeletionStrategy() {
+        return deletionStrategy == null ? DeletionStrategy.NO_ACTION : deletionStrategy;
+    }
+
+    @Override
+    public int hashCode() {
+        return getKey().hashCode();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj == this) {
+            return true;
+        }
+
+        if (!(obj instanceof PersistentValue<?> other)) {
+            return false;
+        }
+
+        return getKey().equals(other.getKey());
     }
 
     @Override

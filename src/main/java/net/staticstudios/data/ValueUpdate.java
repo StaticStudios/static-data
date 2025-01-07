@@ -1,4 +1,6 @@
 package net.staticstudios.data;
 
-public record ValueUpdate<T>(T oldValue, T newValue) {
+import org.jetbrains.annotations.Nullable;
+
+public record ValueUpdate<T>(@Nullable T oldValue, @Nullable T newValue) {
 }
