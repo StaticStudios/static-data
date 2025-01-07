@@ -315,6 +315,7 @@ public class PersistentCollectionManager extends SQLLogger {
                     removeFromUniqueDataCollectionInMemory(ids, new ArrayList<>(ids));
                 }
             } else if (data instanceof PersistentManyToManyCollection<?> collection) {
+                //Note that the individual entries are already in the deletion context via the data manager
                 removeFromJunctionTableInMemory(collection, getJunctionTableEntryIds(collection));
             } else if (data instanceof PersistentValue<?> pv) {
                 handlePersistentValueDeletionInMemory(pv);
@@ -351,12 +352,28 @@ public class PersistentCollectionManager extends SQLLogger {
                     }
                 }
             } else if (data instanceof PersistentManyToManyCollection<?> collection) {
-                String sql = "DELETE FROM " + collection.getSchema() + "." + collection.getJunctionTable() + " WHERE " + collection.getThisIdColumn() + " = ?";
-                logSQL(sql);
+                if (collection.getDeletionStrategy() == DeletionStrategy.CASCADE) {
+                    UniqueData dummyInstance = dataManager.getDummyInstance(collection.getDataType());
+                    String sql = "DELETE FROM " + dummyInstance.getSchema() + "." + dummyInstance.getTable() +
+                            " WHERE EXISTS ( SELECT 1 FROM " + collection.getSchema() + "." + collection.getJunctionTable() +
+                            " WHERE " + collection.getSchema() + "." + collection.getJunctionTable() + "." + collection.getThisIdColumn() + " = ? AND " +
+                            dummyInstance.getSchema() + "." + dummyInstance.getTable() + "." + dummyInstance.getIdentifier().getColumn() +
+                            " = " + collection.getSchema() + "." + collection.getJunctionTable() + "." + collection.getThatIdColumn() +
+                            ")";
+                    logSQL(sql);
 
-                try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                    statement.setObject(1, collection.getRootHolder().getId());
-                    statement.executeUpdate();
+                    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                        statement.setObject(1, collection.getRootHolder().getId());
+                        statement.executeUpdate();
+                    }
+                } else if (collection.getDeletionStrategy() == DeletionStrategy.UNLINK) {
+                    String sql = "DELETE FROM " + collection.getSchema() + "." + collection.getJunctionTable() + " WHERE " + collection.getThisIdColumn() + " = ?";
+                    logSQL(sql);
+
+                    try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                        statement.setObject(1, collection.getRootHolder().getId());
+                        statement.executeUpdate();
+                    }
                 }
             } else if (data instanceof PersistentValue<?> pv) {
                 handlePersistentValueDeletionInDatabase(connection, context, pv);

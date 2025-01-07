@@ -115,12 +115,13 @@ public class DeletionTest extends DataTest {
         waitForDataPropagation();
 
         try (Statement statement = getConnection().createStatement()) {
-            assertEquals(0, TestUtils.getResultCount(statement.executeQuery("select * from minecraft.users where id = '" + user.getId() + "'")));
-            assertEquals(0, TestUtils.getResultCount(statement.executeQuery("select * from minecraft.user_meta where id = '" + user.getId() + "'")));
-            assertEquals(0, TestUtils.getResultCount(statement.executeQuery("select * from minecraft.user_stats where id = '" + user.getId() + "'")));
-            assertEquals(0, TestUtils.getResultCount(statement.executeQuery("select * from minecraft.servers join minecraft.user_servers on servers.id = user_servers.server_id where user_servers.user_id = '" + user.getId() + "'")));
-            assertEquals(0, TestUtils.getResultCount(statement.executeQuery("select * from minecraft.skins where user_id = '" + user.getId() + "'")));
-            assertEquals(0, TestUtils.getResultCount(statement.executeQuery("select * from minecraft.worlds where user_id = '" + user.getId() + "'")));
+            assertEquals(0, TestUtils.getResultCount(statement.executeQuery("select * from minecraft.users")));
+            assertEquals(0, TestUtils.getResultCount(statement.executeQuery("select * from minecraft.user_meta")));
+            assertEquals(0, TestUtils.getResultCount(statement.executeQuery("select * from minecraft.user_stats")));
+            assertEquals(0, TestUtils.getResultCount(statement.executeQuery("select * from minecraft.user_servers")));
+            assertEquals(0, TestUtils.getResultCount(statement.executeQuery("select * from minecraft.servers")));
+            assertEquals(0, TestUtils.getResultCount(statement.executeQuery("select * from minecraft.skins")));
+            assertEquals(0, TestUtils.getResultCount(statement.executeQuery("select * from minecraft.worlds")));
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
