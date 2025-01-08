@@ -1,12 +1,12 @@
 package net.staticstudios.data.impl;
 
+import net.staticstudios.data.CachedValue;
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.DeleteContext;
 import net.staticstudios.data.data.Data;
-import net.staticstudios.data.data.value.redis.CachedValue;
-import net.staticstudios.data.data.value.redis.InitialCachedValue;
+import net.staticstudios.data.data.value.InitialCachedValue;
 import net.staticstudios.data.key.RedisKey;
 import net.staticstudios.data.primative.Primitives;
+import net.staticstudios.data.util.DeleteContext;
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.Blocking;

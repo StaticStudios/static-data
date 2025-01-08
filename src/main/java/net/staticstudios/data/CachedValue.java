@@ -1,22 +1,32 @@
-package net.staticstudios.data.data.value.redis;
+package net.staticstudios.data;
 
-import net.staticstudios.data.*;
 import net.staticstudios.data.data.DataHolder;
-import net.staticstudios.data.data.UniqueData;
+import net.staticstudios.data.data.value.InitialCachedValue;
 import net.staticstudios.data.data.value.Value;
 import net.staticstudios.data.impl.CachedValueManager;
 import net.staticstudios.data.key.RedisKey;
 import net.staticstudios.data.primative.Primitive;
 import net.staticstudios.data.primative.Primitives;
+import net.staticstudios.data.util.DataDoesNotExistException;
+import net.staticstudios.data.util.DeletionStrategy;
+import net.staticstudios.data.util.ValueUpdate;
+import net.staticstudios.data.util.ValueUpdateHandler;
 import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.Blocking;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import redis.clients.jedis.Jedis;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.function.Supplier;
 
+/**
+ * Represents a value that lives in Redis.
+ * Data stored in {@link CachedValue} objects should be considered volatile and may be deleted at any time.
+ *
+ * @param <T> the type of data stored in this value
+ */
 public class CachedValue<T> implements Value<T> {
     private final String identifyingKey;
     private final Class<T> dataType;
@@ -37,22 +47,51 @@ public class CachedValue<T> implements Value<T> {
         this.dataManager = dataManager;
     }
 
+    /**
+     * Create a new {@link CachedValue} object.
+     *
+     * @param holder   the holder of this value
+     * @param dataType the type of data stored in this value
+     * @param key      the identifying key for this value (note that this is only part of what is used to construct the Redis key, see {@link RedisKey#toString()})
+     * @param <T>      the type of data stored in this value
+     * @return the new {@link CachedValue} object
+     */
     public static <T> CachedValue<T> of(UniqueData holder, Class<T> dataType, String key) {
         CachedValue<T> cv = new CachedValue<>(key, dataType, holder, holder.getDataManager());
         cv.deletionStrategy = DeletionStrategy.CASCADE;
         return cv;
     }
 
-    public InitialCachedValue initial(T value) {
+    /**
+     * Set the initial value for this object
+     *
+     * @param value the initial value
+     * @return the initial value object
+     */
+    public InitialCachedValue initial(@Nullable T value) {
         return new InitialCachedValue(this, value);
     }
 
+    /**
+     * Add an update handler to this value.
+     * Note that update handlers are run asynchronously.
+     *
+     * @param updateHandler the update handler
+     * @return this
+     */
     @SuppressWarnings("unchecked")
     public CachedValue<T> onUpdate(ValueUpdateHandler<T> updateHandler) {
         dataManager.registerValueUpdateHandler(this.getKey(), update -> ThreadUtils.submit(() -> updateHandler.handle((ValueUpdate<T>) update)));
         return this;
     }
 
+    /**
+     * Set the expiry time for this value.
+     * After the expiry time has passed, the value will be deleted from Redis, and this {@link CachedValue} object will return the fallback value.
+     *
+     * @param seconds the number of seconds before the value expires, or -1 to disable expiry
+     * @return this
+     */
     public CachedValue<T> withExpiry(int seconds) {
         this.expirySeconds = seconds;
         return this;
@@ -104,7 +143,11 @@ public class CachedValue<T> implements Value<T> {
         return fallbackValue;
     }
 
-
+    /**
+     * Get the expiry time for this value.
+     *
+     * @return the expiry time in seconds, or -1 if expiry is disabled
+     */
     public int getExpirySeconds() {
         return expirySeconds;
     }
@@ -138,6 +181,12 @@ public class CachedValue<T> implements Value<T> {
         });
     }
 
+    /**
+     * Set the value of this object.
+     *
+     * @param jedis the Jedis instance to use
+     * @param value the value to set
+     */
     @Blocking
     public void set(Jedis jedis, T value) {
         CachedValueManager manager = dataManager.getCachedValueManager();
@@ -150,6 +199,12 @@ public class CachedValue<T> implements Value<T> {
         }
     }
 
+    /**
+     * Get the identifying key for this value.
+     * Note that this is only part of what is used to construct the Redis key, see {@link RedisKey#toString()}
+     *
+     * @return the identifying key
+     */
     public String getIdentifyingKey() {
         return identifyingKey;
     }

@@ -1,8 +1,8 @@
 package net.staticstudios.data.mock.reference;
 
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.data.Reference;
-import net.staticstudios.data.data.UniqueData;
+import net.staticstudios.data.Reference;
+import net.staticstudios.data.UniqueData;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.UUID;

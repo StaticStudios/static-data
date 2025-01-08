@@ -1,9 +1,9 @@
 package net.staticstudios.data.mock.persistentcollection;
 
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.data.value.persistent.PersistentValue;
-import net.staticstudios.data.data.Reference;
-import net.staticstudios.data.data.UniqueData;
+import net.staticstudios.data.PersistentValue;
+import net.staticstudios.data.Reference;
+import net.staticstudios.data.UniqueData;
 
 import java.util.UUID;
 

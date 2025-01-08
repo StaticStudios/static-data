@@ -1,8 +1,8 @@
 package net.staticstudios.data.mock.cachedvalue;
 
+import net.staticstudios.data.CachedValue;
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.data.UniqueData;
-import net.staticstudios.data.data.value.redis.CachedValue;
+import net.staticstudios.data.UniqueData;
 
 import java.sql.Timestamp;
 import java.util.UUID;

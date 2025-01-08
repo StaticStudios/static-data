@@ -1,7 +1,7 @@
-package net.staticstudios.data;
+package net.staticstudios.data.util;
 
+import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.data.Data;
-import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.key.DataKey;
 
 import java.util.Map;

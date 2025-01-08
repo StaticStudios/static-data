@@ -1,4 +1,6 @@
-package net.staticstudios.data;
+package net.staticstudios.data.util;
+
+import net.staticstudios.data.PersistentCollection;
 
 public enum DeletionStrategy {
     /**
@@ -11,8 +13,8 @@ public enum DeletionStrategy {
     NO_ACTION,
     /**
      * This is only for use in PersistentCollections created via
-     * {@link net.staticstudios.data.data.collection.PersistentCollection#oneToMany} or
-     * {@link net.staticstudios.data.data.collection.PersistentCollection#manyToMany}
+     * {@link PersistentCollection#oneToMany} or
+     * {@link PersistentCollection#manyToMany}
      */
     UNLINK
 }

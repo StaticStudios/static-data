@@ -1,20 +1,29 @@
-package net.staticstudios.data.data.value.persistent;
+package net.staticstudios.data;
 
-import net.staticstudios.data.*;
 import net.staticstudios.data.data.DataHolder;
-import net.staticstudios.data.data.UniqueData;
+import net.staticstudios.data.data.value.InitialPersistentValue;
 import net.staticstudios.data.data.value.Value;
 import net.staticstudios.data.impl.PersistentValueManager;
 import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.DataKey;
+import net.staticstudios.data.util.DeletionStrategy;
+import net.staticstudios.data.util.InsertionStrategy;
+import net.staticstudios.data.util.ValueUpdate;
+import net.staticstudios.data.util.ValueUpdateHandler;
 import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.Blocking;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.function.Supplier;
 
+/**
+ * Represents a value that is stored in a database table.
+ *
+ * @param <T> The type of data that this value stores.
+ */
 public class PersistentValue<T> implements Value<T> {
     private final String schema;
     private final String table;
@@ -27,7 +36,7 @@ public class PersistentValue<T> implements Value<T> {
     private DeletionStrategy deletionStrategy;
     private InsertionStrategy insertionStrategy;
 
-    public PersistentValue(String schema, String table, String column, String idColumn, Class<T> dataType, DataHolder holder, DataManager dataManager) {
+    private PersistentValue(String schema, String table, String column, String idColumn, Class<T> dataType, DataHolder holder, DataManager dataManager) {
         if (!holder.getDataManager().isSupportedType(dataType)) {
             throw new IllegalArgumentException("Unsupported data type: " + dataType);
         }
@@ -41,12 +50,33 @@ public class PersistentValue<T> implements Value<T> {
         this.dataManager = dataManager;
     }
 
+    /**
+     * Create a new {@link PersistentValue} object.
+     *
+     * @param holder   The holder of this value.
+     * @param dataType The type of data that this value stores.
+     * @param column   The column in the holder's table that stores this value.
+     * @param <T>      The type of data that this value stores.
+     * @return The persistent value.
+     */
     public static <T> PersistentValue<T> of(UniqueData holder, Class<T> dataType, String column) {
         PersistentValue<T> pv = new PersistentValue<>(holder.getSchema(), holder.getTable(), column, holder.getRootHolder().getIdentifier().getColumn(), dataType, holder, holder.getDataManager());
         pv.deletionStrategy = DeletionStrategy.CASCADE;
         return pv;
     }
 
+    /**
+     * Create a new {@link PersistentValue} object that stores a value in a different table than its holder.
+     * By default, this {@link PersistentValue} will have a deletion strategy of {@link DeletionStrategy#NO_ACTION} and
+     * an insertion strategy of {@link InsertionStrategy#PREFER_EXISTING}.
+     *
+     * @param holder            The holder of this value.
+     * @param dataType          The type of data that this value stores.
+     * @param schemaTableColumn The schema.table.column that stores this value.
+     * @param foreignIdColumn   The column in the holder's table that stores the foreign key.
+     * @param <T>               The type of data that this value stores.
+     * @return The persistent value.
+     */
     public static <T> PersistentValue<T> foreign(UniqueData holder, Class<T> dataType, String schemaTableColumn, String foreignIdColumn) {
         String[] parts = schemaTableColumn.split("\\.");
         if (parts.length != 3) {
@@ -58,6 +88,20 @@ public class PersistentValue<T> implements Value<T> {
         return pv;
     }
 
+    /**
+     * Create a new {@link PersistentValue} object that stores a value in a different table than its holder.
+     * By default, this {@link PersistentValue} will have a deletion strategy of {@link DeletionStrategy#NO_ACTION} and
+     * an insertion strategy of {@link InsertionStrategy#PREFER_EXISTING}.
+     *
+     * @param holder          The holder of this value.
+     * @param dataType        The type of data that this value stores.
+     * @param schema          The schema that stores the value.
+     * @param table           The table that stores the value.
+     * @param column          The column that stores the value.
+     * @param foreignIdColumn The column in the holder's table that stores the foreign key.
+     * @param <T>             The type of data that this value stores.
+     * @return The persistent value.
+     */
     public static <T> PersistentValue<T> foreign(UniqueData holder, Class<T> dataType, String schema, String table, String column, String foreignIdColumn) {
         PersistentValue<T> pv = new PersistentValue<>(schema, table, column, foreignIdColumn, dataType, holder, holder.getDataManager());
         pv.deletionStrategy = DeletionStrategy.NO_ACTION;
@@ -65,27 +109,57 @@ public class PersistentValue<T> implements Value<T> {
         return pv;
     }
 
-    public InitialPersistentValue initial(T value) {
+    /**
+     * Set the initial value for this object
+     *
+     * @param value the initial value, or null if there is no initial value
+     * @return the initial value object
+     */
+    public InitialPersistentValue initial(@Nullable T value) {
         return new InitialPersistentValue(this, value);
     }
 
+    /**
+     * Add an update handler to this value.
+     * Note that update handlers are run asynchronously.
+     *
+     * @param updateHandler the update handler
+     * @return this
+     */
     @SuppressWarnings("unchecked")
     public PersistentValue<T> onUpdate(ValueUpdateHandler<T> updateHandler) {
         dataManager.registerValueUpdateHandler(this.getKey(), update -> ThreadUtils.submit(() -> updateHandler.handle((ValueUpdate<T>) update)));
         return this;
     }
 
-    public PersistentValue<T> withDefault(T defaultValue) {
+    /**
+     * Set the default value for this value.
+     *
+     * @param defaultValue the default value, or null if there is no default value
+     * @return this
+     */
+    public PersistentValue<T> withDefault(@Nullable T defaultValue) {
         this.defaultValueSupplier = () -> defaultValue;
         return this;
     }
 
-    public PersistentValue<T> withDefault(Supplier<T> defaultValueSupplier) {
+    /**
+     * Set the default value for this value.
+     *
+     * @param defaultValueSupplier the default value supplier, or null if there is no default value
+     * @return this
+     */
+    public PersistentValue<T> withDefault(@Nullable Supplier<@Nullable T> defaultValueSupplier) {
         this.defaultValueSupplier = defaultValueSupplier;
         return this;
     }
 
-    public T getDefaultValue() {
+    /**
+     * Get the default value for this value.
+     *
+     * @return the default value, or null if there is no default value
+     */
+    public @Nullable T getDefaultValue() {
         return defaultValueSupplier == null ? null : defaultValueSupplier.get();
     }
 
@@ -106,11 +180,18 @@ public class PersistentValue<T> implements Value<T> {
             try (Connection connection = dataManager.getConnection()) {
                 manager.updateInDatabase(connection, this, value);
             } catch (SQLException e) {
-                e.printStackTrace();
+                throw new RuntimeException(e);
             }
         });
     }
 
+    /**
+     * Set the value of this persistent value.
+     *
+     * @param connection the connection to use
+     * @param value      the value to set
+     * @throws SQLException if an error occurs while setting the value
+     */
     @Blocking
     public void set(Connection connection, T value) throws SQLException {
         PersistentValueManager manager = dataManager.getPersistentValueManager();
@@ -119,14 +200,29 @@ public class PersistentValue<T> implements Value<T> {
         manager.updateInDatabase(connection, this, value);
     }
 
+    /**
+     * Get the schema that this value is stored in.
+     *
+     * @return the schema
+     */
     public String getSchema() {
         return schema;
     }
 
+    /**
+     * Get the table that this value is stored in.
+     *
+     * @return the table
+     */
     public String getTable() {
         return table;
     }
 
+    /**
+     * Get the column that this value is stored in.
+     *
+     * @return the column
+     */
     public String getColumn() {
         return column;
     }
@@ -136,6 +232,11 @@ public class PersistentValue<T> implements Value<T> {
         return dataType;
     }
 
+    /**
+     * Get the column that stores the id of this value.
+     *
+     * @return the id column
+     */
     public String getIdColumn() {
         return idColumn;
     }
@@ -159,6 +260,13 @@ public class PersistentValue<T> implements Value<T> {
         return this;
     }
 
+    /**
+     * Set the insertion strategy for this value.
+     *
+     * @param strategy the insertion strategy
+     * @return this
+     * @throws IllegalArgumentException if the holder and value are in the same table
+     */
     public PersistentValue<T> insertionStrategy(InsertionStrategy strategy) {
         if (holder.getRootHolder().getSchema().equals(schema) && holder.getRootHolder().getTable().equals(table)) {
             throw new IllegalArgumentException("Cannot set deletion strategy for a PersistentValue in the same table as it's holder!");
@@ -172,7 +280,12 @@ public class PersistentValue<T> implements Value<T> {
         return deletionStrategy == null ? DeletionStrategy.NO_ACTION : deletionStrategy;
     }
 
-    public InsertionStrategy getInsertionStrategy() {
+    /**
+     * Get the insertion strategy for this value.
+     *
+     * @return the insertion strategy
+     */
+    public @NotNull InsertionStrategy getInsertionStrategy() {
         return insertionStrategy == null ? InsertionStrategy.OVERWRITE_EXISTING : insertionStrategy;
     }
 

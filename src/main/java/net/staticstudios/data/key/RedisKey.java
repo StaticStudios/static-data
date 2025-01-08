@@ -1,7 +1,7 @@
 package net.staticstudios.data.key;
 
 import com.google.common.base.Preconditions;
-import net.staticstudios.data.data.value.redis.CachedValue;
+import net.staticstudios.data.CachedValue;
 
 import java.util.UUID;
 

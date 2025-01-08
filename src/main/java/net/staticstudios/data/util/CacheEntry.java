@@ -1,4 +1,4 @@
-package net.staticstudios.data;
+package net.staticstudios.data.util;
 
 import java.time.Instant;
 

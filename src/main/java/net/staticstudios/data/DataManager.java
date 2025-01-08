@@ -10,16 +10,12 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.pool.HikariPool;
 import net.staticstudios.data.data.Data;
 import net.staticstudios.data.data.InitialValue;
-import net.staticstudios.data.data.Reference;
-import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.data.collection.PersistentManyToManyCollection;
 import net.staticstudios.data.data.collection.PersistentUniqueDataCollection;
 import net.staticstudios.data.data.collection.SimplePersistentCollection;
+import net.staticstudios.data.data.value.InitialCachedValue;
+import net.staticstudios.data.data.value.InitialPersistentValue;
 import net.staticstudios.data.data.value.Value;
-import net.staticstudios.data.data.value.persistent.InitialPersistentValue;
-import net.staticstudios.data.data.value.persistent.PersistentValue;
-import net.staticstudios.data.data.value.redis.CachedValue;
-import net.staticstudios.data.data.value.redis.InitialCachedValue;
 import net.staticstudios.data.impl.CachedValueManager;
 import net.staticstudios.data.impl.PersistentCollectionManager;
 import net.staticstudios.data.impl.PersistentValueManager;
@@ -29,8 +25,7 @@ import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.DataKey;
 import net.staticstudios.data.key.DatabaseKey;
 import net.staticstudios.data.primative.Primitives;
-import net.staticstudios.data.util.ReflectionUtils;
-import net.staticstudios.data.util.SQLLogger;
+import net.staticstudios.data.util.*;
 import net.staticstudios.utils.JedisProvider;
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
@@ -53,6 +48,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
+/**
+ * Manages all data operations.
+ */
 public class DataManager extends SQLLogger {
     private static final Object NULL_MARKER = new Object();
     private final Logger logger = LoggerFactory.getLogger(DataManager.class);
@@ -75,6 +73,12 @@ public class DataManager extends SQLLogger {
     private final PersistentCollectionManager persistentCollectionManager;
     private final CachedValueManager cachedValueManager;
 
+    /**
+     * Create a new data manager.
+     *
+     * @param poolConfig    the HikariCP configuration to use for the internal connection pool
+     * @param jedisProvider the Jedis provider for all Redis operations
+     */
     public DataManager(HikariConfig poolConfig, JedisProvider jedisProvider) {
         this.applicationName = "static_data_manager-" + UUID.randomUUID();
         this.cache = new ConcurrentHashMap<>();
@@ -182,6 +186,18 @@ public class DataManager extends SQLLogger {
         return new HashSet<>(dummyPersistentManyToManyCollectionMap.values());
     }
 
+    /**
+     * Load all the data for a given class from the datasource(s) into the cache.
+     * This method will recursively load all dependencies of the given class.
+     * Note that calling this method registers a specific data type.
+     * Without calling this method, the data manager will have no knowledge of the data type.
+     * This should be called at the start of the application to ensure all data types are registered.
+     * This method is inherently blocking.
+     *
+     * @param clazz The class to load data for
+     * @param <T>   The type of data to load
+     * @return A list of all the loaded data
+     */
     @Blocking
     public <T extends UniqueData> List<T> loadAll(Class<T> clazz) {
         logger.debug("Registering: {}", clazz.getName());
@@ -311,6 +327,13 @@ public class DataManager extends SQLLogger {
         return getAll(clazz);
     }
 
+    /**
+     * Synchronously insert data into the datasource(s) and cache.
+     *
+     * @param holder      The root holder of the data to insert
+     * @param initialData The initial data to insert
+     * @param <I>         The type of initial data
+     */
     @Blocking
     @SafeVarargs
     public final <I extends InitialValue<?, ?>> void insert(UniqueData holder, I... initialData) {
@@ -328,6 +351,16 @@ public class DataManager extends SQLLogger {
         }
     }
 
+    /**
+     * Asynchronously insert data into the datasource(s) and cache.
+     * The data will be instantly inserted into the cache, and then the datasource(s) will be updated asynchronously.
+     * This method is non-blocking and will return immediately.
+     * The cached data can be accessed immediately after this method is called.
+     *
+     * @param holder      The root holder of the data to insert
+     * @param initialData The initial data to insert
+     * @param <I>         The type of initial data
+     */
     @SafeVarargs
     public final <I extends InitialValue<?, ?>> void insertAsync(UniqueData holder, I... initialData) {
         InsertContext context = buildInsertContext(holder, initialData);
@@ -494,6 +527,14 @@ public class DataManager extends SQLLogger {
         cachedValueManager.setInRedis(jedis, new ArrayList<>(context.initialCachedValues().values()));
     }
 
+    /**
+     * Delete data from the datasource(s) and cache.
+     * This method will immediately delete the data from the cache, and then asynchronously delete the data from the datasource(s).
+     * This method is non-blocking and will return immediately after deleting the data from the cache.
+     * Data will be recursively deleted based off of the {@link DeletionStrategy} of each member of the data object.
+     *
+     * @param holder The root holder of the data to delete
+     */
     public void delete(UniqueData holder) {
         DeleteContext context = buildDeleteContext(holder);
         logger.trace("Deleting: {}", context);
@@ -512,6 +553,14 @@ public class DataManager extends SQLLogger {
         });
     }
 
+    /**
+     * Synchronously delete data from the datasource(s) and cache.
+     * Data will be recursively deleted based off of the {@link DeletionStrategy} of each member of the data object.
+     * This method is inherently blocking.
+     *
+     * @param holder The root holder of the data to delete
+     */
+    @Blocking
     public void deleteSync(UniqueData holder) {
         DeleteContext context = buildDeleteContext(holder);
         logger.trace("Deleting: {}", context);
@@ -631,6 +680,13 @@ public class DataManager extends SQLLogger {
         cachedValueManager.deleteFromRedis(jedis, context);
     }
 
+    /**
+     * Get all data of a given type from the cache.
+     *
+     * @param clazz The class of data to get
+     * @param <T>   The type of data to get
+     * @return A list of all the data of the given type in the cache
+     */
     public <T extends UniqueData> List<T> getAll(Class<T> clazz) {
         return uniqueDataIds.get(clazz).stream().map(id -> get(clazz, id)).toList();
     }
@@ -695,6 +751,9 @@ public class DataManager extends SQLLogger {
         keysToRemove.forEach(cache::remove);
     }
 
+    /**
+     * Dump the internal cache to the log.
+     */
     public void dump() {
         logger.debug("Dumping cache:");
         for (Map.Entry<DataKey, CacheEntry> entry : cache.entrySet()) {
@@ -718,10 +777,26 @@ public class DataManager extends SQLLogger {
         logger.info("Loaded {} instances of {}", uniqueDataIds.get(dummyHolder.getClass()).size(), dummyHolder.getClass().getName());
     }
 
+    /**
+     * Get a data object from the cache.
+     *
+     * @param data The data object to get
+     * @param <T>  The value type stored in the data object
+     * @return The data object from the cache
+     * @throws DataDoesNotExistException If the data object does not exist in the cache
+     */
     public <T> T get(Data<T> data) throws DataDoesNotExistException {
         return get(data.getKey());
     }
 
+    /**
+     * Get a data object from the cache.
+     *
+     * @param key The key of the data object to get
+     * @param <T> The value type stored in the data object
+     * @return The data object from the cache
+     * @throws DataDoesNotExistException If the data object does not exist in the cache
+     */
     @SuppressWarnings("unchecked")
     public <T> T get(DataKey key) throws DataDoesNotExistException {
         CacheEntry cacheEntry = cache.get(key);
@@ -738,6 +813,14 @@ public class DataManager extends SQLLogger {
         return (T) value;
     }
 
+    /**
+     * Get a {@link UniqueData} object from the cache.
+     *
+     * @param clazz The class of the data object to get
+     * @param id    The id of the data object to get
+     * @param <T>   The type of data object to get
+     * @return The data object from the cache, or null if it does not exist
+     */
     public <T extends UniqueData> T get(Class<T> clazz, UUID id) {
         if (id == null) {
             return null;
@@ -844,6 +927,16 @@ public class DataManager extends SQLLogger {
         valueUpdateHandlers.put(key, handler);
     }
 
+    /**
+     * Get a connection from the connection pool.
+     * This is an internal method and external callers should use it with caution.
+     * Note that all connections in this pool have their application name set to a specific value.
+     * Any updates made with a connection from this pool will not be received by this data manager instance.
+     * Most callers should use their own connection pool.
+     *
+     * @return A connection from the connection pool
+     * @throws SQLException If a connection cannot be obtained
+     */
     public Connection getConnection() throws SQLException {
         return connectionPool.getConnection();
     }

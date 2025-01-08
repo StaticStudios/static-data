@@ -1,11 +1,12 @@
 package net.staticstudios.data.data.collection;
 
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.DeletionStrategy;
+import net.staticstudios.data.PersistentCollection;
+import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.data.DataHolder;
-import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.impl.PersistentCollectionManager;
 import net.staticstudios.data.key.CollectionKey;
+import net.staticstudios.data.util.DeletionStrategy;
 import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.NotNull;
 

@@ -1,4 +1,4 @@
-package net.staticstudios.data;
+package net.staticstudios.data.util;
 
 public class DataDoesNotExistException extends RuntimeException {
     public DataDoesNotExistException(String message) {

@@ -1,5 +1,6 @@
-package net.staticstudios.data.data.value.persistent;
+package net.staticstudios.data.data.value;
 
+import net.staticstudios.data.PersistentValue;
 import net.staticstudios.data.data.InitialValue;
 
 public class InitialPersistentValue implements InitialValue<PersistentValue<?>, Object> {

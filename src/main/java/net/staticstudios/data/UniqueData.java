@@ -1,8 +1,9 @@
-package net.staticstudios.data.data;
+package net.staticstudios.data;
 
 
 import com.google.common.base.Preconditions;
-import net.staticstudios.data.DataManager;
+import net.staticstudios.data.data.Data;
+import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.data.collection.SimplePersistentCollection;
 import net.staticstudios.data.data.value.Value;
 import net.staticstudios.data.key.UniqueIdentifier;
@@ -12,17 +13,39 @@ import java.lang.reflect.Field;
 import java.util.Objects;
 import java.util.UUID;
 
-public class UniqueData implements DataHolder {
+/**
+ * Represents a unique data object that is stored in the database and contains other data objects.
+ */
+public abstract class UniqueData implements DataHolder {
     private final DataManager dataManager;
     private final String schema;
     private final String table;
     private final UniqueIdentifier identifier;
 
-    public UniqueData(DataManager dataManager, String schema, String table, UUID id) {
+    /**
+     * Create a new unique data object.
+     * The id column is assumed to be "id".
+     * See {@link #UniqueData(DataManager, String, String, String, UUID)} if the id column is different.
+     *
+     * @param dataManager the data manager responsible for this data object
+     * @param schema      the schema of the table
+     * @param table       the table name
+     * @param id          the id of the data object
+     */
+    protected UniqueData(DataManager dataManager, String schema, String table, UUID id) {
         this(dataManager, schema, table, "id", id);
     }
 
-    public UniqueData(DataManager dataManager, String schema, String table, String idColumn, UUID id) {
+    /**
+     * Create a new unique data object.
+     *
+     * @param dataManager the data manager responsible for this data object
+     * @param schema      the schema of the table
+     * @param table       the table name
+     * @param idColumn    the name of the column that stores the id
+     * @param id          the id of the data object
+     */
+    protected UniqueData(DataManager dataManager, String schema, String table, String idColumn, UUID id) {
         Preconditions.checkArgument(dataManager.get(this.getClass(), id) == null, "Data with id %s already exists", id);
         this.dataManager = dataManager;
         this.schema = schema;
@@ -30,18 +53,38 @@ public class UniqueData implements DataHolder {
         this.identifier = UniqueIdentifier.of(idColumn, id);
     }
 
+    /**
+     * Get the id of this data object.
+     *
+     * @return the id
+     */
     public UUID getId() {
         return identifier.getId();
     }
 
+    /**
+     * Get the table that this data object is stored in.
+     *
+     * @return the table name
+     */
     public String getTable() {
         return table;
     }
 
+    /**
+     * Get the schema that this data object is stored in.
+     *
+     * @return the schema name
+     */
     public String getSchema() {
         return schema;
     }
 
+    /**
+     * Get the unique identifier of this data object.
+     *
+     * @return the unique identifier
+     */
     public UniqueIdentifier getIdentifier() {
         return identifier;
     }

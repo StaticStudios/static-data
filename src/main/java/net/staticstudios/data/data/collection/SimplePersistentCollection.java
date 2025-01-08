@@ -1,8 +1,9 @@
 package net.staticstudios.data.data.collection;
 
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.PersistentCollection;
+import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.data.DataHolder;
-import net.staticstudios.data.data.UniqueData;
 import net.staticstudios.data.key.CollectionKey;
 
 import java.util.Arrays;

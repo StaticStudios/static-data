@@ -1,5 +1,6 @@
-package net.staticstudios.data.data.value.redis;
+package net.staticstudios.data.data.value;
 
+import net.staticstudios.data.CachedValue;
 import net.staticstudios.data.data.InitialValue;
 
 public class InitialCachedValue implements InitialValue<CachedValue<?>, Object> {
