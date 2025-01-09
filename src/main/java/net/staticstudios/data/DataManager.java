@@ -328,15 +328,115 @@ public class DataManager extends SQLLogger {
     }
 
     /**
+     * Create a new batch insert operation.
+     *
+     * @return The batch insert operation
+     */
+    public final BatchInsert batchInsert() {
+        return new BatchInsert(this);
+    }
+
+    /**
+     * Synchronously insert data into the datasource(s) and cache.
+     *
+     * @param batch The batch of data to insert
+     */
+    @Blocking
+    public final void insertBatch(BatchInsert batch, List<SQLConsumer<Connection>> intermediateActions, List<Runnable> preInsertActions, List<Runnable> postInsertActions) {
+        try (
+                Connection connection = getConnection();
+                Jedis jedis = jedisProvider.getJedis()
+        ) {
+            connection.setAutoCommit(false);
+            for (InsertContext context : batch.getInsertionContexts()) {
+                insertIntoDataSource(connection, jedis, context);
+            }
+            for (SQLConsumer<Connection> action : intermediateActions) {
+                action.accept(connection);
+            }
+            connection.setAutoCommit(true);
+
+            for (InsertContext context : batch.getInsertionContexts()) {
+                insertIntoCache(context);
+            }
+
+            for (Runnable action : preInsertActions) {
+                try {
+                    action.run();
+                } catch (Exception e) {
+                    logger.error("Error running pre-insert action", e);
+                }
+            }
+
+            for (Runnable action : postInsertActions) {
+                try {
+                    action.run();
+                } catch (Exception e) {
+                    logger.error("Error running post-insert action", e);
+                }
+            }
+        } catch (SQLException e) {
+            logger.error("Error inserting batch data", e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Asynchronously insert data into the datasource(s) and cache.
+     * The data will be instantly inserted into the cache, and then the datasource(s) will be updated asynchronously.
+     * This method is non-blocking and will return immediately.
+     * The cached data can be accessed immediately after this method is called.
+     *
+     * @param batch The batch of data to insert
+     */
+    public final void insertBatchAsync(BatchInsert batch, List<SQLConsumer<Connection>> intermediateActions, List<Runnable> preInsertActions, List<Runnable> postInsertActions) {
+        for (InsertContext context : batch.getInsertionContexts()) {
+            insertIntoCache(context);
+        }
+        for (Runnable action : preInsertActions) {
+            try {
+                action.run();
+            } catch (Exception e) {
+                logger.error("Error running pre-insert action", e);
+            }
+        }
+
+        ThreadUtils.submit(() -> {
+            try (
+                    Connection connection = getConnection();
+                    Jedis jedis = jedisProvider.getJedis()
+            ) {
+                connection.setAutoCommit(false);
+                for (InsertContext context : batch.getInsertionContexts()) {
+                    insertIntoDataSource(connection, jedis, context);
+                }
+                for (SQLConsumer<Connection> action : intermediateActions) {
+                    action.accept(connection);
+                }
+                connection.setAutoCommit(true);
+
+                for (Runnable action : postInsertActions) {
+                    try {
+                        action.run();
+                    } catch (Exception e) {
+                        logger.error("Error running post-insert action", e);
+                    }
+                }
+            } catch (SQLException e) {
+                logger.error("Error inserting batch data", e);
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    /**
      * Synchronously insert data into the datasource(s) and cache.
      *
      * @param holder      The root holder of the data to insert
      * @param initialData The initial data to insert
-     * @param <I>         The type of initial data
      */
     @Blocking
-    @SafeVarargs
-    public final <I extends InitialValue<?, ?>> void insert(UniqueData holder, I... initialData) {
+    public final void insert(UniqueData holder, InitialValue<?, ?>... initialData) {
         InsertContext context = buildInsertContext(holder, initialData);
 
         try (
@@ -359,10 +459,8 @@ public class DataManager extends SQLLogger {
      *
      * @param holder      The root holder of the data to insert
      * @param initialData The initial data to insert
-     * @param <I>         The type of initial data
      */
-    @SafeVarargs
-    public final <I extends InitialValue<?, ?>> void insertAsync(UniqueData holder, I... initialData) {
+    public final void insertAsync(UniqueData holder, InitialValue<?, ?>... initialData) {
         InsertContext context = buildInsertContext(holder, initialData);
         insertIntoCache(context);
 
@@ -379,8 +477,7 @@ public class DataManager extends SQLLogger {
         });
     }
 
-    @SafeVarargs
-    private <I extends InitialValue<?, ?>> InsertContext buildInsertContext(UniqueData holder, I... initialData) {
+    public InsertContext buildInsertContext(UniqueData holder, InitialValue<?, ?>... initialData) {
         Map<PersistentValue<?>, InitialPersistentValue> initialPersistentValues = new HashMap<>();
         Map<CachedValue<?>, InitialCachedValue> initialCachedValues = new HashMap<>();
 

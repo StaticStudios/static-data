@@ -4,6 +4,7 @@ import net.staticstudios.data.PersistentCollection;
 import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.impl.PersistentCollectionManager;
+import net.staticstudios.data.util.BatchInsert;
 import net.staticstudios.data.util.DeletionStrategy;
 import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.NotNull;
@@ -32,6 +33,18 @@ public class PersistentUniqueDataCollection<T extends UniqueData> extends Simple
 
     public PersistentValueCollection<UUID> getHolderIds() {
         return holderIds;
+    }
+
+    @Override
+    public void addBatch(BatchInsert batch, List<T> holders) {
+        PersistentCollectionManager manager = getDataManager().getPersistentCollectionManager();
+        List<CollectionEntry> entries = new ArrayList<>();
+        for (T holder : holders) {
+            entries.add(new CollectionEntry(holder.getId(), holder.getId()));
+        }
+
+        batch.early(() -> manager.addEntriesToCache(holderIds, entries));
+        batch.intermediate(connection -> manager.addUniqueDataEntryToDatabase(connection, this, entries));
     }
 
     @Override

@@ -4,6 +4,7 @@ import net.staticstudios.data.data.Data;
 import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.data.collection.*;
 import net.staticstudios.data.key.CollectionKey;
+import net.staticstudios.data.util.BatchInsert;
 import net.staticstudios.data.util.DeletionStrategy;
 import org.jetbrains.annotations.Blocking;
 
@@ -11,6 +12,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.List;
 import java.util.function.Predicate;
 
 /**
@@ -83,6 +85,11 @@ public interface PersistentCollection<T> extends Collection<T>, DataHolder, Data
      */
     static <T extends UniqueData> PersistentCollection<T> manyToMany(DataHolder holder, Class<T> dataType, String schema, String junctionTable, String thisIdColumn, String dataIdColumn) {
         return new PersistentManyToManyCollection<>(holder, dataType, schema, junctionTable, thisIdColumn, dataIdColumn);
+    }
+
+    @Blocking
+    default void addBatch(BatchInsert batch, List<T> toAdd) {
+        throw new UnsupportedOperationException("Batch insert is not supported for this collection type.");
     }
 
     /**

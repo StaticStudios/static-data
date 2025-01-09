@@ -6,6 +6,7 @@ import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.data.DataHolder;
 import net.staticstudios.data.impl.PersistentCollectionManager;
 import net.staticstudios.data.key.CollectionKey;
+import net.staticstudios.data.util.BatchInsert;
 import net.staticstudios.data.util.DeletionStrategy;
 import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.NotNull;
@@ -48,6 +49,15 @@ public class PersistentManyToManyCollection<T extends UniqueData> implements Per
 
     public String getThatIdColumn() {
         return thatIdColumn;
+    }
+
+    @Override
+    public void addBatch(BatchInsert batch, List<T> holders) {
+        PersistentCollectionManager manager = getManager();
+        List<UUID> ids = holders.stream().map(UniqueData::getId).toList();
+
+        batch.early(() -> manager.addToJunctionTableInMemory(this, ids));
+        batch.intermediate(connection -> manager.addToJunctionTableInDatabase(connection, this, ids));
     }
 
     @Override
