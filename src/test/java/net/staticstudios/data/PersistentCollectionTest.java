@@ -251,6 +251,8 @@ public class PersistentCollectionTest extends DataTest {
 
         assertTrue(facebookUser.getPosts().remove(post1));
 
+        assertNull(post1.getUser());
+
         assertEquals(1, facebookUser.getPosts().size());
         assertTrue(facebookUser.getPosts().contains(post2));
         assertEquals(facebookUser, post2.getUser());
@@ -268,6 +270,18 @@ public class PersistentCollectionTest extends DataTest {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+
+        try (PreparedStatement statement = getConnection().prepareStatement("update facebook.posts set user_id = null where id = ?")) {
+            statement.setObject(1, post2.getId());
+            statement.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        waitForDataPropagation();
+
+        assertFalse(facebookUser.getPosts().contains(post2));
+        assertNull(post2.getUser());
     }
 
     @RetryingTest(5)

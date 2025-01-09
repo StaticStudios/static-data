@@ -865,6 +865,9 @@ public class PersistentCollectionManager extends SQLLogger {
             CollectionEntryIdentifier identifier = CollectionEntryIdentifier.of(dummyIdsCollection.getEntryIdColumn(), entry);
             callRemoveHandlers(idsCollectionKey, getEntry(idsCollectionKey, identifier));
 
+            CellKey linkingKey = getEntryLinkingKey(dummyIdsCollection, entry);
+            dataManager.cache(linkingKey, UUID.class, null, Instant.now());
+
             //remove after handlers are called to avoid DDNEEs
             collectionEntryHolders.remove(idsCollectionKey, identifier);
         }
