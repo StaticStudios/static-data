@@ -7,8 +7,6 @@ import net.staticstudios.data.util.DeletionStrategy;
 import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.NotNull;
 
-import java.sql.Connection;
-import java.sql.SQLException;
 import java.util.*;
 import java.util.function.Consumer;
 
@@ -65,13 +63,7 @@ public class PersistentValueCollection<T> extends SimplePersistentCollection<T> 
         PersistentCollectionManager manager = getManager();
         List<CollectionEntry> toAdd = Collections.singletonList(new CollectionEntry(UUID.randomUUID(), t));
         manager.addEntriesToCache(this, toAdd);
-        ThreadUtils.submit(() -> {
-            try (Connection connection = getHolder().getDataManager().getConnection()) {
-                manager.addValueEntryToDatabase(connection, this, toAdd);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        });
+        getDataManager().submitAsyncTask(connection -> manager.addValueEntryToDatabase(connection, this, toAdd));
 
         return true;
     }
@@ -84,13 +76,7 @@ public class PersistentValueCollection<T> extends SimplePersistentCollection<T> 
             if (entry.value().equals(o)) {
                 List<CollectionEntry> toRemove = Collections.singletonList(entry);
                 manager.removeEntriesFromCache(this, toRemove);
-                ThreadUtils.submit(() -> {
-                    try (Connection connection = getHolder().getDataManager().getConnection()) {
-                        manager.removeValueEntryFromDatabase(connection, this, toRemove);
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                });
+                getDataManager().submitAsyncTask(connection -> manager.removeValueEntryFromDatabase(connection, this, toRemove));
 
                 return true;
             }
@@ -109,13 +95,7 @@ public class PersistentValueCollection<T> extends SimplePersistentCollection<T> 
         PersistentCollectionManager manager = getManager();
         List<CollectionEntry> toAdd = c.stream().map(value -> new CollectionEntry(UUID.randomUUID(), value)).toList();
         manager.addEntriesToCache(this, toAdd);
-        ThreadUtils.submit(() -> {
-            try (Connection connection = getHolder().getDataManager().getConnection()) {
-                manager.addValueEntryToDatabase(connection, this, toAdd);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        });
+        getDataManager().submitAsyncTask(connection -> manager.addValueEntryToDatabase(connection, this, toAdd));
 
         return true;
     }
@@ -139,13 +119,7 @@ public class PersistentValueCollection<T> extends SimplePersistentCollection<T> 
         }
 
         manager.removeEntriesFromCache(this, toRemove);
-        ThreadUtils.submit(() -> {
-            try (Connection connection = getHolder().getDataManager().getConnection()) {
-                manager.removeValueEntryFromDatabase(connection, this, toRemove);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        });
+        getDataManager().submitAsyncTask(connection -> manager.removeValueEntryFromDatabase(connection, this, toRemove));
 
         return changed;
     }
@@ -165,13 +139,7 @@ public class PersistentValueCollection<T> extends SimplePersistentCollection<T> 
         }
 
         manager.removeEntriesFromCache(this, toRemove);
-        ThreadUtils.submit(() -> {
-            try (Connection connection = getHolder().getDataManager().getConnection()) {
-                manager.removeValueEntryFromDatabase(connection, this, toRemove);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        });
+        getDataManager().submitAsyncTask(connection -> manager.removeValueEntryFromDatabase(connection, this, toRemove));
 
         return changed;
     }
@@ -181,13 +149,7 @@ public class PersistentValueCollection<T> extends SimplePersistentCollection<T> 
         PersistentCollectionManager manager = getManager();
         List<CollectionEntry> toRemove = new ArrayList<>(manager.getCollectionEntries(this));
         manager.removeEntriesFromCache(this, toRemove);
-        ThreadUtils.submit(() -> {
-            try (Connection connection = getHolder().getDataManager().getConnection()) {
-                manager.removeValueEntryFromDatabase(connection, this, toRemove);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        });
+        getDataManager().submitAsyncTask(connection -> manager.removeValueEntryFromDatabase(connection, this, toRemove));
     }
 
     protected PersistentCollectionManager getManager() {
@@ -230,34 +192,34 @@ public class PersistentValueCollection<T> extends SimplePersistentCollection<T> 
     }
 
     @Override
-    public boolean add(Connection connection, T t) throws SQLException {
+    public boolean addNow(T t) {
         PersistentCollectionManager manager = getManager();
         List<CollectionEntry> toAdd = Collections.singletonList(new CollectionEntry(UUID.randomUUID(), t));
         manager.addEntriesToCache(this, toAdd);
-        manager.addValueEntryToDatabase(connection, this, toAdd);
+        getDataManager().submitBlockingTask(connection -> manager.addValueEntryToDatabase(connection, this, toAdd));
 
         return true;
     }
 
     @Override
-    public boolean addAll(Connection connection, Collection<? extends T> c) throws SQLException {
+    public boolean addAllNow(Collection<? extends T> c) {
         PersistentCollectionManager manager = getManager();
         List<CollectionEntry> toAdd = c.stream().map(value -> new CollectionEntry(UUID.randomUUID(), value)).toList();
         manager.addEntriesToCache(this, toAdd);
-        manager.addValueEntryToDatabase(connection, this, toAdd);
+        getDataManager().submitBlockingTask(connection -> manager.addValueEntryToDatabase(connection, this, toAdd));
 
         return true;
     }
 
     @Override
-    public boolean remove(Connection connection, T t) throws SQLException {
+    public boolean removeNow(T t) {
         PersistentCollectionManager manager = getManager();
 
         for (CollectionEntry entry : manager.getCollectionEntries(this)) {
             if (entry.value().equals(t)) {
                 List<CollectionEntry> toRemove = Collections.singletonList(entry);
                 manager.removeEntriesFromCache(this, toRemove);
-                manager.removeValueEntryFromDatabase(connection, this, toRemove);
+                getDataManager().submitBlockingTask(connection -> manager.removeValueEntryFromDatabase(connection, this, toRemove));
 
                 return true;
             }
@@ -267,7 +229,7 @@ public class PersistentValueCollection<T> extends SimplePersistentCollection<T> 
     }
 
     @Override
-    public boolean removeAll(Connection connection, Collection<? extends T> c) throws SQLException {
+    public boolean removeAllNow(Collection<? extends T> c) {
         boolean changed = false;
 
         PersistentCollectionManager manager = getManager();
@@ -285,22 +247,22 @@ public class PersistentValueCollection<T> extends SimplePersistentCollection<T> 
         }
 
         manager.removeEntriesFromCache(this, toRemove);
-        manager.removeValueEntryFromDatabase(connection, this, toRemove);
+        getDataManager().submitBlockingTask(connection -> manager.removeValueEntryFromDatabase(connection, this, toRemove));
 
         return changed;
     }
 
     @Override
-    public void clear(Connection connection) throws SQLException {
+    public void clearNow() {
         PersistentCollectionManager manager = getManager();
         List<CollectionEntry> toRemove = new ArrayList<>(manager.getCollectionEntries(this));
         manager.removeEntriesFromCache(this, toRemove);
-        manager.removeValueEntryFromDatabase(connection, this, toRemove);
+        getDataManager().submitBlockingTask(connection -> manager.removeValueEntryFromDatabase(connection, this, toRemove));
     }
 
     @Override
-    public Iterator<T> iterator(Connection connection) {
-        return new BlockingItr(getInternalValues().toArray(), connection);
+    public Iterator<T> blockingIterator() {
+        return new BlockingItr(getInternalValues().toArray());
     }
 
     @Override
@@ -371,13 +333,11 @@ public class PersistentValueCollection<T> extends SimplePersistentCollection<T> 
 
     private class BlockingItr implements Iterator<T> {
         private final Object[] values;
-        private final Connection connection;
         int cursor;       // index of next element to return
         int lastRet = -1; // index of last element returned; -1 if no such
 
-        public BlockingItr(Object[] values, Connection connection) {
+        public BlockingItr(Object[] values) {
             this.values = values;
-            this.connection = connection;
         }
 
         public boolean hasNext() {
@@ -396,11 +356,7 @@ public class PersistentValueCollection<T> extends SimplePersistentCollection<T> 
         public void remove() {
             if (lastRet < 0)
                 throw new IllegalStateException();
-            try {
-                PersistentValueCollection.this.remove(connection, (T) values[lastRet]);
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
-            }
+            PersistentValueCollection.this.removeNow((T) values[lastRet]);
 
             lastRet = -1;
         }

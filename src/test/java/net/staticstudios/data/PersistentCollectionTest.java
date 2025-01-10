@@ -129,7 +129,7 @@ public class PersistentCollectionTest extends DataTest {
         assertEquals(facebookUser, post2.getUser());
 
         FacebookPost post3 = FacebookPost.createSync(dataManager, "Here's some post description", null);
-        facebookUser.getPosts().add(dataManager.getConnection(), post3);
+        facebookUser.getPosts().addNow(post3);
 
         assertEquals(3, facebookUser.getPosts().size());
         assertTrue(facebookUser.getPosts().contains(post3));
@@ -209,7 +209,7 @@ public class PersistentCollectionTest extends DataTest {
 
         assertEquals(0, facebookUser.getPosts().size());
 
-        facebookUser.getPosts().addAll(dataManager.getConnection(), List.of(post1, post2));
+        facebookUser.getPosts().addAllNow(List.of(post1, post2));
 
         assertEquals(2, facebookUser.getPosts().size());
 
@@ -342,7 +342,7 @@ public class PersistentCollectionTest extends DataTest {
         assertEquals(facebookUser, post1.getUser());
         assertEquals(facebookUser, post2.getUser());
 
-        assertTrue(facebookUser.getPosts().remove(dataManager.getConnection(), post1));
+        assertTrue(facebookUser.getPosts().removeNow(post1));
 
         assertEquals(1, facebookUser.getPosts().size());
         assertTrue(facebookUser.getPosts().contains(post2));
@@ -421,7 +421,7 @@ public class PersistentCollectionTest extends DataTest {
         assertEquals(facebookUser, post2.getUser());
         assertEquals(facebookUser, post3.getUser());
 
-        assertTrue(facebookUser.getPosts().removeAll(dataManager.getConnection(), List.of(post1, post2)));
+        assertTrue(facebookUser.getPosts().removeAllNow(List.of(post1, post2)));
 
         assertEquals(1, facebookUser.getPosts().size());
         assertTrue(facebookUser.getPosts().contains(post3));
@@ -486,7 +486,7 @@ public class PersistentCollectionTest extends DataTest {
         assertEquals(facebookUser, post1.getUser());
         assertEquals(facebookUser, post2.getUser());
 
-        facebookUser.getPosts().clear(dataManager.getConnection());
+        facebookUser.getPosts().clearNow();
 
         assertEquals(0, facebookUser.getPosts().size());
 
@@ -687,7 +687,7 @@ public class PersistentCollectionTest extends DataTest {
 
         assertEquals(2, facebookUser.getPosts().size());
 
-        Iterator<FacebookPost> iterator = facebookUser.getPosts().iterator(dataManager.getConnection());
+        Iterator<FacebookPost> iterator = facebookUser.getPosts().blockingIterator();
         assertTrue(iterator.hasNext());
         FacebookPost next = iterator.next();
         assertTrue(next.equals(post1) || next.equals(post2));
@@ -696,7 +696,7 @@ public class PersistentCollectionTest extends DataTest {
         assertTrue(next.equals(post1) || next.equals(post2));
         assertFalse(iterator.hasNext());
 
-        iterator = facebookUser.getPosts().iterator(dataManager.getConnection());
+        iterator = facebookUser.getPosts().blockingIterator();
         assertTrue(iterator.hasNext());
         iterator.next();
         iterator.remove();
@@ -842,9 +842,9 @@ public class PersistentCollectionTest extends DataTest {
         FacebookUser facebookUser = FacebookUser.createSync(dataManager);
 
         //Duplicates are permitted
-        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's a quote");
-        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's a quote");
-        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's another quote");
+        facebookUser.getFavoriteQuotes().addNow("Here's a quote");
+        facebookUser.getFavoriteQuotes().addNow("Here's a quote");
+        facebookUser.getFavoriteQuotes().addNow("Here's another quote");
 
         assertEquals(3, facebookUser.getFavoriteQuotes().size());
         assertTrue(facebookUser.getFavoriteQuotes().contains("Here's a quote"));
@@ -908,7 +908,7 @@ public class PersistentCollectionTest extends DataTest {
         FacebookUser facebookUser = FacebookUser.createSync(dataManager);
 
         //Duplicates are permitted
-        facebookUser.getFavoriteQuotes().addAll(dataManager.getConnection(), List.of("Here's a quote", "Here's a quote", "Here's another quote"));
+        facebookUser.getFavoriteQuotes().addAllNow(List.of("Here's a quote", "Here's a quote", "Here's another quote"));
 
         assertEquals(3, facebookUser.getFavoriteQuotes().size());
         assertTrue(facebookUser.getFavoriteQuotes().contains("Here's a quote"));
@@ -986,26 +986,26 @@ public class PersistentCollectionTest extends DataTest {
         FacebookUser facebookUser = FacebookUser.createSync(dataManager);
 
         //Duplicates are permitted
-        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's a quote");
-        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's a quote");
-        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's another quote");
+        facebookUser.getFavoriteQuotes().addNow("Here's a quote");
+        facebookUser.getFavoriteQuotes().addNow("Here's a quote");
+        facebookUser.getFavoriteQuotes().addNow("Here's another quote");
 
         assertEquals(3, facebookUser.getFavoriteQuotes().size());
         assertTrue(facebookUser.getFavoriteQuotes().contains("Here's a quote"));
         assertTrue(facebookUser.getFavoriteQuotes().contains("Here's another quote"));
 
-        assertTrue(facebookUser.getFavoriteQuotes().remove(dataManager.getConnection(), "Here's a quote"));
+        assertTrue(facebookUser.getFavoriteQuotes().removeNow("Here's a quote"));
 
         assertEquals(2, facebookUser.getFavoriteQuotes().size());
         assertTrue(facebookUser.getFavoriteQuotes().contains("Here's a quote"));
         assertTrue(facebookUser.getFavoriteQuotes().contains("Here's another quote"));
 
-        assertTrue(facebookUser.getFavoriteQuotes().remove(dataManager.getConnection(), "Here's a quote"));
+        assertTrue(facebookUser.getFavoriteQuotes().removeNow("Here's a quote"));
 
         assertEquals(1, facebookUser.getFavoriteQuotes().size());
         assertTrue(facebookUser.getFavoriteQuotes().contains("Here's another quote"));
 
-        assertFalse(facebookUser.getFavoriteQuotes().remove(dataManager.getConnection(), "Here's a quote"));
+        assertFalse(facebookUser.getFavoriteQuotes().removeNow("Here's a quote"));
 
         try (PreparedStatement statement = getConnection().prepareStatement("SELECT * FROM facebook.favorite_quotes WHERE user_id = ?")) {
             statement.setObject(1, facebookUser.getId());
@@ -1070,15 +1070,15 @@ public class PersistentCollectionTest extends DataTest {
         FacebookUser facebookUser = FacebookUser.createSync(dataManager);
 
         //Duplicates are permitted
-        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's a quote");
-        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's a quote");
-        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's another quote");
+        facebookUser.getFavoriteQuotes().addNow("Here's a quote");
+        facebookUser.getFavoriteQuotes().addNow("Here's a quote");
+        facebookUser.getFavoriteQuotes().addNow("Here's another quote");
 
         assertEquals(3, facebookUser.getFavoriteQuotes().size());
         assertTrue(facebookUser.getFavoriteQuotes().contains("Here's a quote"));
         assertTrue(facebookUser.getFavoriteQuotes().contains("Here's another quote"));
 
-        assertTrue(facebookUser.getFavoriteQuotes().removeAll(dataManager.getConnection(), List.of("Here's a quote", "Here's another quote")));
+        assertTrue(facebookUser.getFavoriteQuotes().removeAllNow(List.of("Here's a quote", "Here's another quote")));
 
         assertEquals(1, facebookUser.getFavoriteQuotes().size());
         assertTrue(facebookUser.getFavoriteQuotes().contains("Here's a quote"));
@@ -1139,15 +1139,15 @@ public class PersistentCollectionTest extends DataTest {
         FacebookUser facebookUser = FacebookUser.createSync(dataManager);
 
         //Duplicates are permitted
-        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's a quote");
-        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's a quote");
-        facebookUser.getFavoriteQuotes().add(dataManager.getConnection(), "Here's another quote");
+        facebookUser.getFavoriteQuotes().addNow("Here's a quote");
+        facebookUser.getFavoriteQuotes().addNow("Here's a quote");
+        facebookUser.getFavoriteQuotes().addNow("Here's another quote");
 
         assertEquals(3, facebookUser.getFavoriteQuotes().size());
         assertTrue(facebookUser.getFavoriteQuotes().contains("Here's a quote"));
         assertTrue(facebookUser.getFavoriteQuotes().contains("Here's another quote"));
 
-        facebookUser.getFavoriteQuotes().clear(dataManager.getConnection());
+        facebookUser.getFavoriteQuotes().clearNow();
 
         assertEquals(0, facebookUser.getFavoriteQuotes().size());
 
@@ -1356,7 +1356,7 @@ public class PersistentCollectionTest extends DataTest {
 
         assertEquals(3, facebookUser.getFavoriteQuotes().size());
 
-        Iterator<String> iterator = facebookUser.getFavoriteQuotes().iterator(dataManager.getConnection());
+        Iterator<String> iterator = facebookUser.getFavoriteQuotes().blockingIterator();
         assertTrue(iterator.hasNext());
         String next = iterator.next();
         assertTrue(next.equals("Here's a quote") || next.equals("Here's another quote"));
@@ -1368,7 +1368,7 @@ public class PersistentCollectionTest extends DataTest {
         assertTrue(next.equals("Here's a quote") || next.equals("Here's another quote"));
         assertFalse(iterator.hasNext());
 
-        iterator = facebookUser.getFavoriteQuotes().iterator(dataManager.getConnection());
+        iterator = facebookUser.getFavoriteQuotes().blockingIterator();
         assertTrue(iterator.hasNext());
         iterator.next();
         iterator.remove();
@@ -1529,9 +1529,9 @@ public class PersistentCollectionTest extends DataTest {
         FacebookUser following1 = FacebookUser.createSync(dataManager);
         FacebookUser following2 = FacebookUser.createSync(dataManager);
 
-        facebookUser.getFollowing().add(dataManager.getConnection(), following1);
+        facebookUser.getFollowing().addNow(following1);
         assertEquals(1, facebookUser.getFollowing().size());
-        facebookUser.getFollowing().add(dataManager.getConnection(), following2);
+        facebookUser.getFollowing().addNow(following2);
         assertEquals(2, facebookUser.getFollowing().size());
 
         assertTrue(facebookUser.getFollowing().contains(following1));
@@ -1605,7 +1605,7 @@ public class PersistentCollectionTest extends DataTest {
         FacebookUser following1 = FacebookUser.createSync(dataManager);
         FacebookUser following2 = FacebookUser.createSync(dataManager);
 
-        facebookUser.getFollowing().addAll(dataManager.getConnection(), List.of(following1, following2));
+        facebookUser.getFollowing().addAllNow(List.of(following1, following2));
         assertEquals(2, facebookUser.getFollowing().size());
 
         assertTrue(facebookUser.getFollowing().contains(following1));
@@ -1745,14 +1745,14 @@ public class PersistentCollectionTest extends DataTest {
         FacebookUser following1 = FacebookUser.createSync(dataManager);
         FacebookUser following2 = FacebookUser.createSync(dataManager);
 
-        facebookUser.getFollowing().add(dataManager.getConnection(), following1);
-        facebookUser.getFollowing().add(dataManager.getConnection(), following2);
+        facebookUser.getFollowing().addNow(following1);
+        facebookUser.getFollowing().addNow(following2);
 
         assertEquals(2, facebookUser.getFollowing().size());
         assertTrue(facebookUser.getFollowing().contains(following1));
         assertTrue(facebookUser.getFollowing().contains(following2));
 
-        assertTrue(facebookUser.getFollowing().remove(dataManager.getConnection(), following1));
+        assertTrue(facebookUser.getFollowing().removeNow(following1));
 
         assertEquals(1, facebookUser.getFollowing().size());
         assertFalse(facebookUser.getFollowing().contains(following1));
@@ -1840,16 +1840,16 @@ public class PersistentCollectionTest extends DataTest {
         FacebookUser following2 = FacebookUser.createSync(dataManager);
         FacebookUser following3 = FacebookUser.createSync(dataManager);
 
-        facebookUser.getFollowing().add(dataManager.getConnection(), following1);
-        facebookUser.getFollowing().add(dataManager.getConnection(), following2);
-        facebookUser.getFollowing().add(dataManager.getConnection(), following3);
+        facebookUser.getFollowing().addNow(following1);
+        facebookUser.getFollowing().addNow(following2);
+        facebookUser.getFollowing().addNow(following3);
 
         assertEquals(3, facebookUser.getFollowing().size());
         assertTrue(facebookUser.getFollowing().contains(following1));
         assertTrue(facebookUser.getFollowing().contains(following2));
         assertTrue(facebookUser.getFollowing().contains(following3));
 
-        assertTrue(facebookUser.getFollowing().removeAll(dataManager.getConnection(), List.of(following1, following2)));
+        assertTrue(facebookUser.getFollowing().removeAllNow(List.of(following1, following2)));
 
         assertEquals(1, facebookUser.getFollowing().size());
         assertFalse(facebookUser.getFollowing().contains(following1));
@@ -1924,14 +1924,14 @@ public class PersistentCollectionTest extends DataTest {
         FacebookUser following1 = FacebookUser.createSync(dataManager);
         FacebookUser following2 = FacebookUser.createSync(dataManager);
 
-        facebookUser.getFollowing().add(dataManager.getConnection(), following1);
-        facebookUser.getFollowing().add(dataManager.getConnection(), following2);
+        facebookUser.getFollowing().addNow(following1);
+        facebookUser.getFollowing().addNow(following2);
 
         assertEquals(2, facebookUser.getFollowing().size());
         assertTrue(facebookUser.getFollowing().contains(following1));
         assertTrue(facebookUser.getFollowing().contains(following2));
 
-        facebookUser.getFollowing().clear(dataManager.getConnection());
+        facebookUser.getFollowing().clearNow();
 
         assertEquals(0, facebookUser.getFollowing().size());
 
@@ -2145,12 +2145,12 @@ public class PersistentCollectionTest extends DataTest {
         FacebookUser following1 = FacebookUser.createSync(dataManager);
         FacebookUser following2 = FacebookUser.createSync(dataManager);
 
-        facebookUser1.getFollowing().add(dataManager.getConnection(), following1);
-        facebookUser1.getFollowing().add(dataManager.getConnection(), following2);
+        facebookUser1.getFollowing().addNow(following1);
+        facebookUser1.getFollowing().addNow(following2);
 
         assertEquals(2, facebookUser1.getFollowing().size());
 
-        Iterator<FacebookUser> iterator = facebookUser1.getFollowing().iterator(dataManager.getConnection());
+        Iterator<FacebookUser> iterator = facebookUser1.getFollowing().blockingIterator();
         assertTrue(iterator.hasNext());
         FacebookUser next = iterator.next();
         assertTrue(next.equals(following1) || next.equals(following2));
@@ -2159,7 +2159,7 @@ public class PersistentCollectionTest extends DataTest {
         assertTrue(next.equals(following1) || next.equals(following2));
         assertFalse(iterator.hasNext());
 
-        iterator = facebookUser1.getFollowing().iterator(dataManager.getConnection());
+        iterator = facebookUser1.getFollowing().blockingIterator();
         assertTrue(iterator.hasNext());
         iterator.next();
         iterator.remove();

@@ -11,8 +11,6 @@ import net.staticstudios.data.util.DeletionStrategy;
 import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.NotNull;
 
-import java.sql.Connection;
-import java.sql.SQLException;
 import java.util.*;
 import java.util.function.Consumer;
 
@@ -61,16 +59,16 @@ public class PersistentManyToManyCollection<T extends UniqueData> implements Per
     }
 
     @Override
-    public boolean add(Connection connection, T t) throws SQLException {
+    public boolean addNow(T t) {
         PersistentCollectionManager manager = getManager();
         manager.addToJunctionTableInMemory(this, Collections.singletonList(t.getId()));
-        manager.addToJunctionTableInDatabase(connection, this, Collections.singletonList(t.getId()));
+        getDataManager().submitBlockingTask(connection1 -> manager.addToJunctionTableInDatabase(connection1, this, Collections.singletonList(t.getId())));
 
         return true;
     }
 
     @Override
-    public boolean addAll(Connection connection, Collection<? extends T> c) throws SQLException {
+    public boolean addAllNow(Collection<? extends T> c) {
         List<UUID> ids = new ArrayList<>();
         for (T t : c) {
             ids.add(t.getId());
@@ -78,22 +76,22 @@ public class PersistentManyToManyCollection<T extends UniqueData> implements Per
 
         PersistentCollectionManager manager = getManager();
         manager.addToJunctionTableInMemory(this, ids);
-        manager.addToJunctionTableInDatabase(connection, this, ids);
+        getDataManager().submitBlockingTask(connection -> manager.addToJunctionTableInDatabase(connection, this, ids));
 
         return true;
     }
 
     @Override
-    public boolean remove(Connection connection, T t) throws SQLException {
+    public boolean removeNow(T t) {
         PersistentCollectionManager manager = getManager();
         manager.removeFromJunctionTableInMemory(this, Collections.singletonList(t.getId()));
-        manager.removeFromJunctionTableInDatabase(connection, this, Collections.singletonList(t.getId()));
+        getDataManager().submitBlockingTask(connection -> manager.removeFromJunctionTableInDatabase(connection, this, Collections.singletonList(t.getId())));
 
         return true;
     }
 
     @Override
-    public boolean removeAll(Connection connection, Collection<? extends T> c) throws SQLException {
+    public boolean removeAllNow(Collection<? extends T> c) {
         List<UUID> ids = new ArrayList<>();
         for (T t : c) {
             ids.add(t.getId());
@@ -101,22 +99,22 @@ public class PersistentManyToManyCollection<T extends UniqueData> implements Per
 
         PersistentCollectionManager manager = getManager();
         manager.removeFromJunctionTableInMemory(this, ids);
-        manager.removeFromJunctionTableInDatabase(connection, this, ids);
+        getDataManager().submitBlockingTask(connection -> manager.removeFromJunctionTableInDatabase(connection, this, ids));
 
         return true;
     }
 
     @Override
-    public void clear(Connection connection) throws SQLException {
+    public void clearNow() {
         PersistentCollectionManager manager = getManager();
         List<UUID> ids = manager.getJunctionTableEntryIds(this);
         manager.removeFromJunctionTableInMemory(this, ids);
-        manager.removeFromJunctionTableInDatabase(connection, this, ids);
+        getDataManager().submitBlockingTask(connection -> manager.removeFromJunctionTableInDatabase(connection, this, ids));
     }
 
     @Override
-    public Iterator<T> iterator(Connection connection) {
-        return new BlockingItr(getManager().getJunctionTableEntryIds(this).toArray(UUID[]::new), connection);
+    public Iterator<T> blockingIterator() {
+        return new BlockingItr(getManager().getJunctionTableEntryIds(this).toArray(UUID[]::new));
     }
 
     @Override
@@ -157,13 +155,8 @@ public class PersistentManyToManyCollection<T extends UniqueData> implements Per
     public boolean add(T t) {
         PersistentCollectionManager manager = getManager();
         manager.addToJunctionTableInMemory(this, Collections.singletonList(t.getId()));
-        ThreadUtils.submit(() -> {
-            try (Connection connection = getDataManager().getConnection()) {
-                manager.addToJunctionTableInDatabase(connection, this, Collections.singletonList(t.getId()));
-            } catch (SQLException e) {
-                e.printStackTrace();
-            }
-        });
+
+        getDataManager().submitAsyncTask(connection -> manager.addToJunctionTableInDatabase(connection, this, Collections.singletonList(t.getId())));
 
         return true;
     }
@@ -176,13 +169,7 @@ public class PersistentManyToManyCollection<T extends UniqueData> implements Per
 
         PersistentCollectionManager manager = getManager();
         manager.removeFromJunctionTableInMemory(this, Collections.singletonList(((UniqueData) o).getId()));
-        ThreadUtils.submit(() -> {
-            try (Connection connection = getDataManager().getConnection()) {
-                manager.removeFromJunctionTableInDatabase(connection, this, Collections.singletonList(((UniqueData) o).getId()));
-            } catch (SQLException e) {
-                e.printStackTrace();
-            }
-        });
+        getDataManager().submitAsyncTask(connection -> manager.removeFromJunctionTableInDatabase(connection, this, Collections.singletonList(((UniqueData) o).getId())));
 
         return true;
     }
@@ -207,13 +194,7 @@ public class PersistentManyToManyCollection<T extends UniqueData> implements Per
 
         PersistentCollectionManager manager = getManager();
         manager.addToJunctionTableInMemory(this, ids);
-        ThreadUtils.submit(() -> {
-            try (Connection connection = getDataManager().getConnection()) {
-                manager.addToJunctionTableInDatabase(connection, this, ids);
-            } catch (SQLException e) {
-                e.printStackTrace();
-            }
-        });
+        getDataManager().submitAsyncTask(connection -> manager.addToJunctionTableInDatabase(connection, this, ids));
 
         return true;
     }
@@ -229,13 +210,7 @@ public class PersistentManyToManyCollection<T extends UniqueData> implements Per
 
         PersistentCollectionManager manager = getManager();
         manager.removeFromJunctionTableInMemory(this, ids);
-        ThreadUtils.submit(() -> {
-            try (Connection connection = getDataManager().getConnection()) {
-                manager.removeFromJunctionTableInDatabase(connection, this, ids);
-            } catch (SQLException e) {
-                e.printStackTrace();
-            }
-        });
+        getDataManager().submitAsyncTask(connection -> manager.removeFromJunctionTableInDatabase(connection, this, ids));
 
         return true;
     }
@@ -258,13 +233,7 @@ public class PersistentManyToManyCollection<T extends UniqueData> implements Per
         }
 
         manager.removeFromJunctionTableInMemory(this, toRemove);
-        ThreadUtils.submit(() -> {
-            try (Connection connection = getDataManager().getConnection()) {
-                manager.removeFromJunctionTableInDatabase(connection, this, toRemove);
-            } catch (SQLException e) {
-                e.printStackTrace();
-            }
-        });
+        getDataManager().submitAsyncTask(connection -> manager.removeFromJunctionTableInDatabase(connection, this, toRemove));
 
         return !toRemove.isEmpty();
     }
@@ -274,13 +243,7 @@ public class PersistentManyToManyCollection<T extends UniqueData> implements Per
         PersistentCollectionManager manager = getManager();
         List<UUID> ids = manager.getJunctionTableEntryIds(this);
         manager.removeFromJunctionTableInMemory(this, ids);
-        ThreadUtils.submit(() -> {
-            try (Connection connection = getDataManager().getConnection()) {
-                manager.removeFromJunctionTableInDatabase(connection, this, ids);
-            } catch (SQLException e) {
-                e.printStackTrace();
-            }
-        });
+        getDataManager().submitAsyncTask(connection -> manager.removeFromJunctionTableInDatabase(connection, this, ids));
     }
 
     @Override
@@ -382,13 +345,7 @@ public class PersistentManyToManyCollection<T extends UniqueData> implements Per
             UUID id = ids[lastRet];
             PersistentCollectionManager manager = getManager();
             manager.removeFromJunctionTableInMemory(PersistentManyToManyCollection.this, Collections.singletonList(id));
-            ThreadUtils.submit(() -> {
-                try (Connection connection = getHolder().getDataManager().getConnection()) {
-                    manager.removeFromJunctionTableInDatabase(connection, PersistentManyToManyCollection.this, Collections.singletonList(id));
-                } catch (SQLException e) {
-                    e.printStackTrace();
-                }
-            });
+            getDataManager().submitAsyncTask(connection -> manager.removeFromJunctionTableInDatabase(connection, PersistentManyToManyCollection.this, Collections.singletonList(id)));
 
             lastRet = -1;
         }
@@ -406,13 +363,11 @@ public class PersistentManyToManyCollection<T extends UniqueData> implements Per
 
     private class BlockingItr implements Iterator<T> {
         private final UUID[] ids;
-        private final Connection connection;
         int cursor;       // index of next element to return
         int lastRet = -1; // index of last element returned; -1 if no such
 
-        public BlockingItr(UUID[] ids, Connection connection) {
+        public BlockingItr(UUID[] ids) {
             this.ids = ids;
-            this.connection = connection;
         }
 
         public boolean hasNext() {
@@ -434,11 +389,7 @@ public class PersistentManyToManyCollection<T extends UniqueData> implements Per
             UUID id = ids[lastRet];
             PersistentCollectionManager manager = getManager();
             manager.removeFromJunctionTableInMemory(PersistentManyToManyCollection.this, Collections.singletonList(id));
-            try {
-                manager.removeFromJunctionTableInDatabase(connection, PersistentManyToManyCollection.this, Collections.singletonList(id));
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
-            }
+            getDataManager().submitBlockingTask(connection -> manager.removeFromJunctionTableInDatabase(connection, PersistentManyToManyCollection.this, Collections.singletonList(id)));
 
             lastRet = -1;
         }

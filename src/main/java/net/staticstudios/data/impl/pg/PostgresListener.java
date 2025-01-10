@@ -3,8 +3,8 @@ package net.staticstudios.data.impl.pg;
 import com.google.gson.Gson;
 import com.impossibl.postgres.api.jdbc.PGConnection;
 import com.impossibl.postgres.api.jdbc.PGNotificationListener;
-import com.zaxxer.hikari.HikariConfig;
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.util.DataSourceConfig;
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
 import org.slf4j.Logger;
@@ -18,7 +18,6 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.function.Consumer;
@@ -64,17 +63,12 @@ public class PostgresListener {
     private final PGConnection pgConnection;
     private final Gson gson = new Gson();
 
-    public PostgresListener(DataManager dataManager, HikariConfig hikariConfig) {
+    public PostgresListener(DataManager dataManager, DataSourceConfig ds) {
         try {
             Class.forName("com.impossibl.postgres.jdbc.PGDriver");
 
-            Properties props = hikariConfig.getDataSourceProperties();
-            String hostname = props.getProperty("serverName");
-            int port = (int) props.get("portNumber");
-            String user = props.getProperty("user");
-            String password = props.getProperty("password");
-            String database = props.getProperty("databaseName");
-            this.pgConnection = DriverManager.getConnection("jdbc:pgsql://" + hostname + ":" + port + "/" + database, user, password).unwrap(PGConnection.class);
+
+            this.pgConnection = DriverManager.getConnection("jdbc:pgsql://" + ds.databaseHost() + ":" + ds.databasePort() + "/" + ds.databaseName(), ds.databaseUsername(), ds.databasePassword()).unwrap(PGConnection.class);
 
             try (Statement statement = pgConnection.createStatement()) {
                 logger.trace("Creating data_notify function");

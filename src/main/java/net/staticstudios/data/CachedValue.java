@@ -15,7 +15,6 @@ import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.Blocking;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import redis.clients.jedis.Jedis;
 
 import java.time.Instant;
 import java.util.List;
@@ -171,32 +170,20 @@ public class CachedValue<T> implements Value<T> {
     public void set(T value) {
         CachedValueManager manager = dataManager.getCachedValueManager();
         dataManager.cache(this.getKey(), dataType, value, Instant.now());
-
-        ThreadUtils.submit(() -> {
-            try (Jedis jedis = dataManager.getJedis()) {
-                manager.setInRedis(jedis, List.of(initial(value)));
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        });
+        getDataManager().submitAsyncTask((connection, jedis) -> manager.setInRedis(jedis, List.of(initial(value))));
     }
 
     /**
      * Set the value of this object.
+     * This method blocks until the value has been set in Redis.
      *
-     * @param jedis the Jedis instance to use
      * @param value the value to set
      */
     @Blocking
-    public void set(Jedis jedis, T value) {
+    public void setNow(T value) {
         CachedValueManager manager = dataManager.getCachedValueManager();
         dataManager.cache(this.getKey(), dataType, value, Instant.now());
-
-        try {
-            manager.setInRedis(jedis, List.of(initial(value)));
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        getDataManager().submitBlockingTask((connection, jedis) -> manager.setInRedis(jedis, List.of(initial(value))));
     }
 
     /**
