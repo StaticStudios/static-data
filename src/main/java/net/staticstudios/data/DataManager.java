@@ -146,7 +146,11 @@ public class DataManager extends SQLLogger {
     }
 
     public void submitAsyncTask(ConnectionConsumer task) {
-        taskQueue.submitTask(task);
+        taskQueue.submitTask(task)
+                .exceptionally(e -> {
+                    logger.error("Error submitting async task", e);
+                    return null;
+                });
     }
 
     /**
@@ -441,7 +445,6 @@ public class DataManager extends SQLLogger {
         InsertContext context = buildInsertContext(holder, initialData);
 
         submitBlockingTask((connection, jedis) -> {
-            ;
             insertIntoDataSource(connection, jedis, context);
             insertIntoCache(context);
         });
