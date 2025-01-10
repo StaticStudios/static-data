@@ -6,8 +6,6 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
-import com.zaxxer.hikari.HikariConfig;
-import com.zaxxer.hikari.pool.HikariPool;
 import net.staticstudios.data.data.Data;
 import net.staticstudios.data.data.InitialValue;
 import net.staticstudios.data.data.collection.PersistentManyToManyCollection;
@@ -25,8 +23,8 @@ import net.staticstudios.data.key.CellKey;
 import net.staticstudios.data.key.DataKey;
 import net.staticstudios.data.key.DatabaseKey;
 import net.staticstudios.data.primative.Primitives;
+import net.staticstudios.data.util.TaskQueue;
 import net.staticstudios.data.util.*;
-import net.staticstudios.utils.JedisProvider;
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.Blocking;
@@ -63,23 +61,23 @@ public class DataManager extends SQLLogger {
     private final Multimap<String, PersistentManyToManyCollection<?>> dummyPersistentManyToManyCollectionMap;
     private final Multimap<String, UniqueData> dummyUniqueDataMap;
     private final Map<Class<?>, UniqueData> dummyInstances;
-    private final HikariPool connectionPool;
     private final Set<Class<? extends UniqueData>> loadedDependencies = new HashSet<>();
     private final List<ValueSerializer<?, ?>> valueSerializers;
     private final PostgresListener pgListener;
     private final String applicationName;
-    private final JedisProvider jedisProvider;
     private final PersistentValueManager persistentValueManager;
     private final PersistentCollectionManager persistentCollectionManager;
     private final CachedValueManager cachedValueManager;
 
+    private final TaskQueue taskQueue;
+
+
     /**
      * Create a new data manager.
      *
-     * @param poolConfig    the HikariCP configuration to use for the internal connection pool
-     * @param jedisProvider the Jedis provider for all Redis operations
+     * @param dataSourceConfig the data source configuration
      */
-    public DataManager(HikariConfig poolConfig, JedisProvider jedisProvider) {
+    public DataManager(DataSourceConfig dataSourceConfig) {
         this.applicationName = "static_data_manager-" + UUID.randomUUID();
         this.cache = new ConcurrentHashMap<>();
         this.valueUpdateHandlers = Multimaps.synchronizedListMultimap(ArrayListMultimap.create());
@@ -91,9 +89,8 @@ public class DataManager extends SQLLogger {
         this.dummyInstances = new ConcurrentHashMap<>();
         this.uniqueDataIds = Multimaps.synchronizedSetMultimap(HashMultimap.create());
         this.valueSerializers = new CopyOnWriteArrayList<>();
-        this.jedisProvider = jedisProvider;
 
-        pgListener = new PostgresListener(this, poolConfig);
+        pgListener = new PostgresListener(this, dataSourceConfig);
 
         pgListener.addHandler(notification -> { //Call insert handler first so that we can access the data in the other handlers
             if (notification.getOperation() == PostgresOperation.INSERT) {
@@ -112,7 +109,7 @@ public class DataManager extends SQLLogger {
 
         this.persistentValueManager = new PersistentValueManager(this, pgListener);
         this.persistentCollectionManager = new PersistentCollectionManager(this, pgListener);
-        this.cachedValueManager = new CachedValueManager(this);
+        this.cachedValueManager = new CachedValueManager(this, dataSourceConfig);
 
         pgListener.addHandler(notification -> { //Call delete handler last so that we can access the data in the other handlers
             if (notification.getOperation() == PostgresOperation.DELETE) {
@@ -127,23 +124,44 @@ public class DataManager extends SQLLogger {
             }
         });
 
-        HikariConfig customizedPoolConfig = new HikariConfig();
-        poolConfig.copyStateTo(customizedPoolConfig);
-        customizedPoolConfig.addDataSourceProperty("ApplicationName", applicationName);
 
-        this.connectionPool = new HikariPool(customizedPoolConfig);
+        this.taskQueue = new TaskQueue(dataSourceConfig, applicationName);
 
         ThreadUtils.onShutdownRunSync(ShutdownStage.CLEANUP, () -> {
-            try {
-                connectionPool.shutdown();
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-
             cache.clear();
             uniqueDataCache.clear();
             uniqueDataIds.clear();
         });
+    }
+
+    /**
+     * Submit a blocking task to the priority task queue.
+     * This method is blocking and will wait for the task to complete before returning.
+     *
+     * @param task The task to submit
+     */
+    @Blocking
+    public void submitBlockingTask(ConnectionConsumer task) {
+        taskQueue.submitTask(task).join();
+    }
+
+    public void submitAsyncTask(ConnectionConsumer task) {
+        taskQueue.submitTask(task);
+    }
+
+    /**
+     * Submit a blocking task to the priority task queue.
+     * This method is blocking and will wait for the task to complete before returning.
+     *
+     * @param task The task to submit
+     */
+    @Blocking
+    public void submitBlockingTask(ConnectionJedisConsumer task) {
+        taskQueue.submitTask(task).join();
+    }
+
+    public void submitAsyncTask(ConnectionJedisConsumer task) {
+        taskQueue.submitTask(task);
     }
 
     public PersistentValueManager getPersistentValueManager() {
@@ -254,7 +272,7 @@ public class DataManager extends SQLLogger {
                 }
             }
 
-            try (Connection connection = getConnection()) {
+            submitBlockingTask((connection, jedis) -> {
                 // Load all the unique data first
                 for (UniqueData dummyHolder : dummyHolders) {
                     loadUniqueData(connection, dummyHolder);
@@ -302,13 +320,10 @@ public class DataManager extends SQLLogger {
                     Collection<CachedValue<?>> dummyValues = dummyCachedValues.get(dummyHolder);
 
                     for (CachedValue<?> dummyValue : dummyValues) {
-                        cachedValueManager.loadAllFromRedis(dummyValue);
+                        cachedValueManager.loadAllFromRedis(jedis, dummyValue);
                     }
                 }
-
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
+            });
 
             loadedDependencies.addAll(dependencies);
         } catch (Exception e) {
@@ -342,16 +357,13 @@ public class DataManager extends SQLLogger {
      * @param batch The batch of data to insert
      */
     @Blocking
-    public final void insertBatch(BatchInsert batch, List<SQLConsumer<Connection>> intermediateActions, List<Runnable> preInsertActions, List<Runnable> postInsertActions) {
-        try (
-                Connection connection = getConnection();
-                Jedis jedis = jedisProvider.getJedis()
-        ) {
+    public final void insertBatch(BatchInsert batch, List<ConnectionConsumer> intermediateActions, List<Runnable> preInsertActions, List<Runnable> postInsertActions) {
+        submitBlockingTask((connection, jedis) -> {
             connection.setAutoCommit(false);
             for (InsertContext context : batch.getInsertionContexts()) {
                 insertIntoDataSource(connection, jedis, context);
             }
-            for (SQLConsumer<Connection> action : intermediateActions) {
+            for (ConnectionConsumer action : intermediateActions) {
                 action.accept(connection);
             }
             connection.setAutoCommit(true);
@@ -375,10 +387,7 @@ public class DataManager extends SQLLogger {
                     logger.error("Error running post-insert action", e);
                 }
             }
-        } catch (SQLException e) {
-            logger.error("Error inserting batch data", e);
-            throw new RuntimeException(e);
-        }
+        });
     }
 
     /**
@@ -389,7 +398,7 @@ public class DataManager extends SQLLogger {
      *
      * @param batch The batch of data to insert
      */
-    public final void insertBatchAsync(BatchInsert batch, List<SQLConsumer<Connection>> intermediateActions, List<Runnable> preInsertActions, List<Runnable> postInsertActions) {
+    public final void insertBatchAsync(BatchInsert batch, List<ConnectionConsumer> intermediateActions, List<Runnable> preInsertActions, List<Runnable> postInsertActions) {
         for (InsertContext context : batch.getInsertionContexts()) {
             insertIntoCache(context);
         }
@@ -401,30 +410,22 @@ public class DataManager extends SQLLogger {
             }
         }
 
-        ThreadUtils.submit(() -> {
-            try (
-                    Connection connection = getConnection();
-                    Jedis jedis = jedisProvider.getJedis()
-            ) {
-                connection.setAutoCommit(false);
-                for (InsertContext context : batch.getInsertionContexts()) {
-                    insertIntoDataSource(connection, jedis, context);
-                }
-                for (SQLConsumer<Connection> action : intermediateActions) {
-                    action.accept(connection);
-                }
-                connection.setAutoCommit(true);
+        submitAsyncTask((connection, jedis) -> {
+            connection.setAutoCommit(false);
+            for (InsertContext context : batch.getInsertionContexts()) {
+                insertIntoDataSource(connection, jedis, context);
+            }
+            for (ConnectionConsumer action : intermediateActions) {
+                action.accept(connection);
+            }
+            connection.setAutoCommit(true);
 
-                for (Runnable action : postInsertActions) {
-                    try {
-                        action.run();
-                    } catch (Exception e) {
-                        logger.error("Error running post-insert action", e);
-                    }
+            for (Runnable action : postInsertActions) {
+                try {
+                    action.run();
+                } catch (Exception e) {
+                    logger.error("Error running post-insert action", e);
                 }
-            } catch (SQLException e) {
-                logger.error("Error inserting batch data", e);
-                throw new RuntimeException(e);
             }
         });
     }
@@ -439,16 +440,11 @@ public class DataManager extends SQLLogger {
     public final void insert(UniqueData holder, InitialValue<?, ?>... initialData) {
         InsertContext context = buildInsertContext(holder, initialData);
 
-        try (
-                Connection connection = getConnection();
-                Jedis jedis = jedisProvider.getJedis()
-        ) {
+        submitBlockingTask((connection, jedis) -> {
+            ;
             insertIntoDataSource(connection, jedis, context);
             insertIntoCache(context);
-        } catch (SQLException e) {
-            logger.error("Error inserting data", e);
-            throw new RuntimeException(e);
-        }
+        });
     }
 
     /**
@@ -464,16 +460,8 @@ public class DataManager extends SQLLogger {
         InsertContext context = buildInsertContext(holder, initialData);
         insertIntoCache(context);
 
-        ThreadUtils.submit(() -> {
-            try (
-                    Connection connection = getConnection();
-                    Jedis jedis = jedisProvider.getJedis()
-            ) {
-                insertIntoDataSource(connection, jedis, context);
-            } catch (SQLException e) {
-                logger.error("Error inserting data", e);
-                throw new RuntimeException(e);
-            }
+        submitAsyncTask((connection, jedis) -> {
+            insertIntoDataSource(connection, jedis, context);
         });
     }
 
@@ -638,16 +626,7 @@ public class DataManager extends SQLLogger {
         deleteFromCache(context);
         //todo: i really dislike that update handlers are called when things are deleted. revisit this
 
-        ThreadUtils.submit(() -> {
-            try (Connection connection = getConnection();
-                 Jedis jedis = jedisProvider.getJedis()
-            ) {
-                deleteFromDataSource(connection, jedis, context);
-            } catch (SQLException e) {
-                logger.error("Error deleting data", e);
-                throw new RuntimeException(e);
-            }
-        });
+        submitAsyncTask((connection, jedis) -> deleteFromDataSource(connection, jedis, context));
     }
 
     /**
@@ -663,14 +642,7 @@ public class DataManager extends SQLLogger {
         logger.trace("Deleting: {}", context);
         deleteFromCache(context);
 
-        try (Connection connection = getConnection();
-             Jedis jedis = jedisProvider.getJedis()
-        ) {
-            deleteFromDataSource(connection, jedis, context);
-        } catch (SQLException e) {
-            logger.error("Error deleting data", e);
-            throw new RuntimeException(e);
-        }
+        submitBlockingTask((connection, jedis) -> deleteFromDataSource(connection, jedis, context));
     }
 
     private DeleteContext buildDeleteContext(UniqueData holder) {
@@ -1022,28 +994,6 @@ public class DataManager extends SQLLogger {
 
     public void registerValueUpdateHandler(DataKey key, ValueUpdateHandler<?> handler) {
         valueUpdateHandlers.put(key, handler);
-    }
-
-    /**
-     * Get a connection from the connection pool.
-     * This is an internal method and external callers should use it with caution.
-     * Note that all connections in this pool have their application name set to a specific value.
-     * Any updates made with a connection from this pool will not be received by this data manager instance.
-     * Most callers should use their own connection pool.
-     *
-     * @return A connection from the connection pool
-     * @throws SQLException If a connection cannot be obtained
-     */
-    public Connection getConnection() throws SQLException {
-        return connectionPool.getConnection();
-    }
-
-    public JedisProvider getJedisProvider() {
-        return jedisProvider;
-    }
-
-    public Jedis getJedis() {
-        return jedisProvider.getJedis();
     }
 
     public void registerSerializer(ValueSerializer<?, ?> serializer) {

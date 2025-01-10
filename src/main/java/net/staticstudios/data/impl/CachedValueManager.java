@@ -6,6 +6,7 @@ import net.staticstudios.data.data.Data;
 import net.staticstudios.data.data.value.InitialCachedValue;
 import net.staticstudios.data.key.RedisKey;
 import net.staticstudios.data.primative.Primitives;
+import net.staticstudios.data.util.DataSourceConfig;
 import net.staticstudios.data.util.DeleteContext;
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
@@ -24,12 +25,12 @@ public class CachedValueManager {
     private static final Logger logger = LoggerFactory.getLogger(CachedValueManager.class);
     private final DataManager dataManager;
 
-    public CachedValueManager(DataManager dataManager) {
+    public CachedValueManager(DataManager dataManager, DataSourceConfig ds) {
         this.dataManager = dataManager;
 
         RedisListener listener = new RedisListener();
         Thread listenerThread = new Thread(() -> {
-            try (Jedis jedis = new Jedis(dataManager.getJedisProvider().getJedisHost(), dataManager.getJedisProvider().getJedisPort())) {
+            try (Jedis jedis = new Jedis(ds.redisHost(), ds.redisPort())) {
                 jedis.psubscribe(listener, Arrays.stream(RedisEvent.values()).map(e -> "__keyevent@0__:" + e.name().toLowerCase()).toArray(String[]::new));
             }
         });
@@ -86,19 +87,17 @@ public class CachedValueManager {
 
 
     @Blocking
-    public void loadAllFromRedis(CachedValue<?> dummyValue) {
-        try (Jedis jedis = dataManager.getJedis()) {
-            Set<String> matchedKeys = jedis.keys(dummyValue.getKey().toPartialKey());
-            for (String matchedKey : matchedKeys) {
-                if (!RedisKey.isRedisKey(matchedKey)) {
-                    continue;
-                }
-                String encoded = jedis.get(matchedKey);
-
-                Object serialized = dataManager.decode(dummyValue.getDataType(), encoded);
-                Object deserialized = dataManager.deserialize(dummyValue.getDataType(), serialized);
-                dataManager.cache(RedisKey.fromString(matchedKey), dummyValue.getDataType(), deserialized, Instant.now());
+    public void loadAllFromRedis(Jedis jedis, CachedValue<?> dummyValue) {
+        Set<String> matchedKeys = jedis.keys(dummyValue.getKey().toPartialKey());
+        for (String matchedKey : matchedKeys) {
+            if (!RedisKey.isRedisKey(matchedKey)) {
+                continue;
             }
+            String encoded = jedis.get(matchedKey);
+
+            Object serialized = dataManager.decode(dummyValue.getDataType(), encoded);
+            Object deserialized = dataManager.deserialize(dummyValue.getDataType(), serialized);
+            dataManager.cache(RedisKey.fromString(matchedKey), dummyValue.getDataType(), deserialized, Instant.now());
         }
     }
 
@@ -110,20 +109,19 @@ public class CachedValueManager {
 
     class RedisListener extends JedisPubSub {
         @Override
-        public void onPMessage(String pattern, String channel, String message) {
-            logger.trace("Received message: {} on channel: {} with pattern: {}", message, channel, pattern);
+        public void onPMessage(String pattern, String channel, String key) {
+            logger.trace("Received message: {} on channel: {} with pattern: {}", key, channel, pattern);
             String eventString = channel.split(":")[1];
             RedisEvent event = RedisEvent.valueOf(eventString.toUpperCase());
-            String key = message;
             if (!RedisKey.isRedisKey(key)) {
                 return;
             }
             RedisKey redisKey = RedisKey.fromString(key);
+            assert redisKey != null;
             Instant now = Instant.now();
 
             switch (event) {
-                case SET -> ThreadUtils.submit(() -> {
-                    try (Jedis jedis = dataManager.getJedis()) {
+                case SET -> dataManager.submitAsyncTask((connection, jedis) ->
                         dataManager.getDummyValues(redisKey.getHolderSchema() + "." + redisKey.getHolderTable()).stream()
                                 .filter(v -> v.getClass() == CachedValue.class)
                                 .map(v -> (CachedValue<?>) v)
@@ -134,9 +132,8 @@ public class CachedValueManager {
                                     Object serialized = dataManager.decode(dummyValue.getDataType(), encoded);
                                     Object deserialized = dataManager.deserialize(dummyValue.getDataType(), serialized);
                                     dataManager.cache(redisKey, dummyValue.getDataType(), deserialized, now);
-                                });
-                    }
-                });
+                                })
+                );
                 case DEL, EXPIRED -> dataManager.uncache(redisKey);
             }
         }

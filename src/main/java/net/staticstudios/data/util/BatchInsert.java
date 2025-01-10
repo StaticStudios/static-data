@@ -5,7 +5,6 @@ import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.data.InitialValue;
 import org.jetbrains.annotations.Blocking;
 
-import java.sql.Connection;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Predicate;
@@ -20,7 +19,7 @@ public class BatchInsert {
     private final List<Runnable> postInsertActions = new CopyOnWriteArrayList<>();
     private final List<Runnable> preInsertActions = new CopyOnWriteArrayList<>();
     private final List<Predicate<BatchInsert>> preconditions = new CopyOnWriteArrayList<>();
-    private final List<SQLConsumer<Connection>> intermediateActions = new CopyOnWriteArrayList<>();
+    private final List<ConnectionConsumer> intermediateActions = new CopyOnWriteArrayList<>();
     private final DataManager dataManager;
     private transient boolean flushed = false;
 
@@ -54,7 +53,7 @@ public class BatchInsert {
         postInsertActions.add(action);
     }
 
-    public void intermediate(SQLConsumer<Connection> action) {
+    public void intermediate(ConnectionConsumer action) {
         if (flushed) {
             throw new IllegalStateException("BatchInsertion has already been flushed");
         }

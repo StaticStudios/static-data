@@ -1,9 +1,8 @@
 package net.staticstudios.data.misc;
 
 import com.redis.testcontainers.RedisContainer;
-import com.zaxxer.hikari.HikariConfig;
 import net.staticstudios.data.DataManager;
-import net.staticstudios.utils.JedisProvider;
+import net.staticstudios.data.util.DataSourceConfig;
 import net.staticstudios.utils.ThreadUtils;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -12,7 +11,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 import redis.clients.jedis.Jedis;
-import redis.clients.jedis.JedisPool;
 
 import java.io.IOException;
 import java.sql.Connection;
@@ -28,7 +26,7 @@ public class DataTest {
     public static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(
             "postgres:16.2"
     );
-    public static HikariConfig hikariConfig;
+    public static DataSourceConfig dataSourceConfig;
     private static Connection connection;
     private static Jedis jedis;
     private List<MockEnvironment> mockEnvironments;
@@ -41,15 +39,16 @@ public class DataTest {
 
         redis.execInContainer("redis-cli", "config", "set", "notify-keyspace-events", "KEA");
 
-        hikariConfig = new HikariConfig();
-        hikariConfig.setDataSourceClassName("com.impossibl.postgres.jdbc.PGDataSource");
-        hikariConfig.addDataSourceProperty("serverName", postgres.getHost());
-        hikariConfig.addDataSourceProperty("portNumber", postgres.getFirstMappedPort());
-        hikariConfig.addDataSourceProperty("user", postgres.getUsername());
-        hikariConfig.addDataSourceProperty("password", postgres.getPassword());
-        hikariConfig.addDataSourceProperty("databaseName", postgres.getDatabaseName());
-        hikariConfig.setLeakDetectionThreshold(10000);
-        hikariConfig.setMaximumPoolSize(10);
+        dataSourceConfig = new DataSourceConfig(
+                postgres.getHost(),
+                postgres.getFirstMappedPort(),
+                postgres.getDatabaseName(),
+                postgres.getUsername(),
+                postgres.getPassword(),
+                redis.getHost(),
+                redis.getRedisPort()
+        );
+
         connection = DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
         jedis = new Jedis(redis.getHost(), redis.getRedisPort());
     }
@@ -78,26 +77,9 @@ public class DataTest {
     }
 
     protected MockEnvironment createMockEnvironment() {
-        DataManager dataManager = new DataManager(hikariConfig, new JedisProvider() {
-            private final JedisPool jedisPool = new JedisPool(redis.getHost(), redis.getRedisPort());
+        DataManager dataManager = new DataManager(dataSourceConfig);
 
-            @Override
-            public Jedis getJedis() {
-                return jedisPool.getResource();
-            }
-
-            @Override
-            public String getJedisHost() {
-                return redis.getHost();
-            }
-
-            @Override
-            public int getJedisPort() {
-                return redis.getRedisPort();
-            }
-        });
-
-        MockEnvironment mockEnvironment = new MockEnvironment(hikariConfig, dataManager);
+        MockEnvironment mockEnvironment = new MockEnvironment(dataSourceConfig, dataManager);
         mockEnvironments.add(mockEnvironment);
         return mockEnvironment;
     }

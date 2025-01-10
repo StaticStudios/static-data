@@ -8,7 +8,6 @@ import net.staticstudios.data.util.BatchInsert;
 import net.staticstudios.data.util.DeletionStrategy;
 import org.jetbrains.annotations.Blocking;
 
-import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Collection;
 import java.util.Iterator;
@@ -95,66 +94,54 @@ public interface PersistentCollection<T> extends Collection<T>, DataHolder, Data
     /**
      * Similar to {@link #add(Object)}, but this method is blocking and will wait for the database update to complete.
      *
-     * @param connection The connection to use.
-     * @param t          The element to add.
+     * @param t The element to add.
      * @return true if the element was added, false otherwise.
-     * @throws SQLException If an error occurs while adding the element.
      */
     @Blocking
-    boolean add(Connection connection, T t) throws SQLException;
+    boolean addNow(T t);
 
     /**
      * Similar to {@link #addAll(Collection)}, but this method is blocking and will wait for the database update to complete.
      *
-     * @param connection The connection to use.
-     * @param c          The elements to add.
+     * @param c The elements to add.
      * @return true if the elements were added, false otherwise.
-     * @throws SQLException If an error occurs while adding the elements.
      */
     @Blocking
-    boolean addAll(Connection connection, java.util.Collection<? extends T> c) throws SQLException;
+    boolean addAllNow(java.util.Collection<? extends T> c);
 
     /**
      * Similar to {@link #remove(Object)}, but this method is blocking and will wait for the database update to complete.
      *
-     * @param connection The connection to use.
-     * @param t          The element to remove.
+     * @param t The element to remove.
      * @return true if the element was removed, false otherwise.
-     * @throws SQLException If an error occurs while removing the element.
      */
     @Blocking
-    boolean remove(Connection connection, T t) throws SQLException;
+    boolean removeNow(T t);
 
     /**
      * Similar to {@link #removeAll(Collection)}, but this method is blocking and will wait for the database update to complete.
      *
-     * @param connection The connection to use.
-     * @param c          The elements to remove.
+     * @param c The elements to remove.
      * @return true if the elements were removed, false otherwise.
-     * @throws SQLException If an error occurs while removing the elements.
      */
     @Blocking
-    boolean removeAll(Connection connection, java.util.Collection<? extends T> c) throws SQLException;
+    boolean removeAllNow(java.util.Collection<? extends T> c);
 
     /**
      * Similar to {@link #clear()}, but this method is blocking and will wait for the database update to complete.
-     *
-     * @param connection The connection to use.
-     * @throws SQLException If an error occurs while clearing the collection.
      */
     @Blocking
-    void clear(Connection connection) throws SQLException;
+    void clearNow();
 
     /**
      * Create a blocking iterator for this collection.
      * When calling {@link Iterator#remove()}, a blocking remove operation will be performed.
      * The remove operation will wait for the database update to complete.
      *
-     * @param connection The connection to use.
      * @return The blocking iterator.
      */
     @Blocking
-    Iterator<T> iterator(Connection connection);
+    Iterator<T> blockingIterator();
 
     /**
      * Register a handler to be called when an element is added to this collection.
@@ -182,24 +169,16 @@ public interface PersistentCollection<T> extends Collection<T>, DataHolder, Data
      * A blocking version of {@link #removeIf(Predicate)}.
      * This method will wait for the database update to complete.
      *
-     * @param connection The connection to use.
-     * @param filter     The filter to apply.
+     * @param filter The filter to apply.
      * @return true if any elements were removed, false otherwise.
-     * @throws SQLException If an error occurs while removing elements.
      */
     @Blocking
-    default boolean removeIf(Connection connection, Predicate<? super T> filter) throws SQLException {
+    default boolean removeIfNow(Predicate<? super T> filter) throws SQLException {
         boolean removed = false;
-        Iterator<T> each = iterator(connection);
+        Iterator<T> each = blockingIterator();
         while (each.hasNext()) {
             if (filter.test(each.next())) {
-                try {
-                    each.remove();
-                } catch (Exception e) {
-                    if (e.getCause() instanceof SQLException) {
-                        throw (SQLException) e.getCause();
-                    }
-                }
+                each.remove();
                 removed = true;
             }
         }

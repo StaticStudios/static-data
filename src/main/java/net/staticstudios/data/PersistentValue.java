@@ -15,8 +15,6 @@ import org.jetbrains.annotations.Blocking;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.sql.Connection;
-import java.sql.SQLException;
 import java.util.function.Supplier;
 
 /**
@@ -176,28 +174,21 @@ public class PersistentValue<T> implements Value<T> {
         PersistentValueManager manager = dataManager.getPersistentValueManager();
         manager.updateCache(this, value);
 
-        ThreadUtils.submit(() -> {
-            try (Connection connection = dataManager.getConnection()) {
-                manager.updateInDatabase(connection, this, value);
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
-            }
-        });
+        dataManager.submitAsyncTask(connection -> manager.updateInDatabase(connection, this, value));
     }
 
     /**
      * Set the value of this persistent value.
+     * This method will block until the value is set in the database.
      *
-     * @param connection the connection to use
-     * @param value      the value to set
-     * @throws SQLException if an error occurs while setting the value
+     * @param value the value to set
      */
     @Blocking
-    public void set(Connection connection, T value) throws SQLException {
+    public void setNow(T value) {
         PersistentValueManager manager = dataManager.getPersistentValueManager();
         manager.updateCache(this, value);
 
-        manager.updateInDatabase(connection, this, value);
+        dataManager.submitBlockingTask(connection -> manager.updateInDatabase(connection, this, value));
     }
 
     /**

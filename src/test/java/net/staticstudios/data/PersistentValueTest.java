@@ -294,5 +294,28 @@ public class PersistentValueTest extends DataTest {
         }
     }
 
+    @RetryingTest(5)
+    public void testTaskQueue() {
+        MockEnvironment environment = getMockEnvironments().getFirst();
+        DataManager dataManager = environment.dataManager();
+
+        DiscordUser user = DiscordUser.createSync(dataManager, "0", UUID.randomUUID());
+        for (int i = 0; i < 30; i++) {
+            int name = Integer.parseInt(user.getName());
+            user.setName(String.valueOf(name + 1));
+        }
+
+        waitForDataPropagation();
+
+        try (Statement statement = getConnection().createStatement()) {
+            ResultSet resultSet = statement.executeQuery("select name from discord.users where id = '" + user.getId() + "'");
+            resultSet.next();
+            assertEquals("30", resultSet.getString("name"));
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
+
     //todo: test straight up deleting an fpv. ideally a data does not exist exception should be thrown when calling get on a deleted fpv
 }
