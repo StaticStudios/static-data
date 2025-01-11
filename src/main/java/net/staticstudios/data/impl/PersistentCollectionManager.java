@@ -436,21 +436,20 @@ public class PersistentCollectionManager extends SQLLogger {
             return;
         }
 
-        UUID oldEntryId = (UUID) pv.get();
+        UUID oldLinkingId = (UUID) pv.get();
 
         dataManager.getDummyPersistentCollections(pv.getSchema() + "." + pv.getTable()).stream()
-                .filter(dummyCollection -> dummyCollection.getEntryIdColumn().equals(pv.getColumn()))
+                .filter(dummyCollection -> dummyCollection.getLinkingColumn().equals(pv.getColumn()))
                 .forEach(dummyCollection -> {
 
-                    CollectionEntryIdentifier oldIdentifier = CollectionEntryIdentifier.of(dummyCollection.getEntryIdColumn(), oldEntryId);
-                    CellKey linkingKey = getEntryLinkingKey(dummyCollection, oldEntryId);
+                    CollectionEntryIdentifier oldIdentifier = CollectionEntryIdentifier.of(dummyCollection.getEntryIdColumn(), pv.getHolder().getRootHolder().getId());
 
                     CollectionKey oldCollectionKey = new CollectionKey(
                             dummyCollection.getSchema(),
                             dummyCollection.getTable(),
                             dummyCollection.getLinkingColumn(),
                             dummyCollection.getDataColumn(),
-                            dataManager.get(linkingKey)
+                            oldLinkingId
                     );
 
                     removeEntry(oldCollectionKey, oldIdentifier);
