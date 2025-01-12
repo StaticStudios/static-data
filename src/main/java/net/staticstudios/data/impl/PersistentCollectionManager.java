@@ -616,7 +616,7 @@ public class PersistentCollectionManager extends SQLLogger {
                 );
 
                 CollectionEntryIdentifier identifier = CollectionEntryIdentifier.of(dummyCollection.getEntryIdColumn(), entryId);
-                CellKey entryDataKey = getEntryDataKey(dummyCollection, entryId, dummyHolder.getIdentifier());
+                CellKey entryDataKey = getEntryDataKey(dummyCollection, entryId);
                 CellKey entryLinkKey = getEntryLinkingKey(dummyCollection, entryId);
 
 
@@ -662,7 +662,7 @@ public class PersistentCollectionManager extends SQLLogger {
 
         for (CollectionEntry entry : entries) {
             CollectionEntryIdentifier identifier = CollectionEntryIdentifier.of(dummyCollection.getEntryIdColumn(), entry.id());
-            CellKey entryDataKey = getEntryDataKey(dummyCollection, entry.id(), dummyCollection.getHolder().getRootHolder().getIdentifier());
+            CellKey entryDataKey = getEntryDataKey(dummyCollection, entry.id());
             CellKey entryLinkKey = getEntryLinkingKey(dummyCollection, entry.id());
 
             logger.trace("Adding collection entry to {}", collectionKey);
@@ -684,13 +684,13 @@ public class PersistentCollectionManager extends SQLLogger {
     public void removeEntriesFromCache(CollectionKey collectionKey, SimplePersistentCollection<?> dummyCollection, List<UUID> entryIds) {
         for (UUID entryId : entryIds) {
             removeEntry(collectionKey, CollectionEntryIdentifier.of(dummyCollection.getEntryIdColumn(), entryId));
-            dataManager.uncache(getEntryDataKey(dummyCollection, entryId, dummyCollection.getRootHolder().getIdentifier()));
+            dataManager.uncache(getEntryDataKey(dummyCollection, entryId));
             dataManager.uncache(getEntryLinkingKey(dummyCollection, entryId));
         }
     }
 
-    private CellKey getEntryDataKey(SimplePersistentCollection<?> collection, UUID entryId, UniqueIdentifier holderIdentifier) {
-        return new CellKey(collection.getSchema(), collection.getTable(), collection.getDataColumn(), entryId, holderIdentifier.getColumn());
+    private CellKey getEntryDataKey(SimplePersistentCollection<?> collection, UUID entryId) {
+        return new CellKey(collection.getSchema(), collection.getTable(), collection.getDataColumn(), entryId, collection.getEntryIdColumn());
     }
 
     public CellKey getEntryLinkingKey(SimplePersistentCollection<?> collection, UUID entryId) {
@@ -698,7 +698,7 @@ public class PersistentCollectionManager extends SQLLogger {
     }
 
     public List<CellKey> getEntryKeys(SimplePersistentCollection<?> collection) {
-        return collectionEntryHolders.get(collection.getKey()).stream().map(k -> getEntryDataKey(collection, k.getEntryId(), collection.getRootHolder().getIdentifier())).toList();
+        return collectionEntryHolders.get(collection.getKey()).stream().map(k -> getEntryDataKey(collection, k.getEntryId())).toList();
     }
 
     public List<Object> getEntries(SimplePersistentCollection<?> collection) {
@@ -712,7 +712,7 @@ public class PersistentCollectionManager extends SQLLogger {
 
     public List<CollectionEntry> getCollectionEntries(SimplePersistentCollection<?> collection) {
         return collectionEntryHolders.get(collection.getKey()).stream().map(identifier -> {
-            CellKey entryDataKey = getEntryDataKey(collection, identifier.getEntryId(), collection.getRootHolder().getIdentifier());
+            CellKey entryDataKey = getEntryDataKey(collection, identifier.getEntryId());
             Object value = dataManager.get(entryDataKey);
             return new CollectionEntry(identifier.getEntryId(), value);
         }).toList();
