@@ -526,15 +526,6 @@ public class DataManager extends SQLLogger {
 
         List<InitialPersistentDataWrapper> initialPersistentDataWrappers = new ArrayList<>();
         for (InitialPersistentValue data : context.initialPersistentValues().values()) {
-            UniqueData pvHolder = data.getValue().getHolder().getRootHolder();
-            CellKey idColumn = new CellKey(
-                    pvHolder.getSchema(),
-                    pvHolder.getTable(),
-                    pvHolder.getIdentifier().getColumn(),
-                    pvHolder.getId(),
-                    pvHolder.getIdentifier().getColumn()
-            );
-
             InsertionStrategy insertionStrategy = data.getValue().getInsertionStrategy();
 
             //do not call PersistentValueManager#updateCache since we need to cache both values
@@ -555,7 +546,6 @@ public class DataManager extends SQLLogger {
             if (updateCache) {
                 cache(data.getValue().getKey(), data.getValue().getDataType(), data.getInitialDataValue(), Instant.now());
             }
-            cache(idColumn, UUID.class, context.holder().getId(), Instant.now());
         }
 
         for (InitialPersistentDataWrapper wrapper : initialPersistentDataWrappers) {
@@ -910,6 +900,16 @@ public class DataManager extends SQLLogger {
 
     public void addUniqueData(UniqueData data) {
         logger.trace("Adding unique data to cache: {}({})", data.getClass(), data.getId());
+
+        CellKey idColumn = new CellKey(
+                data.getSchema(),
+                data.getTable(),
+                data.getIdentifier().getColumn(),
+                data.getId(),
+                data.getIdentifier().getColumn()
+        );
+        cache(idColumn, UUID.class, data.getId(), Instant.now());
+
         uniqueDataIds.put(data.getClass(), data.getId());
         uniqueDataCache.computeIfAbsent(data.getClass(), k -> new ConcurrentHashMap<>()).put(data.getId(), data);
     }

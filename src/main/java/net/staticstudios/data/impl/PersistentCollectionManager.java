@@ -305,7 +305,19 @@ public class PersistentCollectionManager extends SQLLogger {
             } else if (data instanceof PersistentManyToManyCollection<?> collection) {
                 //Note that the individual entries are already in the deletion context via the data manager
                 removeFromJunctionTableInMemory(collection, getJunctionTableEntryIds(collection));
-            } else if (data instanceof PersistentValue<?> pv) {
+            }
+        }
+
+        for (Data<?> data : context.toDelete()) {
+            if (data instanceof PersistentValue<?> pv) {
+                try {
+                    pv.get();
+                } catch (DataDoesNotExistException e) {
+                    // Ignore, this means that the entry was already deleted
+                    // This can happen if we have a cascade deletion and the entry was already deleted via one of the above methods
+                    return;
+                }
+                
                 handlePersistentValueDeletionInMemory(pv);
             }
         }
