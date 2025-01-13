@@ -310,14 +310,6 @@ public class PersistentCollectionManager extends SQLLogger {
 
         for (Data<?> data : context.toDelete()) {
             if (data instanceof PersistentValue<?> pv) {
-                try {
-                    pv.get();
-                } catch (DataDoesNotExistException e) {
-                    // Ignore, this means that the entry was already deleted
-                    // This can happen if we have a cascade deletion and the entry was already deleted via one of the above methods
-                    return;
-                }
-                
                 handlePersistentValueDeletionInMemory(pv);
             }
         }
@@ -463,6 +455,14 @@ public class PersistentCollectionManager extends SQLLogger {
                             dummyCollection.getDataColumn(),
                             oldLinkingId
                     );
+
+                    try {
+                        getEntry(oldCollectionKey, oldIdentifier);
+                    } catch (DataDoesNotExistException e) {
+                        // Ignore, this means that the entry was already deleted
+                        // This can happen if we have a cascade deletion and the entry was already deleted via one of collection deletions
+                        return;
+                    }
 
                     removeEntry(oldCollectionKey, oldIdentifier);
                     logger.trace("Removed collection entry holder from map: {} -> {}", oldCollectionKey, oldIdentifier);
