@@ -1109,6 +1109,17 @@ public class DataManager extends SQLLogger {
         return dummyInstances.get(clazz).getIdentifier().getColumn();
     }
 
+    /**
+     * Block the calling thread until all previously enqueued tasks have been completed
+     */
+    @Blocking
+    public void flushTaskQueue() {
+        //This will add a task to the queue and block until it's done
+        submitBlockingTask(connection -> {
+            //Ignore
+        });
+    }
+
     private record InitialPersistentDataWrapper(InitialPersistentValue data, boolean updateCache, Object oldValue) {
     }
 }
