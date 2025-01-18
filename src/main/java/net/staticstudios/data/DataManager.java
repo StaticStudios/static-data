@@ -544,7 +544,7 @@ public class DataManager extends SQLLogger {
             initialPersistentDataWrappers.add(new InitialPersistentDataWrapper(data, updateCache, oldValue));
 
             if (updateCache) {
-                cache(data.getValue().getKey(), data.getValue().getDataType(), data.getInitialDataValue(), Instant.now());
+                cache(data.getValue().getKey(), data.getValue().getDataType(), data.getInitialDataValue(), Instant.now(), false);
             }
         }
 
@@ -586,7 +586,7 @@ public class DataManager extends SQLLogger {
         }
 
         for (InitialCachedValue data : context.initialCachedValues().values()) {
-            cache(data.getValue().getKey(), data.getValue().getDataType(), data.getInitialDataValue(), Instant.now());
+            cache(data.getValue().getKey(), data.getValue().getDataType(), data.getInitialDataValue(), Instant.now(), false);
         }
     }
 
@@ -908,7 +908,7 @@ public class DataManager extends SQLLogger {
                 data.getId(),
                 data.getIdentifier().getColumn()
         );
-        cache(idColumn, UUID.class, data.getId(), Instant.now());
+        cache(idColumn, UUID.class, data.getId(), Instant.now(), false);
 
         uniqueDataIds.put(data.getClass(), data.getId());
         uniqueDataCache.computeIfAbsent(data.getClass(), k -> new ConcurrentHashMap<>()).put(data.getId(), data);
@@ -934,7 +934,7 @@ public class DataManager extends SQLLogger {
      * @param value         The value to cache
      * @param instant       The instant at which the value was set
      */
-    public <T> void cache(DataKey key, Class<?> valueDataType, T value, Instant instant) {
+    public <T> void cache(DataKey key, Class<?> valueDataType, T value, Instant instant, boolean callUpdateHandlers) {
         if (value != null && !valueDataType.isInstance(value)) {
             throw new IllegalArgumentException("Value is not of the correct type! Expected: " + valueDataType + ", got: " + value.getClass());
         }
@@ -966,11 +966,14 @@ public class DataManager extends SQLLogger {
             return;
         }
 
-        for (ValueUpdateHandler<?> updateHandler : updateHandlers) {
-            try {
-                updateHandler.unsafeHandle(oldValue, newValue);
-            } catch (Exception e) {
-                logger.error("Error handling value update. Key: {}", key, e);
+        if (callUpdateHandlers) {
+
+            for (ValueUpdateHandler<?> updateHandler : updateHandlers) {
+                try {
+                    updateHandler.unsafeHandle(oldValue, newValue);
+                } catch (Exception e) {
+                    logger.error("Error handling value update. Key: {}", key, e);
+                }
             }
         }
     }

@@ -97,7 +97,7 @@ public class CachedValueManager {
 
             Object serialized = dataManager.decode(dummyValue.getDataType(), encoded);
             Object deserialized = dataManager.deserialize(dummyValue.getDataType(), serialized);
-            dataManager.cache(RedisKey.fromString(matchedKey), dummyValue.getDataType(), deserialized, Instant.now());
+            dataManager.cache(RedisKey.fromString(matchedKey), dummyValue.getDataType(), deserialized, Instant.now(), false);
         }
     }
 
@@ -131,7 +131,7 @@ public class CachedValueManager {
                                     String encoded = jedis.get(key);
                                     Object serialized = dataManager.decode(dummyValue.getDataType(), encoded);
                                     Object deserialized = dataManager.deserialize(dummyValue.getDataType(), serialized);
-                                    dataManager.cache(redisKey, dummyValue.getDataType(), deserialized, now);
+                                    dataManager.cache(redisKey, dummyValue.getDataType(), deserialized, now, true);
                                 })
                 );
                 case DEL, EXPIRED -> dataManager.uncache(redisKey);

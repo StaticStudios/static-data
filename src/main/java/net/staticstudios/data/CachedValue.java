@@ -169,7 +169,7 @@ public class CachedValue<T> implements Value<T> {
 
     public void set(T value) {
         CachedValueManager manager = dataManager.getCachedValueManager();
-        dataManager.cache(this.getKey(), dataType, value, Instant.now());
+        dataManager.cache(this.getKey(), dataType, value, Instant.now(), true);
         getDataManager().submitAsyncTask((connection, jedis) -> manager.setInRedis(jedis, List.of(initial(value))));
     }
 
@@ -182,7 +182,7 @@ public class CachedValue<T> implements Value<T> {
     @Blocking
     public void setNow(T value) {
         CachedValueManager manager = dataManager.getCachedValueManager();
-        dataManager.cache(this.getKey(), dataType, value, Instant.now());
+        dataManager.cache(this.getKey(), dataType, value, Instant.now(), true);
         getDataManager().submitBlockingTask((connection, jedis) -> manager.setInRedis(jedis, List.of(initial(value))));
     }
 

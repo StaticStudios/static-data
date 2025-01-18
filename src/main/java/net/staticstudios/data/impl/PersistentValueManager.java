@@ -65,8 +65,8 @@ public class PersistentValueManager extends SQLLogger {
                         Object rawValue = dataManager.decode(dummyPV.getDataType(), encodedValue);
                         Object deserialized = dataManager.deserialize(dummyPV.getDataType(), rawValue);
 
-                        dataManager.cache(dataKey, dummyPV.getDataType(), deserialized, notification.getInstant());
-                        dataManager.cache(idKey, UUID.class, id, notification.getInstant());
+                        dataManager.cache(dataKey, dummyPV.getDataType(), deserialized, notification.getInstant(), true);
+                        dataManager.cache(idKey, UUID.class, id, notification.getInstant(), true);
                     }
                 }
                 case PostgresOperation.DELETE -> {
@@ -173,7 +173,7 @@ public class PersistentValueManager extends SQLLogger {
         } catch (DataDoesNotExistException ignored) {
         }
 
-        dataManager.cache(key, valueDataType, value, Instant.now());
+        dataManager.cache(key, valueDataType, value, Instant.now(), true);
         dataManager.getPersistentCollectionManager().handlePersistentValueCacheUpdated(schema, table, column, holderId, idColumn, oldValue, value);
     }
 
@@ -367,11 +367,11 @@ public class PersistentValueManager extends SQLLogger {
 
                     Object value = resultSet.getObject(column);
                     Object deserialized = dataManager.deserialize(dummyPV.getDataType(), value);
-                    dataManager.cache(new CellKey(firstCellKey.getSchema(), firstCellKey.getTable(), column, id, idColumn), dummyPV.getDataType(), deserialized, Instant.now());
+                    dataManager.cache(new CellKey(firstCellKey.getSchema(), firstCellKey.getTable(), column, id, idColumn), dummyPV.getDataType(), deserialized, Instant.now(), false);
                 }
 
                 if (!dataColumns.contains(idColumn)) {
-                    dataManager.cache(new CellKey(firstCellKey.getSchema(), firstCellKey.getTable(), idColumn, id, idColumn), UUID.class, id, Instant.now());
+                    dataManager.cache(new CellKey(firstCellKey.getSchema(), firstCellKey.getTable(), idColumn, id, idColumn), UUID.class, id, Instant.now(), false);
                 }
             }
         }

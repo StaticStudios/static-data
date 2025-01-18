@@ -373,16 +373,20 @@ public class PersistentCollectionManager extends SQLLogger {
         }
     }
 
-    private void addEntry(CollectionKey key, CollectionEntryIdentifier identifier) {
+    private void addEntry(CollectionKey key, CollectionEntryIdentifier identifier, boolean callAddHandlers) {
         collectionEntryHolders.put(key, identifier);
 
-        Object newValue = getEntry(key, identifier);
-        callAddHandlers(key, newValue);
+        if (callAddHandlers) {
+            Object newValue = getEntry(key, identifier);
+            callAddHandlers(key, newValue);
+        }
     }
 
-    private void removeEntry(CollectionKey key, CollectionEntryIdentifier identifier) {
-        Object oldValue = getEntry(key, identifier);
-        callRemoveHandlers(key, oldValue);
+    private void removeEntry(CollectionKey key, CollectionEntryIdentifier identifier, boolean callRemoveHandlers) {
+        if (callRemoveHandlers) {
+            Object oldValue = getEntry(key, identifier);
+            callRemoveHandlers(key, oldValue);
+        }
 
         //remove after handlers are called to avoid DDNEEs
         collectionEntryHolders.remove(key, identifier);
@@ -464,7 +468,7 @@ public class PersistentCollectionManager extends SQLLogger {
                         return;
                     }
 
-                    removeEntry(oldCollectionKey, oldIdentifier);
+                    removeEntry(oldCollectionKey, oldIdentifier, true);
                     logger.trace("Removed collection entry holder from map: {} -> {}", oldCollectionKey, oldIdentifier);
                 });
 
@@ -562,7 +566,7 @@ public class PersistentCollectionManager extends SQLLogger {
                         UUID oldEntryId = dataManager.get(entryIdKey);
 
                         CollectionEntryIdentifier oldIdentifier = CollectionEntryIdentifier.of(dummyCollection.getEntryIdColumn(), oldEntryId);
-                        removeEntry(oldCollectionKey, oldIdentifier);
+                        removeEntry(oldCollectionKey, oldIdentifier, true);
                         logger.trace("Removed collection entry holder from map: {} -> {}", dummyCollection.getKey(), oldIdentifier);
                     }
 
@@ -578,7 +582,7 @@ public class PersistentCollectionManager extends SQLLogger {
                         UUID newEntryId = dataManager.get(entryIdKey);
 
                         CollectionEntryIdentifier newIdentifier = CollectionEntryIdentifier.of(dummyCollection.getEntryIdColumn(), newEntryId);
-                        addEntry(newCollectionKey, newIdentifier);
+                        addEntry(newCollectionKey, newIdentifier, true);
                         logger.trace("Added collection entry holder to map: {} -> {}", newCollectionKey, newIdentifier);
                     }
                 });
@@ -639,21 +643,21 @@ public class PersistentCollectionManager extends SQLLogger {
 
                 if (entryIdColumn.equals(entryDataColumn)) {
                     // For PersistentValueCollection the entry id will be the data, since that's what we're interested in
-                    dataManager.cache(entryDataKey, UUID.class, entryId, Instant.now());
+                    dataManager.cache(entryDataKey, UUID.class, entryId, Instant.now(), false);
                     logger.trace("Adding collection entry data to cache: {} -> {}", entryDataKey, entryId);
                 } else {
                     // For PersistentUniqueDataCollection the entry id will be the data, since that's what we're interested in
                     Object serializedDataValue = resultSet.getObject(entryDataColumn);
                     Object dataValue = dataManager.deserialize(dummyCollection.getDataType(), serializedDataValue);
-                    dataManager.cache(entryDataKey, dummyCollection.getDataType(), dataValue, Instant.now());
+                    dataManager.cache(entryDataKey, dummyCollection.getDataType(), dataValue, Instant.now(), false);
 
                     logger.trace("Adding collection entry data to cache: {} -> {}", entryDataKey, dataValue);
                 }
 
                 logger.trace("Adding collection entry holder to map: {} -> {}", collectionKey, identifier);
 
-                dataManager.cache(entryLinkKey, UUID.class, linkingId, Instant.now());
-                addEntry(collectionKey, identifier);
+                dataManager.cache(entryLinkKey, UUID.class, linkingId, Instant.now(), false);
+                addEntry(collectionKey, identifier, false);
             }
         }
     }
@@ -682,9 +686,9 @@ public class PersistentCollectionManager extends SQLLogger {
             logger.trace("Adding collection entry data to cache: {} -> {}", entryDataKey, entry.value());
             logger.trace("Adding collection entry holder to map: {} -> {}", collectionKey, identifier);
 
-            dataManager.cache(entryLinkKey, UUID.class, holderId, Instant.now());
-            dataManager.cache(entryDataKey, dummyCollection.getDataType(), entry.value(), Instant.now());
-            addEntry(collectionKey, identifier);
+            dataManager.cache(entryLinkKey, UUID.class, holderId, Instant.now(), true);
+            dataManager.cache(entryDataKey, dummyCollection.getDataType(), entry.value(), Instant.now(), true);
+            addEntry(collectionKey, identifier, true);
         }
     }
 
@@ -695,7 +699,7 @@ public class PersistentCollectionManager extends SQLLogger {
 
     public void removeEntriesFromCache(CollectionKey collectionKey, SimplePersistentCollection<?> dummyCollection, List<UUID> entryIds) {
         for (UUID entryId : entryIds) {
-            removeEntry(collectionKey, CollectionEntryIdentifier.of(dummyCollection.getEntryIdColumn(), entryId));
+            removeEntry(collectionKey, CollectionEntryIdentifier.of(dummyCollection.getEntryIdColumn(), entryId), true);
             dataManager.uncache(getEntryDataKey(dummyCollection, entryId));
             dataManager.uncache(getEntryLinkingKey(dummyCollection, entryId));
         }
@@ -877,7 +881,7 @@ public class PersistentCollectionManager extends SQLLogger {
             callRemoveHandlers(idsCollectionKey, getEntry(idsCollectionKey, identifier));
 
             CellKey linkingKey = getEntryLinkingKey(dummyIdsCollection, entry);
-            dataManager.cache(linkingKey, UUID.class, null, Instant.now());
+            dataManager.cache(linkingKey, UUID.class, null, Instant.now(), true);
 
             //remove after handlers are called to avoid DDNEEs
             collectionEntryHolders.remove(idsCollectionKey, identifier);
