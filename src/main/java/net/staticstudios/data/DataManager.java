@@ -270,7 +270,7 @@ public class DataManager extends SQLLogger {
                     }
 
                     if (data instanceof CachedValue<?> cachedValue) {
-                        dummyValueMap.put(data.getHolder().getRootHolder().getSchema() + "." + data.getHolder().getRootHolder().getTable(), cachedValue);
+                        dummyValueMap.put(cachedValue.getSchema() + "." + cachedValue.getTable(), cachedValue);
                         dummyCachedValues.put(data.getHolder().getRootHolder(), cachedValue);
                     }
                 }

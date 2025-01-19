@@ -31,16 +31,22 @@ public class CachedValue<T> implements Value<T> {
     private final Class<T> dataType;
     private final DataHolder holder;
     private final DataManager dataManager;
+    private final String schema;
+    private final String table;
+    private final String idColumn;
     private int expirySeconds = -1;
     private Supplier<T> fallbackValue;
     private DeletionStrategy deletionStrategy;
 
-    private CachedValue(String key, Class<T> dataType, DataHolder holder, DataManager dataManager) {
+    private CachedValue(String key, String schema, String table, String idColumn, Class<T> dataType, DataHolder holder, DataManager dataManager) {
         if (!holder.getDataManager().isSupportedType(dataType)) {
             throw new IllegalArgumentException("Unsupported data type: " + dataType);
         }
 
         this.identifyingKey = key;
+        this.schema = schema;
+        this.table = table;
+        this.idColumn = idColumn;
         this.dataType = dataType;
         this.holder = holder;
         this.dataManager = dataManager;
@@ -56,7 +62,25 @@ public class CachedValue<T> implements Value<T> {
      * @return the new {@link CachedValue} object
      */
     public static <T> CachedValue<T> of(UniqueData holder, Class<T> dataType, String key) {
-        CachedValue<T> cv = new CachedValue<>(key, dataType, holder, holder.getDataManager());
+        CachedValue<T> cv = new CachedValue<>(key, holder.getSchema(), holder.getTable(), holder.getIdentifier().getColumn(), dataType, holder, holder.getDataManager());
+        cv.deletionStrategy = DeletionStrategy.CASCADE;
+        return cv;
+    }
+
+    /**
+     * Create a new {@link CachedValue} object.
+     *
+     * @param holder   the holder of this value
+     * @param dataType the type of data stored in this value
+     * @param schema   the schema of the table that the holder is stored in
+     * @param table    the table that the holder is stored in
+     * @param idColumn the column in the table that holds the id of the holder
+     * @param key      the identifying key for this value (note that this is only part of what is used to construct the Redis key, see {@link RedisKey#toString()})
+     * @param <T>      the type of data stored in this value
+     * @return the new {@link CachedValue} object
+     */
+    public static <T> CachedValue<T> of(UniqueData holder, Class<T> dataType, String schema, String table, String idColumn, String key) {
+        CachedValue<T> cv = new CachedValue<>(key, schema, table, idColumn, dataType, holder, holder.getDataManager());
         cv.deletionStrategy = DeletionStrategy.CASCADE;
         return cv;
     }
@@ -209,6 +233,18 @@ public class CachedValue<T> implements Value<T> {
     @Override
     public DataHolder getHolder() {
         return holder;
+    }
+
+    public String getSchema() {
+        return schema;
+    }
+
+    public String getTable() {
+        return table;
+    }
+
+    public String getIdColumn() {
+        return idColumn;
     }
 
     @Override

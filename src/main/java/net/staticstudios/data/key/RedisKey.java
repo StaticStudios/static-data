@@ -24,9 +24,9 @@ public class RedisKey extends DataKey {
 
     public RedisKey(CachedValue<?> data) {
         this(
-                data.getHolder().getRootHolder().getSchema(),
-                data.getHolder().getRootHolder().getTable(),
-                data.getHolder().getRootHolder().getIdentifier().getColumn(),
+                data.getSchema(),
+                data.getTable(),
+                data.getIdColumn(),
                 data.getHolder().getRootHolder().getRootHolder().getId(),
                 data.getIdentifyingKey()
         );
