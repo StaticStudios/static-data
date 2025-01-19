@@ -300,50 +300,16 @@ public class PersistentValueManager extends SQLLogger {
 
         dataColumns.remove(idColumn);
 
-        String sql;
-        if (idColumn.equals(dummyHolder.getIdentifier().getColumn()) && schemaTable.equals(dummyHolder.getSchema() + "." + dummyHolder.getTable())) {
-            StringBuilder sqlBuilder = new StringBuilder("SELECT ");
-            for (String column : dataColumns) {
-                sqlBuilder.append(column);
-                sqlBuilder.append(", ");
-            }
-            sqlBuilder.append(idColumn);
-
-            sqlBuilder.append(" FROM ");
-            sqlBuilder.append(schemaTable);
-            sql = sqlBuilder.toString();
-        } else {
-            StringBuilder sqlBuilder = new StringBuilder("SELECT ");
-            for (String column : dataColumns) {
-                sqlBuilder.append(column);
-                sqlBuilder.append(", ");
-            }
-            sqlBuilder.append(dummyHolder.getSchema());
-            sqlBuilder.append(".");
-            sqlBuilder.append(dummyHolder.getTable());
-            sqlBuilder.append(".");
-            sqlBuilder.append(dummyHolder.getIdentifier().getColumn());
-
-            sqlBuilder.append(" FROM ");
-            sqlBuilder.append(schemaTable);
-
-            sqlBuilder.append(" RIGHT JOIN ");
-            sqlBuilder.append(dummyHolder.getSchema());
-            sqlBuilder.append(".");
-            sqlBuilder.append(dummyHolder.getTable());
-            sqlBuilder.append(" ON ");
-            sqlBuilder.append(schemaTable);
-            sqlBuilder.append(".");
-            sqlBuilder.append(idColumn);
-            sqlBuilder.append(" = ");
-            sqlBuilder.append(dummyHolder.getSchema());
-            sqlBuilder.append(".");
-            sqlBuilder.append(dummyHolder.getTable());
-            sqlBuilder.append(".");
-            sqlBuilder.append(dummyHolder.getIdentifier().getColumn());
-            sql = sqlBuilder.toString();
+        StringBuilder sqlBuilder = new StringBuilder("SELECT ");
+        for (String column : dataColumns) {
+            sqlBuilder.append(column);
+            sqlBuilder.append(", ");
         }
+        sqlBuilder.append(idColumn);
 
+        sqlBuilder.append(" FROM ");
+        sqlBuilder.append(schemaTable);
+        String sql = sqlBuilder.toString();
         logSQL(sql);
 
         List<PersistentValue> dummyPersistentValues = dataManager.getDummyValues(schemaTable).stream()
@@ -354,7 +320,7 @@ public class PersistentValueManager extends SQLLogger {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             ResultSet resultSet = statement.executeQuery();
             while (resultSet.next()) {
-                UUID id = resultSet.getObject(dummyHolder.getIdentifier().getColumn(), UUID.class);
+                UUID id = resultSet.getObject(idColumn, UUID.class);
                 for (String column : dataColumns) {
                     PersistentValue<?> dummyPV = dummyPersistentValues.stream()
                             .filter(pv -> pv.getColumn().equals(column))
