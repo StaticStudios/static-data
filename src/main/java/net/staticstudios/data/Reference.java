@@ -23,10 +23,10 @@ public class Reference<T extends UniqueData> implements DataHolder, Data<T> {
     private final Class<T> clazz;
     private DeletionStrategy deletionStrategy;
 
-    private Reference(UniqueData holder, Class<T> clazz, String foreignIdColumn) {
+    private Reference(UniqueData holder, Class<T> clazz, PersistentValue<UUID> pv) {
         this.holder = holder;
         this.clazz = clazz;
-        this.id = PersistentValue.of(holder, UUID.class, foreignIdColumn);
+        this.id = pv;
         this.deletionStrategy = DeletionStrategy.NO_ACTION;
     }
 
@@ -40,7 +40,21 @@ public class Reference<T extends UniqueData> implements DataHolder, Data<T> {
      * @return The reference.
      */
     public static <T extends UniqueData> Reference<T> of(UniqueData holder, Class<T> clazz, String foreignIdColumn) {
-        return new Reference<>(holder, clazz, foreignIdColumn);
+        return new Reference<>(holder, clazz, PersistentValue.of(holder, UUID.class, foreignIdColumn));
+    }
+
+    /**
+     * Create a reference to another {@link UniqueData} object.
+     *
+     * @param holder                     The holder of this reference.
+     * @param clazz                      The class of the data that this reference points to.
+     * @param schemaTableForeignIdColumn The schema, table, and column in the holder's table that stores the foreign key to the referenced object, if the value is null then the reference is considered to be null.
+     * @param thisForeignIdColumn        The column in the holder's table that stores the foreign key, to this holder.
+     * @param <T>                        The type of data that this reference points to.
+     * @return The reference.
+     */
+    public static <T extends UniqueData> Reference<T> foreign(UniqueData holder, Class<T> clazz, String schemaTableForeignIdColumn, String thisForeignIdColumn) {
+        return new Reference<>(holder, clazz, PersistentValue.foreign(holder, UUID.class, schemaTableForeignIdColumn, thisForeignIdColumn));
     }
 
     @Override
