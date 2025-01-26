@@ -331,7 +331,7 @@ public class PersistentValueManager extends SQLLogger {
                         continue;
                     }
 
-                    Object value = resultSet.getObject(column);
+                    Object value = resultSet.getObject(column, dataManager.getSerializedDataType(dummyPV.getDataType()));
                     Object deserialized = dataManager.deserialize(dummyPV.getDataType(), value);
                     dataManager.cache(new CellKey(firstCellKey.getSchema(), firstCellKey.getTable(), column, id, idColumn), dummyPV.getDataType(), deserialized, Instant.now(), false);
                 }

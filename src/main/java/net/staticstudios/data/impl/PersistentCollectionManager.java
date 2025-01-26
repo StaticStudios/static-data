@@ -620,8 +620,8 @@ public class PersistentCollectionManager extends SQLLogger {
             ResultSet resultSet = statement.executeQuery();
 
             while (resultSet.next()) {
-                UUID entryId = (UUID) resultSet.getObject(entryIdColumn);
-                UUID linkingId = (UUID) resultSet.getObject(collectionLinkingColumn);
+                UUID entryId = resultSet.getObject(entryIdColumn, UUID.class);
+                UUID linkingId = resultSet.getObject(collectionLinkingColumn, UUID.class);
 
                 CollectionKey collectionKey = new CollectionKey(
                         dummyCollection.getSchema(),
@@ -647,7 +647,7 @@ public class PersistentCollectionManager extends SQLLogger {
                     logger.trace("Adding collection entry data to cache: {} -> {}", entryDataKey, entryId);
                 } else {
                     // For PersistentUniqueDataCollection the entry id will be the data, since that's what we're interested in
-                    Object serializedDataValue = resultSet.getObject(entryDataColumn);
+                    Object serializedDataValue = resultSet.getObject(entryDataColumn, dataManager.getSerializedDataType(dummyCollection.getDataType()));
                     Object dataValue = dataManager.deserialize(dummyCollection.getDataType(), serializedDataValue);
                     dataManager.cache(entryDataKey, dummyCollection.getDataType(), dataValue, Instant.now(), false);
 
@@ -938,8 +938,8 @@ public class PersistentCollectionManager extends SQLLogger {
             String rightColumn = dummyMMCollection.getThatIdColumn();
 
             while (resultSet.next()) {
-                UUID leftId = (UUID) resultSet.getObject(leftColumn);
-                UUID rightId = (UUID) resultSet.getObject(rightColumn);
+                UUID leftId = resultSet.getObject(leftColumn, UUID.class);
+                UUID rightId = resultSet.getObject(rightColumn, UUID.class);
 
                 jt.add(leftColumn, leftId, rightId);
             }

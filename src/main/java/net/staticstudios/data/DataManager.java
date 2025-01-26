@@ -1052,6 +1052,20 @@ public class DataManager extends SQLLogger {
         throw new IllegalArgumentException("No serializer found for type: " + type);
     }
 
+    public Class<?> getSerializedDataType(Class<?> deserializedType) {
+        if (Primitives.isPrimitive(deserializedType)) {
+            return deserializedType;
+        }
+
+        for (ValueSerializer<?, ?> serializer : valueSerializers) {
+            if (serializer.getDeserializedType().isAssignableFrom(deserializedType)) {
+                return serializer.getSerializedType();
+            }
+        }
+
+        throw new IllegalArgumentException("No serializer found for type: " + deserializedType);
+    }
+
     public <T> Object serialize(T deserialized) {
         if (deserialized == null) {
             return null;
