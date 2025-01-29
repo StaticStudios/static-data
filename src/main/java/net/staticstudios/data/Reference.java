@@ -7,6 +7,9 @@ import net.staticstudios.data.data.value.InitialPersistentValue;
 import net.staticstudios.data.key.DataKey;
 import net.staticstudios.data.util.DataDoesNotExistException;
 import net.staticstudios.data.util.DeletionStrategy;
+import net.staticstudios.data.util.ValueUpdate;
+import net.staticstudios.data.util.ValueUpdateHandler;
+import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -55,6 +58,18 @@ public class Reference<T extends UniqueData> implements DataHolder, Data<T> {
      */
     public static <T extends UniqueData> Reference<T> foreign(UniqueData holder, Class<T> clazz, String schemaTableForeignIdColumn, String thisForeignIdColumn) {
         return new Reference<>(holder, clazz, PersistentValue.foreign(holder, UUID.class, schemaTableForeignIdColumn, thisForeignIdColumn));
+    }
+
+    /**
+     * Adds an update handler for the backing id.
+     * This is useful if logic is needed when the Reference is set or unlinked.
+     *
+     * @param updateHandler the update handler
+     * @return this
+     */
+    public Reference<T> onUpdate(ValueUpdateHandler<UUID> updateHandler) {
+        getBackingValue().onUpdate(updateHandler);
+        return this;
     }
 
     @Override
@@ -164,6 +179,8 @@ public class Reference<T extends UniqueData> implements DataHolder, Data<T> {
     public UniqueData getRootHolder() {
         return holder.getRootHolder();
     }
+
+
 
     /**
      * Get the backing {@link PersistentValue} object that stores the foreign id.

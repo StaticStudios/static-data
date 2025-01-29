@@ -1,6 +1,7 @@
 package net.staticstudios.data.mock.reference;
 
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.PersistentValue;
 import net.staticstudios.data.Reference;
 import net.staticstudios.data.UniqueData;
 import org.jetbrains.annotations.Nullable;
@@ -8,9 +9,16 @@ import org.jetbrains.annotations.Nullable;
 import java.util.UUID;
 
 public class SnapchatUser extends UniqueData {
+    private final PersistentValue<Integer> updateCalled = PersistentValue.foreign(this, Integer.class, "snapchat.user_meta.update_called", "id")
+            .withDefault(0);
     private final Reference<SnapchatUserSettings> settings = Reference.of(this, SnapchatUserSettings.class, "id");
-    private final Reference<SnapchatUser> favoriteUser = Reference.of(this, SnapchatUser.class, "favorite_user_id");
-
+    private final Reference<SnapchatUser> favoriteUser = Reference.of(this, SnapchatUser.class, "favorite_user_id")
+            .onUpdate(update -> {
+                if (update.oldValue() == null) {
+                    return;
+                }
+                updateCalled.set(updateCalled.get() + 1);
+            });
     private SnapchatUser(DataManager dataManager, UUID id) {
         super(dataManager, "snapchat", "users", id);
     }
@@ -33,5 +41,9 @@ public class SnapchatUser extends UniqueData {
 
     public void setFavoriteUser(@Nullable SnapchatUser favoriteUser) {
         this.favoriteUser.set(favoriteUser);
+    }
+
+    public Integer getUpdateCalled() {
+        return updateCalled.get();
     }
 }
