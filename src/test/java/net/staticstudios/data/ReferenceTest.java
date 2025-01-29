@@ -107,7 +107,7 @@ public class ReferenceTest extends DataTest {
     }
 
     @RetryingTest(5)
-    public void testReferenceUpdateHandler () {
+    public void testReferenceUpdateHandler() {
         MockEnvironment environment = getMockEnvironments().getFirst();
         DataManager dataManager = environment.dataManager();
 
@@ -121,6 +121,7 @@ public class ReferenceTest extends DataTest {
         assertEquals(1, user.getUpdateCalled());
 
         user.setFavoriteUser(null);
+        waitForDataPropagation();
         assertEquals(2, user.getUpdateCalled());
     }
 }

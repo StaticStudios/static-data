@@ -14,11 +14,9 @@ public class SnapchatUser extends UniqueData {
     private final Reference<SnapchatUserSettings> settings = Reference.of(this, SnapchatUserSettings.class, "id");
     private final Reference<SnapchatUser> favoriteUser = Reference.of(this, SnapchatUser.class, "favorite_user_id")
             .onUpdate(update -> {
-                if (update.oldValue() == null) {
-                    return;
-                }
                 updateCalled.set(updateCalled.get() + 1);
             });
+
     private SnapchatUser(DataManager dataManager, UUID id) {
         super(dataManager, "snapchat", "users", id);
     }
