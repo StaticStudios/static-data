@@ -24,6 +24,10 @@ public class ReferenceTest extends DataTest {
                         id uuid primary key,
                         favorite_user_id uuid
                     );
+                    create table if not exists snapchat.user_meta (
+                        id uuid primary key,
+                        update_called integer
+                    );
                     create table if not exists snapchat.user_settings (
                         user_id uuid primary key,
                         enable_friend_requests boolean not null
@@ -100,5 +104,24 @@ public class ReferenceTest extends DataTest {
         waitForDataPropagation();
 
         assertEquals(favoriteUser, user.getFavoriteUser());
+    }
+
+    @RetryingTest(5)
+    public void testReferenceUpdateHandler() {
+        MockEnvironment environment = getMockEnvironments().getFirst();
+        DataManager dataManager = environment.dataManager();
+
+        SnapchatUser user = SnapchatUser.createSync(dataManager);
+        SnapchatUser favoriteUser = SnapchatUser.createSync(dataManager);
+
+        assertEquals(0, user.getUpdateCalled());
+        user.setFavoriteUser(favoriteUser);
+
+        waitForDataPropagation();
+        assertEquals(1, user.getUpdateCalled());
+
+        user.setFavoriteUser(null);
+        waitForDataPropagation();
+        assertEquals(2, user.getUpdateCalled());
     }
 }
