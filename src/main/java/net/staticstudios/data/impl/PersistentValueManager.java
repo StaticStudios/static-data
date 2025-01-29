@@ -198,7 +198,7 @@ public class PersistentValueManager extends SQLLogger {
         for (String idSchemaTable : initialDataMap.keySet()) {
             String idColumn = idSchemaTable.split("\\.", 2)[0];
             String schemaTable = idSchemaTable.split("\\.", 2)[1];
-            Collection<InitialPersistentValue> initialDataValues = initialDataMap.get(idSchemaTable);
+            List<InitialPersistentValue> initialDataValues = new ArrayList<>(initialDataMap.get(idSchemaTable));
             initialDataValues.removeIf(i -> i.getValue().getColumn().equals(idColumn));
             List<InitialPersistentValue> overwriteExisting = new ArrayList<>();
             for (InitialPersistentValue initial : initialDataValues) {
