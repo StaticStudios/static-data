@@ -6,7 +6,7 @@
 `static-data` is an ORM built for a specific type of application. Origninally created for distributed Minecraft servers, this ORM avoids blocking an application's main thread when doing read or writes from a remote datasource. This is accomplished by keeping an in memory copy of the datasource, reading from there, and asynchronously disbatching writes to the datasource. The whole database is **not** kept in memory, only relevant tables are. This can use significant amounts of memory on large tables.
 
 ## Built for distributed applications
-What makes `static-data` special is that the in-memory cache is updated whenever the datasource is updated. This means that when one application instance makes a change, all other instances will update their cache. This avoids reading stale data. The various instaces do not have to contain the exact same data classes either, `static-data` sends updates based off of updated cells in the database. So if a cell is being tracked somewhere, the update will be received.
+What makes `static-data` special is that the in-memory cache is updated whenever the datasource is updated. This means that when one application instance makes a change, all other instances will update their cache. This avoids reading stale data. The various instaces do not have to contain the exact same data classes either, `static-data` receives updates based off of updated cells in the database. So if a cell is being tracked *somewhere*, the update will be received.
 
 ### PostgreSQL only
 This ORM only supports PostgreSQL. The reason is that `static-data` makes use of PostgreSQL's `LISTEN / NOTIFY` commands to recieve updates rather than add an additional layer between the application and the database.
@@ -24,6 +24,9 @@ This ORM only supports PostgreSQL. The reason is that `static-data` makes use of
 - `PersistentCollection.of(...)`: represents a one-to-many relationship of simple data types such as Integer, Boolean, etc.. (like a `PersistentValue`, but one-to-many)
 - `PersistentCollection.oneToMany(...)`: represents a one-to-many relationship of other data objects (like a `Reference`, but one-to-many)
 - `PersistentCollection.manyToMany(...)`: represents a many-to-many relationship of other data objects, with the use of a junction table
+
+## Data types
+Any class can be used as a data type, provided it's a "Primative" or a `ValueSerializer` has been registered for it. "Primitive" types are basic types which are supported in PostgreSQL. `ValueSerializers` must convert to and from complex types to a "Primative". Current "Primitive" types include: `String`, `Character`, `Byte`, `Short`, `Integer`, `Long`, `Float`, `Double`, `Boolean`, `UUID`, `Timestamp` and `byte[]`. `null` values are allowed for some "Primative" types. Specifically, `null` values are allowed for `String`, `UUID`, `Timestamp`, and `byte[]`. To avoid autoboxing/unboxing issues, wrappers for java primatives cannot be null.
 
 # Current limitations
 Currently, `static-data` assumes that any column marked as an id column will not have its value changed. It should only ever be `null` when the row/data object doesn't exist. Changing this value will break things in many ways.
