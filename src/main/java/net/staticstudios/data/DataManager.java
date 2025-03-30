@@ -983,6 +983,10 @@ public class DataManager extends SQLLogger {
     }
 
     public void uncache(DataKey key) {
+        uncache(key, true);
+    }
+
+    public void uncache(DataKey key, boolean removeUpdateHandlers) {
         Collection<ValueUpdateHandler<?>> updateHandlers = valueUpdateHandlers.get(key);
         CacheEntry existing = cache.get(key);
 
@@ -995,7 +999,10 @@ public class DataManager extends SQLLogger {
         }
 
         cache.remove(key);
-        valueUpdateHandlers.removeAll(key);
+
+        if (removeUpdateHandlers) {
+            valueUpdateHandlers.removeAll(key);
+        }
     }
 
     public void registerValueUpdateHandler(DataKey key, ValueUpdateHandler<?> handler) {

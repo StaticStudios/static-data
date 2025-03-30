@@ -45,7 +45,7 @@ public class CachedValueManager {
     public void deleteFromCache(DeleteContext context) {
         for (Data<?> data : context.toDelete()) {
             if (data instanceof CachedValue<?> cv) {
-                dataManager.uncache(cv.getKey());
+                dataManager.uncache(cv.getKey(), false);
             }
         }
     }
@@ -134,7 +134,7 @@ public class CachedValueManager {
                                     dataManager.cache(redisKey, dummyValue.getDataType(), deserialized, now, true);
                                 })
                 );
-                case DEL, EXPIRED -> dataManager.uncache(redisKey);
+                case DEL, EXPIRED -> dataManager.uncache(redisKey, false);
             }
         }
     }
