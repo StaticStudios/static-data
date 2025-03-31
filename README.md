@@ -1,7 +1,3 @@
-# This is not ready for public use
-- Documentation needs to be completed
-- Single point of failures need to be addressed
-
 # What is static-data
 `static-data` is an ORM built for a specific type of application. Origninally created for distributed Minecraft servers, this ORM avoids blocking an application's main thread when doing read or writes from a remote datasource. This is accomplished by keeping an in memory copy of the datasource, reading from there, and asynchronously disbatching writes to the datasource. The whole database is **not** kept in memory, only relevant tables are. This can use significant amounts of memory on large tables.
 
