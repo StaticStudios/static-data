@@ -7,6 +7,7 @@ import net.staticstudios.data.DataManager;
 import net.staticstudios.data.util.DataSourceConfig;
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
+import org.jetbrains.annotations.VisibleForTesting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,6 +21,9 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 public class PostgresListener {
@@ -60,64 +64,34 @@ public class PostgresListener {
     private final Logger logger = LoggerFactory.getLogger(PostgresListener.class);
     private final Set<String> tablesTriggered = Collections.synchronizedSet(new HashSet<>());
     private final ConcurrentLinkedDeque<Consumer<PostgresNotification>> notificationHandlers = new ConcurrentLinkedDeque<>();
-    private final PGConnection pgConnection;
     private final Gson gson = new Gson();
+    private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+    public @VisibleForTesting PGConnection pgConnection;
 
     public PostgresListener(DataManager dataManager, DataSourceConfig ds) {
         try {
             Class.forName("com.impossibl.postgres.jdbc.PGDriver");
 
+            setPgConnection(dataManager, ds);
 
-            this.pgConnection = DriverManager.getConnection("jdbc:pgsql://" + ds.databaseHost() + ":" + ds.databasePort() + "/" + ds.databaseName(), ds.databaseUsername(), ds.databasePassword()).unwrap(PGConnection.class);
-
-            try (Statement statement = pgConnection.createStatement()) {
-                logger.trace("Creating data_notify function");
-                statement.execute(CREATE_DATA_NOTIFY_FUNCTION);
-            }
-
-            pgConnection.addNotificationListener("data_notification", new PGNotificationListener() {
-                @Override
-                public void notification(int processId, String channelName, String payload) {
-                    logger.trace("Received notification. PID: {}, Channel: {}, Payload: {}", processId, channelName, payload);
-                    String[] parts = payload.split(",", 6);
-                    String encodedTimestamp = parts[0];
-                    String schema = parts[1];
-                    String table = parts[2];
-                    String encodedOperation = parts[3];
-                    String applicationName = parts[4];
-                    String encodedData = parts[5];
-
-                    //Filter out notifications from this application (data manager session)
-                    if (dataManager.getApplicationName().equals(applicationName)) {
-                        logger.trace("Ignoring notification from this session");
-                        return;
-                    }
-
-                    PostgresData data = gson.fromJson(encodedData, PostgresData.class);
-
-                    OffsetDateTime offsetDateTime = OffsetDateTime.parse(encodedTimestamp, DATE_TIME_FORMATTER);
-
-                    PostgresNotification notification = new PostgresNotification(
-                            offsetDateTime.toInstant(),
-                            schema,
-                            table,
-                            PostgresOperation.valueOf(encodedOperation),
-                            data
-                    );
-
-                    for (Consumer<PostgresNotification> handler : notificationHandlers) {
+            scheduledExecutorService.scheduleAtFixedRate(() -> {
+                if (ThreadUtils.isShuttingDown()) {
+                    return;
+                }
+                try {
+                    if (pgConnection.isClosed()) {
+                        logger.warn("Connection closed, re-establishing connection");
                         try {
-                            handler.accept(notification);
-                        } catch (Exception e) {
-                            logger.error("Error handling notification", e);
+                            setPgConnection(dataManager, ds);
+                        } catch (SQLException e) {
+                            logger.error("Error re-establishing connection", e);
                         }
                     }
+                } catch (SQLException e) {
+                    throw new RuntimeException(e);
                 }
-            });
+            }, 1, 1, TimeUnit.SECONDS);
 
-            try (Statement statement = pgConnection.createStatement()) {
-                statement.execute("LISTEN data_notification");
-            }
         } catch (SQLException | ClassNotFoundException e) {
             throw new RuntimeException(e);
         }
@@ -125,11 +99,65 @@ public class PostgresListener {
 
         ThreadUtils.onShutdownRunSync(ShutdownStage.CLEANUP, () -> {
             try {
+                scheduledExecutorService.shutdownNow();
                 pgConnection.close();
             } catch (SQLException e) {
                 throw new RuntimeException(e);
             }
         });
+    }
+
+    private void setPgConnection(DataManager dataManager, DataSourceConfig ds) throws SQLException {
+        this.pgConnection = DriverManager.getConnection("jdbc:pgsql://" + ds.databaseHost() + ":" + ds.databasePort() + "/" + ds.databaseName(), ds.databaseUsername(), ds.databasePassword()).unwrap(PGConnection.class);
+
+        try (Statement statement = pgConnection.createStatement()) {
+            logger.trace("Creating data_notify function");
+            statement.execute(CREATE_DATA_NOTIFY_FUNCTION);
+        }
+
+        pgConnection.addNotificationListener("data_notification", new PGNotificationListener() {
+            @Override
+            public void notification(int processId, String channelName, String payload) {
+                logger.trace("Received notification. PID: {}, Channel: {}, Payload: {}", processId, channelName, payload);
+                String[] parts = payload.split(",", 6);
+                String encodedTimestamp = parts[0];
+                String schema = parts[1];
+                String table = parts[2];
+                String encodedOperation = parts[3];
+                String applicationName = parts[4];
+                String encodedData = parts[5];
+
+                //Filter out notifications from this application (data manager session)
+                if (dataManager.getApplicationName().equals(applicationName)) {
+                    logger.trace("Ignoring notification from this session");
+                    return;
+                }
+
+                PostgresData data = gson.fromJson(encodedData, PostgresData.class);
+
+                OffsetDateTime offsetDateTime = OffsetDateTime.parse(encodedTimestamp, DATE_TIME_FORMATTER);
+
+                PostgresNotification notification = new PostgresNotification(
+                        offsetDateTime.toInstant(),
+                        schema,
+                        table,
+                        PostgresOperation.valueOf(encodedOperation),
+                        data
+                );
+
+                for (Consumer<PostgresNotification> handler : notificationHandlers) {
+                    try {
+                        handler.accept(notification);
+                    } catch (Exception e) {
+                        logger.error("Error handling notification", e);
+                    }
+                }
+            }
+        });
+
+        try (Statement statement = pgConnection.createStatement()) {
+            statement.execute("LISTEN data_notification");
+        }
     }
 
     public void addHandler(Consumer<PostgresNotification> handler) {

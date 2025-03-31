@@ -13,8 +13,7 @@ import java.sql.Statement;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class PostgresListenerTest extends DataTest {
     @BeforeEach
@@ -90,5 +89,20 @@ public class PostgresListenerTest extends DataTest {
         assertEquals(id, UUID.fromString(deleteNotification.getData().oldDataValueMap().get("id")));
         assertTrue(deleteNotification.getData().newDataValueMap().isEmpty());
         assertEquals(2, Integer.valueOf(deleteNotification.getData().oldDataValueMap().get("value")));
+    }
+
+    @RetryingTest(5)
+    public void testReConnect() throws InterruptedException, SQLException {
+        MockEnvironment environment = getMockEnvironments().getFirst();
+        DataManager dataManager = environment.dataManager();
+        PostgresListener pgListener = dataManager.getPostgresListener();
+
+        assertFalse(pgListener.pgConnection.isClosed());
+        pgListener.pgConnection.close();
+        assertTrue(pgListener.pgConnection.isClosed());
+
+        Thread.sleep(2000);
+
+        assertFalse(pgListener.pgConnection.isClosed());
     }
 }
