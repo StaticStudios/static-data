@@ -97,19 +97,15 @@ public class DataTest {
         return mockEnvironments;
     }
 
+    public int getWaitForDataPropagationTime() {
+        return 500 + (Objects.equals(System.getenv("GITHUB_ACTIONS"), "true") ? 1000 : 0);
+    }
+
     public void waitForDataPropagation() {
         try {
-            Thread.sleep(500);
+            Thread.sleep(getWaitForDataPropagationTime());
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
-        }
-
-        if (Objects.equals(System.getenv("GITHUB_ACTIONS"), "true")) {
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
         }
     }
 

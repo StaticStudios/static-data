@@ -5,7 +5,6 @@ import net.staticstudios.data.data.value.InitialPersistentValue;
 import net.staticstudios.data.data.value.Value;
 import net.staticstudios.data.impl.PersistentValueManager;
 import net.staticstudios.data.key.CellKey;
-import net.staticstudios.data.key.DataKey;
 import net.staticstudios.data.util.DeletionStrategy;
 import net.staticstudios.data.util.InsertionStrategy;
 import net.staticstudios.data.util.ValueUpdate;
@@ -33,6 +32,7 @@ public class PersistentValue<T> implements Value<T> {
     private Supplier<T> defaultValueSupplier;
     private DeletionStrategy deletionStrategy;
     private InsertionStrategy insertionStrategy;
+    private int updateInterval = -1;
 
     private PersistentValue(String schema, String table, String column, String idColumn, Class<T> dataType, DataHolder holder, DataManager dataManager) {
         if (!holder.getDataManager().isSupportedType(dataType)) {
@@ -162,7 +162,7 @@ public class PersistentValue<T> implements Value<T> {
     }
 
     @Override
-    public DataKey getKey() {
+    public CellKey getKey() {
         return new CellKey(this);
     }
 
@@ -174,7 +174,13 @@ public class PersistentValue<T> implements Value<T> {
         PersistentValueManager manager = dataManager.getPersistentValueManager();
         manager.updateCache(this, value);
 
-        dataManager.submitAsyncTask(connection -> manager.updateInDatabase(connection, this, value));
+        Runnable runnable = () -> dataManager.submitAsyncTask(connection -> manager.updateInDatabase(connection, this, value));
+
+        if (updateInterval > 0) {
+            manager.enqueueRunnable(getKey(), updateInterval, runnable);
+        } else {
+            runnable.run();
+        }
     }
 
     /**
@@ -188,7 +194,13 @@ public class PersistentValue<T> implements Value<T> {
         PersistentValueManager manager = dataManager.getPersistentValueManager();
         manager.updateCache(this, value);
 
-        dataManager.submitBlockingTask(connection -> manager.updateInDatabase(connection, this, value));
+        Runnable runnable = () -> dataManager.submitBlockingTask(connection -> manager.updateInDatabase(connection, this, value));
+
+        if (updateInterval > 0) {
+            manager.enqueueRunnable(getKey(), updateInterval, runnable);
+        } else {
+            runnable.run();
+        }
     }
 
     /**
@@ -278,6 +290,28 @@ public class PersistentValue<T> implements Value<T> {
      */
     public @NotNull InsertionStrategy getInsertionStrategy() {
         return insertionStrategy == null ? InsertionStrategy.OVERWRITE_EXISTING : insertionStrategy;
+    }
+
+    /**
+     * Set the update interval for this value.
+     * When set to an integer greater than 0, the database will be updated every n milliseconds, provided the value has changed.
+     * Further, if the value has changed 10 times, only the 10th change will be written to the database.
+     *
+     * @param updateInterval the update interval
+     * @return this
+     */
+    public PersistentValue<T> updateInterval(int updateInterval) {
+        this.updateInterval = updateInterval;
+        return this;
+    }
+
+    /**
+     * Get the update interval for this value.
+     *
+     * @return the update interval
+     */
+    public int getUpdateInterval() {
+        return updateInterval;
     }
 
     @Override

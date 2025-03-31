@@ -15,7 +15,11 @@ import net.staticstudios.data.util.DeleteContext;
 import net.staticstudios.data.util.InsertionStrategy;
 import net.staticstudios.data.util.SQLLogger;
 import net.staticstudios.utils.Pair;
+import net.staticstudios.utils.ShutdownStage;
+import net.staticstudios.utils.ThreadUtils;
 import org.jetbrains.annotations.Blocking;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -23,10 +27,21 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class PersistentValueManager extends SQLLogger {
+
+    private final Logger logger = LoggerFactory.getLogger(PersistentValueManager.class);
     private final DataManager dataManager;
     private final PostgresListener pgListener;
+    private final Map<CellKey, Runnable> enqueuedDatabaseUpdates = new HashMap<>();
+    private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(thread -> {
+        Thread t = new Thread(thread);
+        t.setName("PersistentValueManager-ScheduledExecutor");
+        return t;
+    });
 
     @SuppressWarnings("rawtypes")
     public PersistentValueManager(DataManager dataManager, PostgresListener pgListener) {
@@ -90,6 +105,15 @@ public class PersistentValueManager extends SQLLogger {
                         dataManager.uncache(key);
                     }
                 }
+            }
+        });
+
+        ThreadUtils.onShutdownRunSync(ShutdownStage.EARLY, () -> {
+            List<Runnable> tasks = scheduledExecutorService.shutdownNow();
+
+            logger.info("Shutting down PersistentValueManager, running {} enqueued tasks", tasks.size());
+            for (Runnable task : tasks) {
+                task.run();
             }
         });
     }
@@ -341,5 +365,23 @@ public class PersistentValueManager extends SQLLogger {
                 }
             }
         }
+    }
+
+    public synchronized void enqueueRunnable(CellKey cellKey, int duration, Runnable runnable) {
+        if (ThreadUtils.isShuttingDown()) {
+            logger.warn("enqueueRunnable called while shutting down, running immediately");
+            runnable.run();
+            return;
+        }
+
+        if (enqueuedDatabaseUpdates.put(cellKey, runnable) == null) {
+            scheduledExecutorService.schedule(() -> {
+                Runnable toRun = enqueuedDatabaseUpdates.remove(cellKey);
+                if (toRun != null) {
+                    toRun.run();
+                }
+            }, duration, TimeUnit.MILLISECONDS);
+        }
+
     }
 }
