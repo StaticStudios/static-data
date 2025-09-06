@@ -24,62 +24,62 @@ public class PrimitivesTest extends DataTest {
                     drop schema if exists primitive cascade;
                     create schema if not exists primitive;
                     create table if not exists primitive.string_test (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         value text
                     );
                     
                     create table if not exists primitive.character_test (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         value char(1) not null
                     );
                     
                     create table if not exists primitive.byte_test (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         value smallint not null
                     );
                     
                     create table if not exists primitive.short_test (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         value smallint not null
                     );
                     
                     create table if not exists primitive.integer_test (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         value integer not null
                     );
                     
                     create table if not exists primitive.long_test (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         value bigint not null
                     );
                     
                     create table if not exists primitive.float_test (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         value real not null
                     );
                     
                     create table if not exists primitive.double_test (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         value double precision not null
                     );
                     
                     create table if not exists primitive.boolean_test (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         value boolean not null
                     );
                     
                     create table if not exists primitive.uuid_test (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         value uuid
                     );
                     
                     create table if not exists primitive.timestamp_test (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         value timestamp
                     );
                     
                     create table if not exists primitive.byte_array_test (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         value bytea
                     );
                     """);

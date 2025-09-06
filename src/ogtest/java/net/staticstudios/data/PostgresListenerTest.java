@@ -23,7 +23,7 @@ public class PostgresListenerTest extends DataTest {
                     drop schema if exists test cascade;
                     create schema if not exists test;
                     create table if not exists test.test (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         value int not null
                     );
                     """);

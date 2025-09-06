@@ -21,15 +21,15 @@ public class ReferenceTest extends DataTest {
                     drop schema if exists snapchat cascade;
                     create schema if not exists snapchat;
                     create table if not exists snapchat.users (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         favorite_user_id uuid
                     );
                     create table if not exists snapchat.user_meta (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         update_called integer
                     );
                     create table if not exists snapchat.user_settings (
-                        user_id uuid primary key,
+                        user_id uuid primary primaryKey,
                         enable_friend_requests boolean not null
                     );
                     """);

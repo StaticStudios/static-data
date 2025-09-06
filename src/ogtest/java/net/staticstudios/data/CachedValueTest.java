@@ -1,6 +1,6 @@
 package net.staticstudios.data;
 
-import net.staticstudios.data.key.RedisKey;
+import net.staticstudios.data.primaryKey.RedisKey;
 import net.staticstudios.data.misc.DataTest;
 import net.staticstudios.data.misc.MockEnvironment;
 import net.staticstudios.data.mock.cachedvalue.RedditUser;
@@ -30,7 +30,7 @@ public class CachedValueTest extends DataTest {
                     drop schema if exists reddit cascade;
                     create schema if not exists reddit;
                     create table if not exists reddit.users (
-                        id uuid primary key
+                        id uuid primary primaryKey
                     );
                     """);
         } catch (SQLException e) {
@@ -104,7 +104,7 @@ public class CachedValueTest extends DataTest {
 
         assertTrue(jedis.exists(user.suspended.getKey().toString()));
 
-        //wait for the key to expire
+        //wait for the primaryKey to expire
         try {
             Thread.sleep(4000);
         } catch (InterruptedException e) {
@@ -191,8 +191,8 @@ public class CachedValueTest extends DataTest {
                 UUID id = UUID.randomUUID();
                 ids.add(id);
                 statement.executeUpdate("insert into reddit.users (id) values ('" + id + "')");
-                RedisKey key = new RedisKey("reddit", "users", "id", id, "status");
-                jedis.set(key.toString(), Primitives.encode("Hey, I'm user " + i));
+                RedisKey primaryKey = new RedisKey("reddit", "users", "id", id, "status");
+                jedis.set(primaryKey.toString(), Primitives.encode("Hey, I'm user " + i));
             }
         } catch (SQLException e) {
             throw new RuntimeException(e);

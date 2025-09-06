@@ -23,11 +23,11 @@ public class InsertionTest extends DataTest {
                     drop schema if exists twitch cascade;
                     create schema if not exists twitch;
                     create table if not exists twitch.users (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         name text not null
                     );
                     create table if not exists twitch.chat_messages (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         sender_id uuid not null references twitch.users(id) on delete set null deferrable initially deferred
                     );
                     """);

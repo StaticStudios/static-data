@@ -30,16 +30,16 @@ public class PersistentCollectionTest extends DataTest {
                     drop schema if exists facebook cascade;
                     create schema if not exists facebook;
                     create table if not exists facebook.users (
-                                                    id uuid primary key
+                                                    id uuid primary primaryKey
                     );
                     create table if not exists facebook.posts (
-                                                    id uuid primary key,
+                                                    id uuid primary primaryKey,
                                                     user_id uuid,
                                                     description text not null default '',
                                                     likes int not null default 0
                     );
                     create table if not exists facebook.favorite_quotes (
-                                                              id uuid primary key,
+                                                              id uuid primary primaryKey,
                                                               user_id uuid,
                                                               quote text not null default ''
                     );

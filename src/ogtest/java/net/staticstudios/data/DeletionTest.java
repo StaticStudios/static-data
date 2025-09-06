@@ -1,7 +1,7 @@
 package net.staticstudios.data;
 
 import net.staticstudios.data.data.collection.SimplePersistentCollection;
-import net.staticstudios.data.key.RedisKey;
+import net.staticstudios.data.primaryKey.RedisKey;
 import net.staticstudios.data.misc.DataTest;
 import net.staticstudios.data.misc.MockEnvironment;
 import net.staticstudios.data.misc.TestUtils;
@@ -24,32 +24,32 @@ public class DeletionTest extends DataTest {
                     drop schema if exists minecraft cascade;
                     create schema if not exists minecraft;
                     create table if not exists minecraft.users (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         name text not null
                     );
                     create table if not exists minecraft.user_meta (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         account_creation timestamp not null
                     );
                     create table if not exists minecraft.user_stats (
-                        id uuid primary key
+                        id uuid primary primaryKey
                     );
                     create table if not exists minecraft.servers (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         name text not null
                     );
                     create table if not exists minecraft.skins (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         user_id uuid,
                         name text not null
                     );
                     create table if not exists minecraft.user_servers (
                         user_id uuid not null,
                         server_id uuid not null,
-                        primary key (user_id, server_id)
+                        primary primaryKey (user_id, server_id)
                     );
                     create table if not exists minecraft.worlds (
-                        id uuid primary key,
+                        id uuid primary primaryKey,
                         user_id uuid not null,
                         name text not null
                     );
