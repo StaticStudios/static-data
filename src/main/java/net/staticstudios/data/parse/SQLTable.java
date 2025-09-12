@@ -1,6 +1,7 @@
 package net.staticstudios.data.parse;
 
 import com.google.common.base.Preconditions;
+import net.staticstudios.data.util.ColumnMetadata;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
@@ -8,11 +9,13 @@ import java.util.*;
 public class SQLTable {
     private final SQLSchema schema;
     private final String name;
+    private final List<ColumnMetadata> idColumns;
     private final Map<String, SQLColumn> columns;
 
-    public SQLTable(SQLSchema schema, String name) {
+    public SQLTable(SQLSchema schema, String name, List<ColumnMetadata> idColumns) {
         this.schema = schema;
         this.name = name;
+        this.idColumns = idColumns;
         this.columns = new HashMap<>();
     }
 
@@ -30,6 +33,10 @@ public class SQLTable {
 
     public @Nullable SQLColumn getColumn(String columnName) {
         return columns.get(columnName);
+    }
+
+    public List<ColumnMetadata> getIdColumns() {
+        return idColumns;
     }
 
     public void addColumn(SQLColumn column) {

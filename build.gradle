@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'net.staticstudios'
-version = '2.0.10-SNAPSHOT'
+version = '3.0.0-SNAPSHOT'
 
 repositories {
     mavenCentral()
@@ -24,7 +24,7 @@ dependencies {
     implementation 'redis.clients:jedis:5.1.2'
     implementation 'net.staticstudios:static-utils:1.0.1'
     implementation 'com.h2database:h2:2.3.232'
-    implementation 'org.xerial:sqlite-jdbc:3.45.1.0'
+//    implementation 'org.xerial:sqlite-jdbc:3.45.1.0'
     implementation 'org.jetbrains:annotations:24.0.1'
 
 //    testImplementation(platform('org.junit:junit-bom:5.10.3'))

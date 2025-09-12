@@ -3,6 +3,8 @@ package net.staticstudios.data.util;
 import com.google.common.base.Preconditions;
 import org.jetbrains.annotations.VisibleForTesting;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -22,5 +24,14 @@ public class ValueUtils {
         } else {
             return encoded;
         }
+    }
+
+    public static List<String> parseCommaSeperatedList(String encoded) {
+        List<String> strings = new ArrayList<>();
+        for (String s : StringUtils.parseCommaSeperatedList(encoded)) {
+            strings.add(parseValue(s));
+        }
+
+        return strings;
     }
 }

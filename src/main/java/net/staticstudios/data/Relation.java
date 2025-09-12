@@ -1,4 +1,4 @@
 package net.staticstudios.data;
 
-public interface Relation<U extends UniqueData> {
+public interface Relation<T extends UniqueData> {
 }

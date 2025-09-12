@@ -1,13 +1,17 @@
 package net.staticstudios.data.parse;
 
+import java.util.Objects;
+
 public class SQLColumn {
     private final SQLTable table;
+    private final Class<?> type;
     private final String name;
     private final boolean nullable;
     private final boolean indexed;
 
-    public SQLColumn(SQLTable table, String name, boolean nullable, boolean indexed) {
+    public SQLColumn(SQLTable table, Class<?> type, String name, boolean nullable, boolean indexed) {
         this.table = table;
+        this.type = type;
         this.name = name;
         this.nullable = nullable;
         this.indexed = indexed;
@@ -15,6 +19,10 @@ public class SQLColumn {
 
     public SQLTable getTable() {
         return table;
+    }
+
+    public Class<?> getType() {
+        return type;
     }
 
     public String getName() {
@@ -29,5 +37,30 @@ public class SQLColumn {
         return indexed;
     }
 
-    //todo: equals, hashCode, toString methods if needed
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(table, type, name, nullable, indexed);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) return true;
+        if (obj == null || getClass() != obj.getClass()) return false;
+        SQLColumn other = (SQLColumn) obj;
+        return nullable == other.nullable &&
+                indexed == other.indexed &&
+                Objects.equals(type, other.type) &&
+                Objects.equals(name, other.name);
+    }
+
+    @Override
+    public String toString() {
+        return "SQLColumn{" +
+                ", type=" + type +
+                ", name='" + name + '\'' +
+                ", nullable=" + nullable +
+                ", indexed=" + indexed +
+                '}';
+    }
 }

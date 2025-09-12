@@ -1,13 +1,15 @@
 package net.staticstudios.data;
 
-public class SQLParseTest {
+import net.staticstudios.data.misc.DataTest;
+import net.staticstudios.data.mock.MockUser;
+import org.junit.jupiter.api.Test;
 
-//    @Test
-//    public void testParse() {
-//        DataManager dm = new DataManager();
-//        dm.extractMetadata(MockUser.class);
-//        String sql = dm.getSQLBuilder().asSQL();
-//
-//        System.out.println(sql);
-//    }
+public class SQLParseTest extends DataTest {
+
+    @Test
+    public void testParse() {
+        DataManager dm = getMockEnvironments().getFirst().dataManager();
+        dm.extractMetadata(MockUser.class);
+        dm.getSQLBuilder().parse(MockUser.class).forEach(System.out::println);
+    }
 }

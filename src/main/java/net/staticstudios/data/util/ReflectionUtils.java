@@ -44,9 +44,7 @@ public class ReflectionUtils {
             field.setAccessible(true);
             try {
                 T value = fieldType.cast(field.get(instance));
-                if (value != null) {
-                    instances.add(new FieldInstancePair<>(field, value));
-                }
+                instances.add(new FieldInstancePair<>(field, value));
             } catch (IllegalAccessException e) {
                 throw new RuntimeException(e);
             }
@@ -68,7 +66,7 @@ public class ReflectionUtils {
         if (field.getGenericType() instanceof Class<?>) {
             return (Class<?>) field.getGenericType();
         } else if (field.getGenericType() instanceof java.lang.reflect.ParameterizedType parameterizedType) {
-            return (Class<?>) parameterizedType.getRawType();
+            return (Class<?>) parameterizedType.getActualTypeArguments()[0];
         }
         return null;
     }

@@ -1,11 +1,13 @@
 package net.staticstudios.data.util;
 
-public interface ValueUpdateHandler<T> {
+import net.staticstudios.data.UniqueData;
 
-    void handle(ValueUpdate<T> update);
+public interface ValueUpdateHandler<U extends UniqueData, T> {
+
+    void handle(U holder, ValueUpdate<T> update);
 
     @SuppressWarnings("unchecked")
-    default void unsafeHandle(Object oldValue, Object newValue) {
-        handle(new ValueUpdate<>((T) oldValue, (T) newValue));
+    default void unsafeHandle(UniqueData holder, Object oldValue, Object newValue) {
+        handle((U) holder, new ValueUpdate<>((T) oldValue, (T) newValue));
     }
 }
