@@ -1,13 +1,13 @@
 package net.staticstudios.data;
 
 import net.staticstudios.data.misc.DataTest;
+import net.staticstudios.data.misc.MockEnvironment;
 import net.staticstudios.data.mock.MockUser;
+import net.staticstudios.data.mock.MockUserFactory;
 import net.staticstudios.data.mock.MockUserSettings;
 import net.staticstudios.data.util.ColumnValuePair;
 import org.junit.jupiter.api.Test;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,22 +25,15 @@ public class PersistentValueTest extends DataTest {
             userIds.add(UUID.randomUUID());
         }
 
-        try (PreparedStatement ps = getConnection().prepareStatement("CREATE TABLE IF NOT EXISTS public.users (id UUID PRIMARY KEY, name TEXT, age INT)")) {
-            ps.execute();
-        }
-
-        Connection connection = getConnection();
-        try (PreparedStatement ps = connection.prepareStatement("INSERT INTO public.users (id, name) VALUES (?, ?)")) {
-            for (UUID id : userIds) {
-                ps.setObject(1, id);
-                ps.setString(2, "user " + id);
-                ps.addBatch();
-            }
-            ps.executeBatch();
-        }
-
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        for (UUID id : userIds) {
+            MockUserFactory.builder(dataManager)
+                    .id(id)
+                    .name("user " + id)
+                    .insert(InsertMode.SYNC);
+        }
+
         for (UUID id : userIds) {
             MockUser user = dataManager.get(MockUser.class, ColumnValuePair.of("id", id));
             assertEquals("user " + id, user.name.get());
@@ -48,6 +41,15 @@ public class PersistentValueTest extends DataTest {
         }
 
         waitForDataPropagation();
+
+        MockEnvironment environment2 = createMockEnvironment();
+        DataManager dataManager2 = environment2.dataManager();
+        dataManager2.load(MockUser.class);
+        for (UUID id : userIds) {
+            MockUser user = dataManager2.get(MockUser.class, ColumnValuePair.of("id", id));
+            assertEquals("user " + id, user.name.get());
+            assertNull(user.age.get());
+        }
     }
 
     @Test
@@ -55,7 +57,10 @@ public class PersistentValueTest extends DataTest {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
         UUID id = UUID.randomUUID();
-        MockUser mockUser = MockUser.create(dataManager, id, "test user");
+        MockUser mockUser = MockUserFactory.builder(dataManager)
+                .id(id)
+                .name("test user")
+                .insert(InsertMode.SYNC);
         assertEquals("test user", mockUser.name.get());
         mockUser.name.set("updated name");
         assertEquals("updated name", mockUser.name.get());
@@ -105,7 +110,11 @@ public class PersistentValueTest extends DataTest {
         dataManager.load(MockUser.class);
         UUID id = UUID.randomUUID();
         assertEquals(0, dataManager.getUpdateHandlers("public", "users", "name", MockUser.class).size());
-        MockUser mockUser = MockUser.create(dataManager, id, "test user");
+        MockUser mockUser = MockUserFactory.builder(dataManager)
+                .id(id)
+                .name("test user")
+                .insert(InsertMode.SYNC);
+        assertEquals("test user", mockUser.name.get());
         //first instance was created, handler should be registered
         assertEquals(1, dataManager.getUpdateHandlers("public", "users", "name", MockUser.class).size());
         mockUser = null; // remove strong reference
@@ -113,7 +122,16 @@ public class PersistentValueTest extends DataTest {
         mockUser = dataManager.get(MockUser.class, ColumnValuePair.of("id", id)); // should have a cache miss
         //the handler for this pv should not have been registered again
         assertEquals(1, dataManager.getUpdateHandlers("public", "users", "name", MockUser.class).size());
+        assertEquals(0, mockUser.nameUpdates.get());
 
         mockUser.name.set("new name");
+        assertEquals(1, mockUser.nameUpdates.get());
+        mockUser.name.set("new name");
+        assertEquals(1, mockUser.nameUpdates.get());
+        mockUser.name.set("new name2");
+        assertEquals(2, mockUser.nameUpdates.get());
+        mockUser.name.set("new name");
+        assertEquals(3, mockUser.nameUpdates.get());
+
     }
 }

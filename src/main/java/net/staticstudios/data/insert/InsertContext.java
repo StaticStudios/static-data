@@ -3,6 +3,7 @@ package net.staticstudios.data.insert;
 import com.google.common.base.Preconditions;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.UniqueData;
+import net.staticstudios.data.InsertMode;
 import net.staticstudios.data.parse.SQLColumn;
 import net.staticstudios.data.parse.SQLSchema;
 import net.staticstudios.data.parse.SQLTable;
@@ -33,6 +34,9 @@ public class InsertContext { //todo: insert strategy, on a per pv level.
     }
 
     public InsertContext set(String schema, String table, String column, @Nullable Object value) {
+        if (value == null) {
+            return this; //todo: realistically we should validate the nullability stuff when we actually insert for better consistency.
+        }
         Preconditions.checkState(!inserted.get(), "Cannot modify InsertContext after it has been inserted");
         SQLSchema sqlSchema = dataManager.getSQLBuilder().getSchema(schema);
         Preconditions.checkNotNull(sqlSchema, "Schema not found: " + schema);
@@ -46,7 +50,7 @@ public class InsertContext { //todo: insert strategy, on a per pv level.
         ColumnMetadata columnMetadata = new ColumnMetadata(column, sqlColumn.getType(), sqlColumn.isNullable(), sqlColumn.isIndexed(), table, schema);
         entries.put(columnMetadata, value);
         return this;
-    }//todo: when inserting validate all id column values are present
+    }
 
     public Map<ColumnMetadata, Object> getEntries() {
         return entries;

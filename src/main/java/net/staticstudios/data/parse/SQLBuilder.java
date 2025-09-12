@@ -4,6 +4,10 @@ import com.google.common.base.Preconditions;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.Relation;
 import net.staticstudios.data.UniqueData;
+import net.staticstudios.data.Column;
+import net.staticstudios.data.Data;
+import net.staticstudios.data.ForeignColumn;
+import net.staticstudios.data.IdColumn;
 import net.staticstudios.data.util.*;
 import org.jetbrains.annotations.Nullable;
 
@@ -60,7 +64,7 @@ public class SQLBuilder {
         return parsedSchemas.get(name);
     }
 
-    private List<String> getDefs(Collection<SQLSchema> schemas) {
+    private List<String> getDefs(Collection<SQLSchema> schemas) { //todo: add fkeys, indexes, uniques, nullables, defaults, etc
         List<String> statements = new ArrayList<>();
         for (SQLSchema schema : schemas) {
             statements.add("CREATE SCHEMA IF NOT EXISTS \"" + schema.getName() + "\";");

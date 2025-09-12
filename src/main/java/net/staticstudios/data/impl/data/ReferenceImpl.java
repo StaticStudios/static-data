@@ -4,6 +4,7 @@ import com.google.common.base.Preconditions;
 import net.staticstudios.data.DataAccessor;
 import net.staticstudios.data.Reference;
 import net.staticstudios.data.UniqueData;
+import net.staticstudios.data.OneToOne;
 import net.staticstudios.data.parse.UniqueDataMetadata;
 import net.staticstudios.data.util.*;
 import org.intellij.lang.annotations.Language;

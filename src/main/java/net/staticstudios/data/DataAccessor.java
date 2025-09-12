@@ -1,7 +1,6 @@
 package net.staticstudios.data;
 
 import net.staticstudios.data.insert.InsertContext;
-import net.staticstudios.data.insert.InsertMode;
 import org.intellij.lang.annotations.Language;
 
 import java.sql.ResultSet;

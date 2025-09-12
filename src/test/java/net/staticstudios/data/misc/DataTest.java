@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Objects;
 
 public class DataTest {
-    public static final int NUM_ENVIRONMENTS = 1;
+    public static int NUM_ENVIRONMENTS = 1;
     public static RedisContainer redis;
     public static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(
             "postgres:16.2"
@@ -77,7 +77,7 @@ public class DataTest {
     }
 
     protected MockEnvironment createMockEnvironment() {
-        DataManager dataManager = new DataManager(dataSourceConfig);
+        DataManager dataManager = new DataManager(dataSourceConfig, false);
 
         MockEnvironment mockEnvironment = new MockEnvironment(dataSourceConfig, dataManager);
         mockEnvironments.add(mockEnvironment);

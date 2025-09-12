@@ -7,8 +7,6 @@ import net.staticstudios.data.impl.data.ReferenceImpl;
 import net.staticstudios.data.impl.h2.H2DataAccessor;
 import net.staticstudios.data.impl.pg.PostgresListener;
 import net.staticstudios.data.insert.InsertContext;
-import net.staticstudios.data.insert.InsertMode;
-import net.staticstudios.data.parse.Data;
 import net.staticstudios.data.parse.SQLBuilder;
 import net.staticstudios.data.parse.UniqueDataMetadata;
 import net.staticstudios.data.util.*;
@@ -26,6 +24,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public class DataManager {
+    private static Boolean useGlobal = null;
+    private static DataManager instance;
     private final Logger logger = LoggerFactory.getLogger(this.getClass());
     private final String applicationName;
     private final DataAccessor dataAccessor;
@@ -39,6 +39,18 @@ public class DataManager {
     private final Set<PersistentValueMetadata> registeredUpdateHandlersForColumns = Collections.synchronizedSet(new HashSet<>());
 
     public DataManager(DataSourceConfig dataSourceConfig) {
+        this(dataSourceConfig, true);
+    }
+
+    public DataManager(DataSourceConfig dataSourceConfig, boolean setGlobal) {
+        if (setGlobal) {
+            if (DataManager.useGlobal == false) {
+                throw new IllegalStateException("DataManager global instance has been disabled");
+            }
+            Preconditions.checkArgument(instance == null, "DataManager instance already exists");
+            instance = this;
+        }
+        DataManager.useGlobal = setGlobal;
         applicationName = "static_data_manager_v3-" + UUID.randomUUID();
         postgresListener = new PostgresListener(this, dataSourceConfig);
         sqlBuilder = new SQLBuilder(this);
@@ -51,6 +63,11 @@ public class DataManager {
         //todo: when we reconnect to postgres, refresh the internal cache from the source
 
         //todo: support for CachedValues
+    }
+
+    public static DataManager getInstance() {
+        Preconditions.checkState(DataManager.instance != null, "Global DataManager instance has not been initialized");
+        return DataManager.instance;
     }
 
     public String getApplicationName() {
@@ -285,7 +302,10 @@ public class DataManager {
 
     public void insert(InsertContext insertContext, InsertMode insertMode) {
         //todo: process default values for any schemas involved.
-        // note: defaults should be applied by the db, not us.
+        // note: defaults should be applied by us, but db defaults may be applied for primative types if not null is specified. for example an Integer will by default be 0 in the db, if not nullable.
+
+        //todo: when inserting validate all id column values are present
+
         try {
             insertContext.markInserted();
             dataAccessor.insert(insertContext, insertMode);

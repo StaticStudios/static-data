@@ -1,5 +1,7 @@
 package net.staticstudios.data.insert;
 
+import net.staticstudios.data.InsertStrategy;
+
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 

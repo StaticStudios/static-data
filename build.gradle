@@ -26,6 +26,14 @@ dependencies {
     implementation 'com.h2database:h2:2.3.232'
 //    implementation 'org.xerial:sqlite-jdbc:3.45.1.0'
     implementation 'org.jetbrains:annotations:24.0.1'
+    api project(":annotations")
+    implementation project(":annotations")
+    annotationProcessor project(":processor")
+    compileOnly project(":processor")
+
+
+    testAnnotationProcessor project(":processor")
+    testCompileOnly project(":processor")
 
 //    testImplementation(platform('org.junit:junit-bom:5.10.3'))
 //    testImplementation('org.junit.jupiter:junit-jupiter')
