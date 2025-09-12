@@ -21,7 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-@SupportedAnnotationTypes("net.staticstudios.data.annotations.Data")
+@SupportedAnnotationTypes("net.staticstudios.data.Data")
 @SupportedSourceVersion(SourceVersion.RELEASE_21)
 public class DataProcessor extends AbstractProcessor {
     @Override
@@ -50,7 +50,7 @@ public class DataProcessor extends AbstractProcessor {
 
         ClassName entityClass = ClassName.get(packageName, entityName);
         ClassName dataManager = ClassName.get("net.staticstudios.data", "DataManager");
-        ClassName insertMode = ClassName.get("net.staticstudios.data.annotations", "InsertMode");
+        ClassName insertMode = ClassName.get("net.staticstudios.data", "InsertMode");
         ClassName insertContext = ClassName.get("net.staticstudios.data.insert", "InsertContext");
 
 
