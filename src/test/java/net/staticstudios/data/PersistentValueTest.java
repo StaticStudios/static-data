@@ -122,16 +122,15 @@ public class PersistentValueTest extends DataTest {
         mockUser = dataManager.get(MockUser.class, ColumnValuePair.of("id", id)); // should have a cache miss
         //the handler for this pv should not have been registered again
         assertEquals(1, dataManager.getUpdateHandlers("public", "users", "name", MockUser.class).size());
-        assertEquals(0, mockUser.nameUpdates.get());
+        assertEquals(0, mockUser.getNameUpdates());
 
         mockUser.name.set("new name");
-        assertEquals(1, mockUser.nameUpdates.get());
+        assertEquals(1, mockUser.getNameUpdates());
         mockUser.name.set("new name");
-        assertEquals(1, mockUser.nameUpdates.get());
+        assertEquals(1, mockUser.getNameUpdates());
         mockUser.name.set("new name2");
-        assertEquals(2, mockUser.nameUpdates.get());
+        assertEquals(2, mockUser.getNameUpdates());
         mockUser.name.set("new name");
-        assertEquals(3, mockUser.nameUpdates.get());
-
+        assertEquals(3, mockUser.getNameUpdates());
     }
 }

@@ -96,6 +96,7 @@ public class DataManager {
     //todo: when a row is updated, provide the entire row to this method (so we can grab id cols). this is the responsibility of the data accessor impl
     @ApiStatus.Internal
     public void callUpdateHandlers(List<String> columnNames, String schema, String table, String column, Object[] oldSerializedValues, Object[] newSerializedValues) {
+        logger.trace("Calling update handlers for {}/{}/{} with old values {} and new values {}", schema, table, column, Arrays.toString(oldSerializedValues), Arrays.toString(newSerializedValues));
         //todo: submit to somewhere for where to run these, configured during setup. default to thread utils
         Map<Class<? extends UniqueData>, List<ValueUpdateHandlerWrapper<?, ?>>> handlersForColumn = updateHandlers.get(schema + "." + table + "." + column);
         if (handlersForColumn == null) {

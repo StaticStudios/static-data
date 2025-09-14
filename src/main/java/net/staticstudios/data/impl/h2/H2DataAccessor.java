@@ -9,6 +9,8 @@ import net.staticstudios.data.insert.InsertContext;
 import net.staticstudios.data.util.ColumnMetadata;
 import net.staticstudios.data.util.SQlStatement;
 import net.staticstudios.data.util.TaskQueue;
+import net.staticstudios.utils.ShutdownStage;
+import net.staticstudios.utils.ThreadUtils;
 import org.intellij.lang.annotations.Language;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +51,18 @@ public class H2DataAccessor implements DataAccessor {
                 }
                 case DELETE -> {
                 }
+            }
+        });
+
+        ThreadUtils.onShutdownRunSync(ShutdownStage.FINAL, () -> {
+            // wipe the db on shutdown. This is especially useful for unit tests.
+            try (Connection connection = DriverManager.getConnection(jdbcUrl)) {
+                try (Statement statement = connection.createStatement()) {
+                    String resetDb = "DROP ALL OBJECTS DELETE FILES".toString(); // call toString so that IDEs dont freak out about invalid SQL
+                    statement.execute(resetDb);
+                }
+            } catch (SQLException e) {
+                logger.error("Failed to shutdown H2 database", e);
             }
         });
     }
@@ -117,6 +131,18 @@ public class H2DataAccessor implements DataAccessor {
             connection = DriverManager.getConnection(jdbcUrl);
             connection.setAutoCommit(false);
             threadConnection.set(connection);
+
+            ThreadUtils.onShutdownRunSync(ShutdownStage.CLEANUP, () -> {
+                Connection _connection = threadConnection.get();
+                if (_connection == null) return;
+                try {
+                    _connection.close();
+                } catch (SQLException e) {
+                    logger.error("Failed to close H2 connection", e);
+                } finally {
+                    threadConnection.remove();
+                }
+            });
         }
         return connection;
     }
@@ -285,8 +311,10 @@ public class H2DataAccessor implements DataAccessor {
                     @Language("SQL") String sql = "CREATE TRIGGER IF NOT EXISTS \"trg_%s_%s\" AFTER INSERT, UPDATE, DELETE ON \"%s\".\"%s\" FOR EACH ROW CALL '%s'";
 
                     try (Statement createTrigger = connection.createStatement()) {
+                        String formatted = sql.formatted(table, randomId.toString().replace('-', '_'), schema, table, H2Trigger.class.getName());
+                        logger.trace("[H2] {}", formatted);
                         H2Trigger.registerDataManager(randomId, dataManager);
-                        createTrigger.execute(sql.formatted(table, randomId.toString().replace('-', '_'), schema, table, H2Trigger.class.getName()));
+                        createTrigger.execute(formatted);
                     }
 
                     dataManager.submitBlockingTask(realDbConnection -> postgresListener.ensureTableHasTrigger(realDbConnection, schema, table));
@@ -317,4 +345,3 @@ public class H2DataAccessor implements DataAccessor {
 
 
 //todo: maintain a buffer of what to send the the real db, and then collapse similar prepared statements into one so we can batch them. have a configurable interval to flush, but by default this will be 0ms
-

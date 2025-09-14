@@ -13,9 +13,7 @@ import org.testcontainers.utility.DockerImageName;
 import redis.clients.jedis.Jedis;
 
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
+import java.sql.*;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
@@ -87,6 +85,35 @@ public class DataTest {
     @AfterEach
     public void teardownThreadUtils() {
         ThreadUtils.shutdown();
+    }
+
+    @AfterEach
+    public void wipeDatabase() throws SQLException {
+        try (Statement statement = getConnection().createStatement();
+             ResultSet resultSet = statement.executeQuery("SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'public', 'pg_toast')")
+        ) {
+            List<String> schemas = new LinkedList<>();
+            while (resultSet.next()) {
+                String schema = resultSet.getString(1);
+                schemas.add(schema);
+            }
+
+            for (String schema : schemas) {
+                statement.executeUpdate(String.format("DROP SCHEMA IF EXISTS \"%s\" CASCADE", schema));
+            }
+        }
+        try (Statement statement = getConnection().createStatement();
+             ResultSet resultSet = statement.executeQuery("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+        ) {
+            List<String> tables = new LinkedList<>();
+            while (resultSet.next()) {
+                String table = resultSet.getString(1);
+                tables.add(table);
+            }
+            for (String table : tables) {
+                statement.executeUpdate(String.format("DROP TABLE IF EXISTS \"public\".\"%s\" CASCADE", table));
+            }
+        }
     }
 
     public int getNumEnvironments() {

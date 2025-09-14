@@ -34,9 +34,7 @@ public class InsertContext { //todo: insert strategy, on a per pv level.
     }
 
     public InsertContext set(String schema, String table, String column, @Nullable Object value) {
-        if (value == null) {
-            return this; //todo: realistically we should validate the nullability stuff when we actually insert for better consistency.
-        }
+
         Preconditions.checkState(!inserted.get(), "Cannot modify InsertContext after it has been inserted");
         SQLSchema sqlSchema = dataManager.getSQLBuilder().getSchema(schema);
         Preconditions.checkNotNull(sqlSchema, "Schema not found: " + schema);
@@ -44,10 +42,16 @@ public class InsertContext { //todo: insert strategy, on a per pv level.
         Preconditions.checkNotNull(sqlTable, "Table not found: " + table);
         SQLColumn sqlColumn = sqlTable.getColumn(column);
         Preconditions.checkNotNull(sqlColumn, "Column not found: " + column + " in table: " + table + " schema: " + schema);
+
+        ColumnMetadata columnMetadata = new ColumnMetadata(column, sqlColumn.getType(), sqlColumn.isNullable(), sqlColumn.isIndexed(), table, schema);
+        if (value == null) {
+            entries.remove(columnMetadata);
+            return this; //todo: realistically we should validate the nullability stuff when we actually insert for better consistency.
+        }
+
         Preconditions.checkArgument(value != null || sqlColumn.isNullable(), "Column " + column + " in table " + table + " schema " + schema + " cannot be null");
         Preconditions.checkArgument(sqlColumn.getType().isInstance(value), "Value type mismatch for column " + column + " in table " + table + " schema " + schema + ". Expected: " + sqlColumn.getType().getName() + ", got: " + Objects.requireNonNull(value).getClass().getName());
 
-        ColumnMetadata columnMetadata = new ColumnMetadata(column, sqlColumn.getType(), sqlColumn.isNullable(), sqlColumn.isIndexed(), table, schema);
         entries.put(columnMetadata, value);
         return this;
     }
