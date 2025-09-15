@@ -49,7 +49,7 @@ public class H2Trigger implements Trigger {
                     }
                 }
             }
-            logger.trace("Schema change detected (or first run). Old column names: {}, new column names: {}", columnNames, columns);
+            logger.trace("Schema change detected (or first run). Old name names: {}, new name names: {}", columnNames, columns);
             columnNames.clear();
             columnNames.addAll(columns);
         }

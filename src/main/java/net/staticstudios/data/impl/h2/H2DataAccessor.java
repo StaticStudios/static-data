@@ -5,9 +5,9 @@ import net.staticstudios.data.DataAccessor;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.InsertMode;
 import net.staticstudios.data.impl.pg.PostgresListener;
-import net.staticstudios.data.insert.InsertContext;
-import net.staticstudios.data.util.ColumnMetadata;
+import net.staticstudios.data.parse.DDLStatement;
 import net.staticstudios.data.util.SQlStatement;
+import net.staticstudios.data.util.SchemaTable;
 import net.staticstudios.data.util.TaskQueue;
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
@@ -29,6 +29,10 @@ import java.util.concurrent.CompletionException;
  */
 public class H2DataAccessor implements DataAccessor {
     private static final Logger logger = LoggerFactory.getLogger(H2DataAccessor.class);
+    @Language("SQL")
+    private static final String SET_REFERENTIAL_INTEGRITY_FALSE = "SET REFERENTIAL_INTEGRITY FALSE";
+    @Language("SQL")
+    private static final String SET_REFERENTIAL_INTEGRITY_TRUE = "SET REFERENTIAL_INTEGRITY TRUE";
     private final TaskQueue taskQueue;
     private final String jdbcUrl;
     private final ThreadLocal<Connection> threadConnection = new ThreadLocal<>();
@@ -67,53 +71,63 @@ public class H2DataAccessor implements DataAccessor {
         });
     }
 
-    public synchronized void sync(String schema, String table) throws SQLException {
+    public synchronized void sync(List<SchemaTable> schemaTables) throws SQLException {
         //todo: when we resync we should clear the task queue and steal the connection
         //todo: if possible, id like to pause everything else until we are done syncing
         dataManager.submitBlockingTask(realDbConnection -> {
-            Path tmpFile = Paths.get(System.getProperty("java.io.tmpdir"), schema + "_" + table + ".csv");
-            String absolutePath = tmpFile.toAbsolutePath().toString();
-
-            List<String> columns = getColumnsInTable(schema, table);
-
-            StringBuilder sqlBuilder = new StringBuilder("COPY (SELECT ");
-            for (String column : columns) {
-                sqlBuilder.append("\"").append(column).append("\", ");
-            }
-            sqlBuilder.setLength(sqlBuilder.length() - 2);
-            sqlBuilder.append(" FROM \"").append(schema).append("\".\"").append(table).append("\") TO STDOUT WITH CSV HEADER");
-            @Language("SQL") String copySql = sqlBuilder.toString();
-
-            @Language("SQL") String truncateSql = "TRUNCATE TABLE \"" + schema + "\".\"" + table + "\"";
-            StringBuilder insertSqlBuilder = new StringBuilder("INSERT INTO \"").append(schema).append("\".\"").append(table).append("\" (");
-            for (String column : columns) {
-                insertSqlBuilder.append("\"").append(column).append("\", ");
-            }
-            insertSqlBuilder.setLength(insertSqlBuilder.length() - 2);
-            insertSqlBuilder.append(") SELECT * FROM CSVREAD('").append(absolutePath).append("')");
-            String insertSql = insertSqlBuilder.toString();
-            PGConnection pgConnection = realDbConnection.unwrap(PGConnection.class);
-            FileOutputStream fileOutputStream;
-            try {
-                fileOutputStream = new FileOutputStream(absolutePath);
-            } catch (FileNotFoundException e) {
-                throw new RuntimeException(e);
-            }
-            logger.debug("[DB] {}", copySql);
-            pgConnection.copyTo(copySql, fileOutputStream);
             Connection h2Connection = getConnection();
             boolean autoCommit = h2Connection.getAutoCommit();
             try (
                     Statement h2Statement = h2Connection.createStatement()
             ) {
                 h2Connection.setAutoCommit(false);
-                logger.trace("[H2] {}", truncateSql);
-                h2Statement.execute(truncateSql);
-                logger.trace("[H2] {}", insertSql);
-                h2Statement.execute(insertSql);
+                logger.trace("[H2] {}", SET_REFERENTIAL_INTEGRITY_FALSE);
+                h2Statement.execute(SET_REFERENTIAL_INTEGRITY_FALSE);
+
+                for (SchemaTable schemaTable : schemaTables) {
+                    String schema = schemaTable.schema();
+                    String table = schemaTable.table();
+                    Path tmpFile = Paths.get(System.getProperty("java.io.tmpdir"), UUID.randomUUID() + "_" + schema + "_" + table + ".csv");
+                    String absolutePath = tmpFile.toAbsolutePath().toString();
+
+                    List<String> columns = getColumnsInTable(schema, table);
+
+                    StringBuilder sqlBuilder = new StringBuilder("COPY (SELECT ");
+                    for (String column : columns) {
+                        sqlBuilder.append("\"").append(column).append("\", ");
+                    }
+                    sqlBuilder.setLength(sqlBuilder.length() - 2);
+                    sqlBuilder.append(" FROM \"").append(schema).append("\".\"").append(table).append("\") TO STDOUT WITH CSV HEADER");
+                    @Language("SQL") String copySql = sqlBuilder.toString();
+                    @Language("SQL") String truncateSql = "TRUNCATE TABLE \"" + schema + "\".\"" + table + "\"";
+                    StringBuilder insertSqlBuilder = new StringBuilder("INSERT INTO \"").append(schema).append("\".\"").append(table).append("\" (");
+                    for (String column : columns) {
+                        insertSqlBuilder.append("\"").append(column).append("\", ");
+                    }
+                    insertSqlBuilder.setLength(insertSqlBuilder.length() - 2);
+                    insertSqlBuilder.append(") SELECT * FROM CSVREAD('").append(absolutePath).append("')");
+                    String insertSql = insertSqlBuilder.toString();
+                    PGConnection pgConnection = realDbConnection.unwrap(PGConnection.class);
+                    FileOutputStream fileOutputStream;
+                    try {
+                        fileOutputStream = new FileOutputStream(absolutePath);
+                    } catch (FileNotFoundException e) {
+                        throw new RuntimeException(e);
+                    }
+                    logger.debug("[DB] {}", copySql);
+                    pgConnection.copyTo(copySql, fileOutputStream);
+                    logger.trace("[H2] {}", truncateSql);
+                    h2Statement.execute(truncateSql);
+                    logger.trace("[H2] {}", insertSql);
+                    h2Statement.execute(insertSql);
+                }
+                logger.trace("[H2] {}", SET_REFERENTIAL_INTEGRITY_TRUE);
+                h2Statement.execute(SET_REFERENTIAL_INTEGRITY_TRUE);
             } finally {
                 if (autoCommit) {
                     h2Connection.setAutoCommit(true);
+                } else {
+                    h2Connection.commit();
                 }
             }
         });
@@ -165,50 +179,20 @@ public class H2DataAccessor implements DataAccessor {
     }
 
     @Override
-    public void insert(InsertContext insertContext, InsertMode insertMode) throws SQLException {
+    public void insert(List<SQlStatement> sqlStatements, InsertMode insertMode) throws SQLException {
         Connection connection = getConnection();
         boolean autoCommit = connection.getAutoCommit();
         try {
             connection.setAutoCommit(false);
-            List<SQlStatement> sqlStatements = new ArrayList<>();
-            Map<String, Map<String, List<ColumnMetadata>>> columnsByTable = new HashMap<>();
-            for (Map.Entry<ColumnMetadata, Object> entry : insertContext.getEntries().entrySet()) {
-                ColumnMetadata column = entry.getKey();
-                columnsByTable.computeIfAbsent(column.schema(), k -> new HashMap<>())
-                        .computeIfAbsent(column.table(), k -> new ArrayList<>())
-                        .add(column);
-            }
 
-            for (Map.Entry<String, Map<String, List<ColumnMetadata>>> schemaEntry : columnsByTable.entrySet()) {
-                String schema = schemaEntry.getKey();
-                for (Map.Entry<String, List<ColumnMetadata>> tableEntry : schemaEntry.getValue().entrySet()) {
-                    String table = tableEntry.getKey();
-                    List<ColumnMetadata> columns = tableEntry.getValue();
-
-                    StringBuilder sqlBuilder = new StringBuilder("INSERT INTO \"");
-                    sqlBuilder.append(schema).append("\".\"").append(table).append("\" (");
-                    for (ColumnMetadata column : columns) {
-                        sqlBuilder.append("\"").append(column.name()).append("\", ");
+            for (SQlStatement sqlStatement : sqlStatements) {
+                try (PreparedStatement preparedStatement = connection.prepareStatement(sqlStatement.getSql())) {
+                    int i = 1;
+                    for (Object value : sqlStatement.getValues()) {
+                        preparedStatement.setObject(i++, value);
                     }
-                    sqlBuilder.setLength(sqlBuilder.length() - 2);
-                    sqlBuilder.append(") VALUES (");
-                    sqlBuilder.append("?, ".repeat(columns.size()));
-                    sqlBuilder.setLength(sqlBuilder.length() - 2);
-                    sqlBuilder.append(")");
-
-                    String sql = sqlBuilder.toString();
-                    List<Object> values = new ArrayList<>();
-                    try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
-                        for (int i = 0; i < columns.size(); i++) {
-                            ColumnMetadata column = columns.get(i);
-                            Object value = insertContext.getEntries().get(column);
-                            preparedStatement.setObject(i + 1, value);
-                            values.add(value);
-                        }
-                        logger.debug("[H2] {}", sql);
-                        sqlStatements.add(new SQlStatement(sql, values));
-                        preparedStatement.executeUpdate();
-                    }
+                    logger.debug("[H2] {}", sqlStatement.getSql());
+                    preparedStatement.executeUpdate();
                 }
             }
 
@@ -229,6 +213,8 @@ public class H2DataAccessor implements DataAccessor {
                 } finally {
                     if (realAutoCommit) {
                         realConnection.setAutoCommit(true);
+                    } else {
+                        realConnection.commit();
                     }
                 }
             });
@@ -238,11 +224,14 @@ public class H2DataAccessor implements DataAccessor {
                     future.join();
                 } catch (CompletionException e) {
                     connection.rollback();
+                    logger.error("Error updating the real db", e.getCause());
                 }
             }
         } finally {
             if (autoCommit) {
                 connection.setAutoCommit(true);
+            } else {
+                connection.commit();
             }
         }
     }
@@ -277,13 +266,13 @@ public class H2DataAccessor implements DataAccessor {
     }
 
     @Override
-    public void runDDL(String sql) {
+    public void runDDL(DDLStatement ddl) {
         taskQueue.submitTask(connection -> {
-            logger.debug("[DB] {}", sql);
-            connection.createStatement().execute(sql);
+            logger.debug("[DB] {}", ddl.postgresqlStatement());
+            connection.createStatement().execute(ddl.postgresqlStatement());
             try (Statement statement = getConnection().createStatement()) {
-                logger.trace("[H2] {}", sql);
-                statement.execute(sql);
+                logger.trace("[H2] {}", ddl.h2Statement());
+                statement.execute(ddl.h2Statement());
             }
         }).join();
 
@@ -300,6 +289,7 @@ public class H2DataAccessor implements DataAccessor {
         try (Statement statement = connection.createStatement();
              ResultSet rs = statement.executeQuery(
                      "SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA NOT IN ('INFORMATION_SCHEMA', 'SYSTEM_LOBS') AND TABLE_TYPE='BASE TABLE'")) {
+            List<SchemaTable> toSync = new ArrayList<>();
             while (rs.next()) {
                 String schema = rs.getString("TABLE_SCHEMA");
                 String table = rs.getString("TABLE_NAME");
@@ -318,9 +308,10 @@ public class H2DataAccessor implements DataAccessor {
                     }
 
                     dataManager.submitBlockingTask(realDbConnection -> postgresListener.ensureTableHasTrigger(realDbConnection, schema, table));
-                    sync(schema, table);
+                    toSync.add(new SchemaTable(schema, table));
                 }
             }
+            sync(toSync);
         }
         knownTables.clear();
         knownTables.addAll(currentTables);

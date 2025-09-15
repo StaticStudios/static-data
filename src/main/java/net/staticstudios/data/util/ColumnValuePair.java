@@ -40,7 +40,7 @@ public final class ColumnValuePair {
     @Override
     public String toString() {
         return "ColumnValuePair[" +
-                "column=" + column + ", " +
+                "name=" + column + ", " +
                 "value=" + value + ']';
     }
 

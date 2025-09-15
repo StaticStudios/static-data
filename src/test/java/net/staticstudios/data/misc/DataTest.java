@@ -23,7 +23,11 @@ public class DataTest {
     public static RedisContainer redis;
     public static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(
             "postgres:16.2"
-    );
+    )
+            .withExposedPorts(5432)
+            .withPassword("password")
+            .withUsername("postgres")
+            .withDatabaseName("postgres");
     public static DataSourceConfig dataSourceConfig;
     private static Connection connection;
     private static Jedis jedis;

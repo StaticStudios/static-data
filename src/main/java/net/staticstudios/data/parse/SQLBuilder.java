@@ -1,13 +1,7 @@
 package net.staticstudios.data.parse;
 
 import com.google.common.base.Preconditions;
-import net.staticstudios.data.DataManager;
-import net.staticstudios.data.Relation;
-import net.staticstudios.data.UniqueData;
-import net.staticstudios.data.Column;
-import net.staticstudios.data.Data;
-import net.staticstudios.data.ForeignColumn;
-import net.staticstudios.data.IdColumn;
+import net.staticstudios.data.*;
 import net.staticstudios.data.util.*;
 import org.jetbrains.annotations.Nullable;
 
@@ -24,7 +18,7 @@ public class SQLBuilder {
         this.parsedSchemas = new HashMap<>();
     }
 
-    public List<String> parse(Class<? extends UniqueData> clazz) {
+    public List<DDLStatement> parse(Class<? extends UniqueData> clazz) {
         Preconditions.checkNotNull(clazz, "Class cannot be null");
 
         Set<Class<? extends UniqueData>> visited = walk(clazz);
@@ -64,10 +58,10 @@ public class SQLBuilder {
         return parsedSchemas.get(name);
     }
 
-    private List<String> getDefs(Collection<SQLSchema> schemas) { //todo: add fkeys, indexes, uniques, nullables, defaults, etc
-        List<String> statements = new ArrayList<>();
+    private List<DDLStatement> getDefs(Collection<SQLSchema> schemas) { //todo: add indexes, uniques,
+        List<DDLStatement> statements = new ArrayList<>();
         for (SQLSchema schema : schemas) {
-            statements.add("CREATE SCHEMA IF NOT EXISTS \"" + schema.getName() + "\";");
+            statements.add(DDLStatement.both("CREATE SCHEMA IF NOT EXISTS \"" + schema.getName() + "\";"));
             StringBuilder sb;
             for (SQLTable table : schema.getTables()) {
 //                if (metadata.table().equals(table.getName()) && metadata.schema().equals(schema.getName())) {
@@ -83,22 +77,78 @@ public class SQLBuilder {
                 sb.setLength(sb.length() - 2);
                 sb.append(")\n");
                 sb.append(");");
-                statements.add(sb.toString());
+                statements.add(DDLStatement.both(sb.toString()));
 //                }
                 if (!table.getColumns().isEmpty()) {
                     for (SQLColumn column : table.getColumns()) {
                         sb = new StringBuilder();
                         sb.append("ALTER TABLE \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" ").append("ADD COLUMN IF NOT EXISTS ").append("\"").append(column.getName()).append("\" ").append(SQLUtils.getSqlType(column.getType()));
-//                        if (!column.isNullable()) {
-//                            sb.append(" NOT NULL"); //todo: not valid in h2
-//                        }
+                        if (!column.isNullable()) {
+                            sb.append(" NOT NULL");
+                        }
+                        if (column.getDefaultValue() != null) {
+                            sb.append(" DEFAULT ").append(column.getDefaultValue());
+                        }
+
                         if (column.isIndexed()) {
 //                            sb.append(" INDEXED");
                             //todo: this is not valid sql, need to create index separately
                         }
+
                         sb.append(";");
-                        statements.add(sb.toString());
+                        statements.add(DDLStatement.both(sb.toString()));
                     }
+                }
+            }
+        }
+
+        // define fkeys after table creation, to ensure all tables exist before adding fkeys
+        for (SQLSchema schema : schemas) {
+            for (SQLTable table : schema.getTables()) {
+                for (ForeignKey foreignKey : table.getForeignKeys()) {
+                    if (foreignKey == null) {
+                        continue;
+                    }
+                    String fKeyName = "fk_" + table.getName() + "_" + String.join("_", foreignKey.getLinkingColumns().keySet()) + "_to_" + foreignKey.getSchema() + "_" + foreignKey.getTable() + "_" + String.join("_", foreignKey.getLinkingColumns().values());
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("ALTER TABLE \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" ");
+                    sb.append("ADD CONSTRAINT IF NOT EXISTS ").append(fKeyName).append(" ");
+                    sb.append("FOREIGN KEY (");
+                    for (String localCol : foreignKey.getLinkingColumns().keySet()) {
+                        sb.append("\"").append(localCol).append("\", ");
+                    }
+                    sb.setLength(sb.length() - 2);
+                    sb.append(") ");
+                    sb.append("REFERENCES \"").append(foreignKey.getSchema()).append("\".\"").append(foreignKey.getTable()).append("\" (");
+                    for (String foreignCol : foreignKey.getLinkingColumns().values()) {
+                        sb.append("\"").append(foreignCol).append("\", ");
+                    }
+                    sb.setLength(sb.length() - 2);
+                    sb.append(") ON DELETE CASCADE;"); //todo: on delete cascade or no action or set null? depends on type
+                    String h2 = sb.toString();
+
+
+                    sb = new StringBuilder();
+                    sb.append("DO $$ BEGIN ");
+                    sb.append("IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = '").append(fKeyName).append("' AND table_name = '").append(table.getName()).append("' AND constraint_schema = '").append(schema.getName()).append("' AND constraint_type = 'FOREIGN KEY') THEN ");
+
+                    sb.append("ALTER TABLE \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" ");
+                    sb.append("ADD CONSTRAINT ").append(fKeyName).append(" ");
+                    sb.append("FOREIGN KEY (");
+                    for (String localCol : foreignKey.getLinkingColumns().keySet()) {
+                        sb.append("\"").append(localCol).append("\", ");
+                    }
+                    sb.setLength(sb.length() - 2);
+                    sb.append(") ");
+                    sb.append("REFERENCES \"").append(foreignKey.getSchema()).append("\".\"").append(foreignKey.getTable()).append("\" (");
+                    for (String foreignCol : foreignKey.getLinkingColumns().values()) {
+                        sb.append("\"").append(foreignCol).append("\", ");
+                    }
+                    sb.setLength(sb.length() - 2);
+                    sb.append(") ON DELETE CASCADE;"); //todo: on delete cascade or no action or set null? depends on type
+                    sb.append(" END IF; END $$;");
+                    String pg = sb.toString();
+                    statements.add(DDLStatement.of(h2, pg));
                 }
             }
         }
@@ -143,27 +193,51 @@ public class SQLBuilder {
             Column columnAnnotation = field.getAnnotation(Column.class);
 //            net.staticstudios.data.relation.Relation.OneToOne oneToOne = field.getAnnotation(net.staticstudios.data.relation.Relation.OneToOne.class);
             ForeignColumn foreignColumn = field.getAnnotation(ForeignColumn.class);
-            //todo: when parsing a OneToOne relation, in the link if there is a column in our table that we have no already created, then we need to create it. note that the type should be the same as the referenced column type.
+            //todo: when parsing a OneToOne relation, in the link if there is a name in our table that we have no already created, then we need to create it. note that the type should be the same as the referenced name type.
             //todo: add COLUMN REFERENCES bla bla bla for foreign keys
-            ColumnMetadata columnMetadata = null;
+
+            int annotationsCount = 0;
+            if (idColumn != null) annotationsCount++;
+            if (columnAnnotation != null) annotationsCount++;
+            if (foreignColumn != null) annotationsCount++;
+            Preconditions.checkArgument(annotationsCount <= 1, "Field " + field.getName() + " in class " + clazz.getName() + " has multiple column annotations. Only one of @IdColumn, @Column, or @ForeignColumn is allowed.");
+
+            String schemaName;
+            String tableName;
+            String columnName;
+            boolean nullable;
+            boolean indexed;
+            String defaultValue;
             if (idColumn != null) {
-                Preconditions.checkArgument(columnAnnotation == null, "PersistentValue field %s cannot be annotated with both @IdColumn and @Column", field.getName());
-                columnMetadata = new ColumnMetadata(ValueUtils.parseValue(idColumn.name()), ReflectionUtils.getGenericType(field), false, false, ValueUtils.parseValue(dataAnnotation.table()), ValueUtils.parseValue(dataAnnotation.schema()));
+                schemaName = ValueUtils.parseValue(dataAnnotation.schema());
+                tableName = ValueUtils.parseValue(dataAnnotation.table());
+                columnName = ValueUtils.parseValue(idColumn.name());
+                nullable = false;
+                indexed = false;
+                defaultValue = "";
             } else if (columnAnnotation != null) {
-                columnMetadata = new ColumnMetadata(ValueUtils.parseValue(columnAnnotation.name()), ReflectionUtils.getGenericType(field), columnAnnotation.nullable(), columnAnnotation.index(), ValueUtils.parseValue(columnAnnotation.table()), ValueUtils.parseValue(columnAnnotation.schema()));
+                schemaName = ValueUtils.parseValue(columnAnnotation.schema());
+                tableName = ValueUtils.parseValue(columnAnnotation.table());
+                columnName = ValueUtils.parseValue(columnAnnotation.name());
+                nullable = columnAnnotation.nullable();
+                indexed = columnAnnotation.index();
+                defaultValue = columnAnnotation.defaultValue();
             } else if (foreignColumn != null) {
-                columnMetadata = new ColumnMetadata(ValueUtils.parseValue(foreignColumn.name()), ReflectionUtils.getGenericType(field), foreignColumn.nullable(), foreignColumn.index(), ValueUtils.parseValue(foreignColumn.table()), ValueUtils.parseValue(foreignColumn.schema()));
-            }
-            if (columnMetadata == null) {
+                schemaName = ValueUtils.parseValue(foreignColumn.schema());
+                tableName = ValueUtils.parseValue(foreignColumn.table());
+                columnName = ValueUtils.parseValue(foreignColumn.name());
+                nullable = foreignColumn.nullable();
+                indexed = foreignColumn.index();
+                defaultValue = foreignColumn.defaultValue();
+            } else {
                 continue;
             }
 
             String dataSchema = ValueUtils.parseValue(dataAnnotation.schema());
             String dataTable = ValueUtils.parseValue(dataAnnotation.table());
 
-            String schemaName = columnMetadata.schema().isEmpty() ? dataSchema : columnMetadata.schema();
-            String tableName = columnMetadata.table().isEmpty() ? dataTable : columnMetadata.table();
-            String columnName = columnMetadata.name();
+            schemaName = schemaName.isEmpty() ? dataSchema : schemaName;
+            tableName = tableName.isEmpty() ? dataTable : tableName;
 
             if (foreignColumn != null) {
                 Preconditions.checkArgument(!(schemaName.equals(dataSchema) && tableName.equals(dataTable)), "ForeignColumn field %s in class %s cannot reference its own table", field.getName(), clazz.getName());
@@ -190,18 +264,57 @@ public class SQLBuilder {
                                 break;
                             }
                         }
-                        Preconditions.checkNotNull(found, "Link column %s in OneToOne annotation on field %s in class %s is not an ID column", localColumn, field.getName(), clazz.getName());
+                        Preconditions.checkNotNull(found, "Link name %s in OneToOne annotation on field %s in class %s is not an ID name", localColumn, field.getName(), clazz.getName());
 
-                        idColumns.add(new ColumnMetadata(otherColumn, found.type(), false, false, tableName, schemaName));
+                        idColumns.add(new ColumnMetadata(schemaName, tableName, otherColumn, found.type(), false, false, ""));
                     }
                 }
 
                 table = new SQLTable(schema, tableName, idColumns);
                 schema.addTable(table);
+
+                if (foreignColumn != null) {
+                    for (ColumnMetadata idCol : table.getIdColumns()) {
+                        Preconditions.checkState(table.getColumn(idCol.name()) == null, "ID column name " + idCol.name() + " in table " + tableName + " is duplicated!");
+                        SQLColumn sqlColumn = new SQLColumn(table, idCol.type(), idCol.name(), false, false, null);
+                        table.addColumn(sqlColumn);
+                    }
+                }
             }
 
+            if (foreignColumn != null) {
+                SQLSchema dataSqlSchema = schemas.computeIfAbsent(dataSchema, SQLSchema::new);
+                SQLTable dataSqlTable = dataSqlSchema.getTable(dataTable);
+                if (dataSqlTable == null) {
+                    dataSqlTable = new SQLTable(dataSqlSchema, dataTable, metadata.idColumns());
+                    dataSqlSchema.addTable(dataSqlTable);
+                }
+
+                String otherSchema = ValueUtils.parseValue(foreignColumn.schema());
+                if (otherSchema.isEmpty()) {
+                    otherSchema = schemaName;
+                }
+                String otherTable = ValueUtils.parseValue(foreignColumn.table());
+                if (otherTable.isEmpty()) {
+                    otherTable = tableName;
+                }
+
+                ForeignKey foreignKey = new ForeignKey(otherSchema, otherTable, foreignColumn.name());
+                for (String link : StringUtils.parseCommaSeperatedList(foreignColumn.link())) {
+                    String[] parts = link.split("=");
+                    Preconditions.checkArgument(parts.length == 2, "Invalid link format in ForeignColumn annotation on field %s in class %s. Expected format: localColumn=foreignColumn", field.getName(), clazz.getName());
+
+                    String localColumn = ValueUtils.parseValue(parts[0].trim());
+                    String otherColumn = ValueUtils.parseValue(parts[1].trim());
+                    foreignKey.addColumnMapping(localColumn, otherColumn);
+                }
+
+                dataSqlTable.getForeignKeys().add(foreignKey);
+            }
+
+
             Class<?> type = ReflectionUtils.getGenericType(field); //todo: handle custom types to sql types
-            SQLColumn sqlColumn = new SQLColumn(table, type, columnName, columnMetadata.nullable(), columnMetadata.indexed());
+            SQLColumn sqlColumn = new SQLColumn(table, type, columnName, nullable, indexed, defaultValue.isEmpty() ? null : SQLUtils.parseDefaultValue(type, defaultValue));
 
             SQLColumn existingColumn = table.getColumn(columnName);
             if (existingColumn != null) {

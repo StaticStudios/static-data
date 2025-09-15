@@ -25,4 +25,16 @@ public class SQLUtils {
         }
         throw new IllegalArgumentException("Unsupported class type: " + clazz.getName());
     }
+
+    public static String parseDefaultValue(Class<?> clazz, String defaultValue) {
+        try {
+            return switch (getSqlType(clazz)) {
+                case "TEXT" -> "'" + defaultValue.replace("'", "''") + "'";
+                case "BOOLEAN" -> Boolean.parseBoolean(defaultValue) ? "TRUE" : "FALSE";
+                default -> defaultValue;
+            };
+        } catch (IllegalArgumentException e) {
+            return defaultValue;
+        }
+    }
 }

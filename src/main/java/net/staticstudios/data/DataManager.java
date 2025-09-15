@@ -7,8 +7,7 @@ import net.staticstudios.data.impl.data.ReferenceImpl;
 import net.staticstudios.data.impl.h2.H2DataAccessor;
 import net.staticstudios.data.impl.pg.PostgresListener;
 import net.staticstudios.data.insert.InsertContext;
-import net.staticstudios.data.parse.SQLBuilder;
-import net.staticstudios.data.parse.UniqueDataMetadata;
+import net.staticstudios.data.parse.*;
 import net.staticstudios.data.util.*;
 import net.staticstudios.data.util.TaskQueue;
 import org.jetbrains.annotations.ApiStatus;
@@ -86,7 +85,7 @@ public class DataManager {
         return new InsertContext(this);
     }
 
-    public void addUpdateHandler(String schema, String table, String column, ValueUpdateHandlerWrapper<?, ?> handler) {
+    public void addUpdateHandler(String schema, String table, String column, ValueUpdateHandlerWrapper<?, ?> handler) {//todo: allow us to specify what data type to convert the data to. this is useful when this method is called externally
         String key = schema + "." + table + "." + column;
         updateHandlers.computeIfAbsent(key, k -> new ConcurrentHashMap<>())
                 .computeIfAbsent(handler.getHolderClass(), k -> new CopyOnWriteArrayList<>())
@@ -104,7 +103,7 @@ public class DataManager {
         }
 
         int columnIndex = columnNames.indexOf(column);
-        Preconditions.checkArgument(columnIndex != -1, "Column %s not found in provided column names %s", column, columnNames);
+        Preconditions.checkArgument(columnIndex != -1, "Column %s not found in provided name names %s", column, columnNames);
 
         for (Map.Entry<Class<? extends UniqueData>, List<ValueUpdateHandlerWrapper<?, ?>>> entry : handlersForColumn.entrySet()) {
             Class<? extends UniqueData> holderClass = entry.getKey();
@@ -157,14 +156,14 @@ public class DataManager {
         for (Class<? extends UniqueData> clazz : classes) {
             extractMetadata(clazz);
         }
-        List<String> defs = new ArrayList<>();
+        List<DDLStatement> defs = new ArrayList<>();
         for (Class<? extends UniqueData> clazz : classes) {
             defs.addAll(sqlBuilder.parse(clazz));
         }
 
-        for (String def : defs) {
+        for (DDLStatement ddl : defs) {
             try {
-                dataAccessor.runDDL(def);
+                dataAccessor.runDDL(ddl);
             } catch (SQLException e) {
                 throw new RuntimeException(e);
             }
@@ -192,7 +191,15 @@ public class DataManager {
             if (idColumnAnnotation == null) {
                 continue;
             }
-            idColumns.add(new ColumnMetadata(ValueUtils.parseValue(idColumnAnnotation.name()), ReflectionUtils.getGenericType(field), false, false, ValueUtils.parseValue(dataAnnotation.table()), ValueUtils.parseValue(dataAnnotation.schema())));
+            idColumns.add(new ColumnMetadata(
+                    ValueUtils.parseValue(dataAnnotation.schema()),
+                    ValueUtils.parseValue(dataAnnotation.table()),
+                    ValueUtils.parseValue(idColumnAnnotation.name()),
+                    ReflectionUtils.getGenericType(field),
+                    false,
+                    false,
+                    ""
+            ));
         }
         Preconditions.checkArgument(!idColumns.isEmpty(), "UniqueData class %s must have at least one @IdColumn annotated PersistentValue field", clazz.getName());
         UniqueDataMetadata metadata = new UniqueDataMetadata(clazz, ValueUtils.parseValue(dataAnnotation.schema()), ValueUtils.parseValue(dataAnnotation.table()), idColumns);
@@ -233,7 +240,7 @@ public class DataManager {
         }
 
         for (ColumnValuePair providedIdColumn : idColumns) {
-            Preconditions.checkNotNull(providedIdColumn.value(), "ID column value for column %s in UniqueData class %s cannot be null", providedIdColumn.column(), clazz.getName());
+            Preconditions.checkNotNull(providedIdColumn.value(), "ID name value for name %s in UniqueData class %s cannot be null", providedIdColumn.column(), clazz.getName());
         }
 
         Preconditions.checkArgument(hasAllIdColumns, "Not all @IdColumn columns were provided for UniqueData class %s. Required: %s, Provided: %s", clazz.getName(), metadata.idColumns(), idColumns);
@@ -302,16 +309,133 @@ public class DataManager {
     }
 
     public void insert(InsertContext insertContext, InsertMode insertMode) {
-        //todo: process default values for any schemas involved.
-        // note: defaults should be applied by us, but db defaults may be applied for primative types if not null is specified. for example an Integer will by default be 0 in the db, if not nullable.
+        //todo: when inserting validate all id and required values are present - this will be enforced by h2, but we should do it here for better logging/errors.
+        Set<SQLTable> tables = new HashSet<>();
+        insertContext.getEntries().forEach((simpleColumnMetadata, o) -> {
+            SQLTable table = Objects.requireNonNull(sqlBuilder.getSchema(simpleColumnMetadata.schema())).getTable(simpleColumnMetadata.table());
+            tables.add(table);
+        });
 
-        //todo: when inserting validate all id column values are present
+        // handle foreign keys. for each foreign key, if we have a value for the local column, we need to set the value for the foreign column. this consists of linking ids mostly.
+        for (SQLTable table : tables) {
+            for (ForeignKey fKey : table.getForeignKeys()) {
+                SQLSchema otherSchema = Objects.requireNonNull(sqlBuilder.getSchema(fKey.getSchema()));
+                SQLTable otherTable = Objects.requireNonNull(otherSchema.getTable(fKey.getTable()));
+                for (Map.Entry<String, String> link : fKey.getLinkingColumns().entrySet()) {
+                    String myColumnName = link.getKey();
+                    String otherColumnName = link.getValue();
+                    SQLColumn otherColumn = Objects.requireNonNull(otherTable.getColumn(otherColumnName));
+                    insertContext.set(fKey.getSchema(), fKey.getTable(), otherColumn.getName(), insertContext.getEntries().get(new SimpleColumnMetadata(table.getSchema().getName(), table.getName(), myColumnName, otherColumn.getType())));
+                }
+            }
+        }
+
+        tables.clear(); // rebuild the table set in case we added any new tables from foreign keys
+        insertContext.getEntries().forEach((simpleColumnMetadata, o) -> {
+            SQLTable table = Objects.requireNonNull(sqlBuilder.getSchema(simpleColumnMetadata.schema())).getTable(simpleColumnMetadata.table());
+            tables.add(table);
+        });
+
+        //sort tables based on foreign key dependencies. tables who are depended on should come first
+
+        // Build dependency graph: table -> set of tables it depends on
+        Map<SQLTable, Set<SQLTable>> dependencyGraph = new HashMap<>();
+        for (SQLTable table : tables) {
+            Set<SQLTable> dependsOn = new HashSet<>();
+            for (ForeignKey fKey : table.getForeignKeys()) {
+                SQLSchema otherSchema = Objects.requireNonNull(sqlBuilder.getSchema(fKey.getSchema()));
+                SQLTable otherTable = Objects.requireNonNull(otherSchema.getTable(fKey.getTable()));
+                dependsOn.add(otherTable);
+            }
+            dependencyGraph.put(table, dependsOn);
+        }
+
+        // DFS to detect cycles
+        Set<SQLTable> visited = new HashSet<>();
+        Set<SQLTable> stack = new HashSet<>();
+        for (SQLTable table : dependencyGraph.keySet()) {
+            if (hasCycle(table, dependencyGraph, visited, stack)) {
+                throw new IllegalStateException(String.format("Cycle detected in foreign key dependencies involving table %s.%s", table.getSchema().getName(), table.getName()));
+            }
+        }
+
+        // Topological sort for insert order
+        List<SQLTable> orderedTables = new ArrayList<>();
+        visited.clear();
+        for (SQLTable table : dependencyGraph.keySet()) {
+            topoSort(table, dependencyGraph, visited, orderedTables);
+        }
+
+        List<SQlStatement> sqlStatements = new ArrayList<>();
+
+        Map<String, List<SimpleColumnMetadata>> columnsToInsert = new HashMap<>();
+        for (Map.Entry<SimpleColumnMetadata, Object> entry : insertContext.getEntries().entrySet()) {
+            SimpleColumnMetadata column = entry.getKey();
+            columnsToInsert.computeIfAbsent(column.table(), k -> new ArrayList<>())
+                    .add(column);
+        }
+
+        for (SQLTable table : orderedTables) {
+            String schemaName = table.getSchema().getName();
+            String tableName = table.getName();
+            List<SimpleColumnMetadata> columnsInTable = columnsToInsert.get(tableName);
+
+
+            StringBuilder sqlBuilder = new StringBuilder("INSERT INTO \"");
+            sqlBuilder.append(schemaName).append("\".\"").append(tableName).append("\" (");
+            for (SimpleColumnMetadata column : columnsInTable) {
+                sqlBuilder.append("\"").append(column.name()).append("\", ");
+            }
+            sqlBuilder.setLength(sqlBuilder.length() - 2);
+            sqlBuilder.append(") VALUES (");
+            sqlBuilder.append("?, ".repeat(columnsInTable.size()));
+            sqlBuilder.setLength(sqlBuilder.length() - 2);
+            sqlBuilder.append(")");
+
+            String sql = sqlBuilder.toString();
+            List<Object> values = new ArrayList<>();
+            for (SimpleColumnMetadata column : columnsInTable) {
+                Object deserializedValue = insertContext.getEntries().get(column);
+                Object serializedValue = deserializedValue; //todo: serialization
+                values.add(serializedValue);
+            }
+            sqlStatements.add(new SQlStatement(sql, values));
+        }
 
         try {
             insertContext.markInserted();
-            dataAccessor.insert(insertContext, insertMode);
+            dataAccessor.insert(sqlStatements, insertMode);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private boolean hasCycle(SQLTable table, Map<SQLTable, Set<SQLTable>> dependencyGraph, Set<SQLTable> visited, Set<SQLTable> stack) {
+        if (stack.contains(table)) {
+            return true;
+        }
+        if (visited.contains(table)) {
+            return false;
+        }
+        visited.add(table);
+        stack.add(table);
+        for (SQLTable dep : dependencyGraph.get(table)) {
+            if (hasCycle(dep, dependencyGraph, visited, stack)) {
+                return true;
+            }
+        }
+        stack.remove(table);
+        return false;
+    }
+
+    private void topoSort(SQLTable table, Map<SQLTable, Set<SQLTable>> dependencyGraph, Set<SQLTable> visited, List<SQLTable> ordered) {
+        if (visited.contains(table)) {
+            return;
+        }
+        visited.add(table);
+        for (SQLTable dep : dependencyGraph.get(table)) {
+            topoSort(dep, dependencyGraph, visited, ordered);
+        }
+        ordered.add(table);
     }
 }

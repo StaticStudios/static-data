@@ -1,5 +1,7 @@
 package net.staticstudios.data.parse;
 
+import org.jetbrains.annotations.Nullable;
+
 import java.util.Objects;
 
 public class SQLColumn {
@@ -8,13 +10,15 @@ public class SQLColumn {
     private final String name;
     private final boolean nullable;
     private final boolean indexed;
+    private final @Nullable String defaultValue;
 
-    public SQLColumn(SQLTable table, Class<?> type, String name, boolean nullable, boolean indexed) {
+    public SQLColumn(SQLTable table, Class<?> type, String name, boolean nullable, boolean indexed, @Nullable String defaultValue) {
         this.table = table;
         this.type = type;
         this.name = name;
         this.nullable = nullable;
         this.indexed = indexed;
+        this.defaultValue = defaultValue;
     }
 
     public SQLTable getTable() {
@@ -37,10 +41,13 @@ public class SQLColumn {
         return indexed;
     }
 
+    public @Nullable String getDefaultValue() {
+        return defaultValue;
+    }
 
     @Override
     public int hashCode() {
-        return Objects.hash(table, type, name, nullable, indexed);
+        return Objects.hash(table, type, name, nullable, indexed, defaultValue);
     }
 
     @Override
@@ -50,6 +57,7 @@ public class SQLColumn {
         SQLColumn other = (SQLColumn) obj;
         return nullable == other.nullable &&
                 indexed == other.indexed &&
+                Objects.equals(defaultValue, other.defaultValue) &&
                 Objects.equals(type, other.type) &&
                 Objects.equals(name, other.name);
     }
@@ -61,6 +69,7 @@ public class SQLColumn {
                 ", name='" + name + '\'' +
                 ", nullable=" + nullable +
                 ", indexed=" + indexed +
+                ", defaultValue='" + defaultValue + '\'' +
                 '}';
     }
 }

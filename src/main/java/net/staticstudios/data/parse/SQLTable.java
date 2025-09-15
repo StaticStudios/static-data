@@ -11,12 +11,14 @@ public class SQLTable {
     private final String name;
     private final List<ColumnMetadata> idColumns;
     private final Map<String, SQLColumn> columns;
+    private final List<ForeignKey> foreignKeys;
 
     public SQLTable(SQLSchema schema, String name, List<ColumnMetadata> idColumns) {
         this.schema = schema;
         this.name = name;
         this.idColumns = idColumns;
         this.columns = new HashMap<>();
+        this.foreignKeys = new ArrayList<>();
     }
 
     public SQLSchema getSchema() {
@@ -35,6 +37,10 @@ public class SQLTable {
         return columns.get(columnName);
     }
 
+    public List<ForeignKey> getForeignKeys() {
+        return foreignKeys;
+    }
+
     public List<ColumnMetadata> getIdColumns() {
         return idColumns;
     }
@@ -50,5 +56,17 @@ public class SQLTable {
         }
 
         columns.put(column.getName(), column);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) return true;
+        if (!(obj instanceof SQLTable other)) return false;
+        return Objects.equals(schema.getName(), other.schema.getName()) && Objects.equals(name, other.name);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(schema.getName(), name);
     }
 }

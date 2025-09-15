@@ -7,8 +7,8 @@ public class AbstractBuilder<T extends UniqueData> {
 //    private final Class<T> holderClass;
 //    private final Map<String, Object> toInsert;
 //
-//    protected void set(String schema, String table, String column, Object value) {
-//        String key = schema + "." + table + "." + column;
+//    protected void set(String schema, String table, String name, Object value) {
+//        String key = schema + "." + table + "." + name;
 //        toInsert.put(key, value);
 //    }
 }

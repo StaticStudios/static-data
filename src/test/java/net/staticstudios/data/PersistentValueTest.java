@@ -1,5 +1,6 @@
 package net.staticstudios.data;
 
+import net.staticstudios.data.impl.h2.H2DataAccessor;
 import net.staticstudios.data.misc.DataTest;
 import net.staticstudios.data.misc.MockEnvironment;
 import net.staticstudios.data.mock.MockUser;
@@ -8,7 +9,12 @@ import net.staticstudios.data.mock.MockUserSettings;
 import net.staticstudios.data.util.ColumnValuePair;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -32,6 +38,23 @@ public class PersistentValueTest extends DataTest {
                     .id(id)
                     .name("user " + id)
                     .insert(InsertMode.SYNC);
+        }
+
+
+        Connection h2Connection;
+        try {
+            Method getConnectionMethod = H2DataAccessor.class.getDeclaredMethod("getConnection");
+            getConnectionMethod.setAccessible(true);
+            h2Connection = (Connection) getConnectionMethod.invoke(dataManager.getDataAccessor());
+        } catch (NoSuchMethodException | InvocationTargetException | IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+
+        try (Statement statement = h2Connection.createStatement()) {
+            ResultSet rs = statement.executeQuery("SCRIPT");
+            while (rs.next()) {
+                System.out.println(rs.getString(1));
+            }
         }
 
         for (UUID id : userIds) {
@@ -60,6 +83,7 @@ public class PersistentValueTest extends DataTest {
         MockUser mockUser = MockUserFactory.builder(dataManager)
                 .id(id)
                 .name("test user")
+                .nameUpdates(0)
                 .insert(InsertMode.SYNC);
         assertEquals("test user", mockUser.name.get());
         mockUser.name.set("updated name");
@@ -113,6 +137,8 @@ public class PersistentValueTest extends DataTest {
         MockUser mockUser = MockUserFactory.builder(dataManager)
                 .id(id)
                 .name("test user")
+                .favoriteColor("orange")
+                .nameUpdates(0)
                 .insert(InsertMode.SYNC);
         assertEquals("test user", mockUser.name.get());
         //first instance was created, handler should be registered

@@ -16,14 +16,15 @@ public class ValueUtils {
     public static String parseValue(String encoded) {
         Preconditions.checkNotNull(encoded, "Encoded value cannot be null");
         Matcher matcher = ENVIRONMENT_VARIABLE_PATTERN.matcher(encoded);
-        if (matcher.matches()) {
+        StringBuilder sb = new StringBuilder();
+        while (matcher.find()) {
             String varName = matcher.group(1);
             String value = ENVIRONMENT_VARIABLE_ACCESSOR.getEnv(varName);
-            Preconditions.checkArgument(value != null, "Environment variable " + varName + " is not set");
-            return value;
-        } else {
-            return encoded;
+            Preconditions.checkArgument(value != null, String.format("Environment variable %s is not set", varName));
+            matcher.appendReplacement(sb, Matcher.quoteReplacement(value));
         }
+        matcher.appendTail(sb);
+        return sb.toString();
     }
 
     public static List<String> parseCommaSeperatedList(String encoded) {

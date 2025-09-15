@@ -5,6 +5,7 @@ import net.staticstudios.data.Column;
 import net.staticstudios.data.Data;
 import net.staticstudios.data.ForeignColumn;
 import net.staticstudios.data.IdColumn;
+import net.staticstudios.data.utils.StringUtils;
 
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
@@ -13,9 +14,7 @@ import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.ElementFilter;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
 public class MetadataUtils {
     private static final String FQN_OBJECT = Object.class.getName();
@@ -83,13 +82,34 @@ public class MetadataUtils {
             columnName = foreignColumn.name();
         }
 
-        return new PersistentValueMetadata(
-                schemaName,
-                tableName,
-                columnName,
-                field.getSimpleName().toString(),
-                typeName
-        );
+        if (idColumn != null || column != null) {
+            return new PersistentValueMetadata(
+                    schemaName,
+                    tableName,
+                    columnName,
+                    field.getSimpleName().toString(),
+                    typeName
+            );
+        }
+        if (foreignColumn != null) {
+            Map<String, String> links = new HashMap<>();
+            for (String link : StringUtils.parseCommaSeperatedList(foreignColumn.link())) {
+                String[] parts = link.split("=");
+                if (parts.length != 2) {
+                    throw new IllegalArgumentException("Invalid link format in @ForeignColumn: " + link);
+                }
+                links.put(parts[0].trim(), parts[1].trim());
+            }
+            return new ForeignPersistentValueMetadata(
+                    schemaName,
+                    tableName,
+                    columnName,
+                    field.getSimpleName().toString(),
+                    typeName,
+                    links
+            );
+        }
+        throw new IllegalStateException("Field " + field.getSimpleName() + " is not annotated with @IdColumn, @Column, or @ForeignColumn");
     }
 
 }

@@ -15,6 +15,7 @@ import javax.lang.model.element.TypeElement;
 import javax.tools.Diagnostic;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @SupportedAnnotationTypes("net.staticstudios.data.Data")
@@ -53,7 +54,8 @@ public class DataProcessor extends AbstractProcessor {
         ClassName insertMode = ClassName.get("net.staticstudios.data", "InsertMode");
         ClassName insertContext = ClassName.get("net.staticstudios.data.insert", "InsertContext");
 
-
+        Data dataAnnotation = entityType.getAnnotation(Data.class);
+        assert dataAnnotation != null;
         List<Metadata> metadataList = MetadataUtils.extractMetadata(entityType);
 
         TypeSpec.Builder builderType = TypeSpec.classBuilder("Builder")
@@ -66,60 +68,91 @@ public class DataProcessor extends AbstractProcessor {
 
         //todo: support collections and references.
 
-        MethodSpec.Builder insertModeMethod = MethodSpec.methodBuilder("insert")
-                .addModifiers(Modifier.PUBLIC)
-                .returns(entityClass)
-                .addParameter(insertMode, "mode")
-                .addStatement("$T ctx = dataManager.createInsertContext()", insertContext);
+
         MethodSpec.Builder insertCtxMethod = MethodSpec.methodBuilder("insert")
                 .addModifiers(Modifier.PUBLIC)
                 .returns(TypeName.VOID)
                 .addParameter(insertContext, "ctx");
 
         for (Metadata metadata : metadataList) {
-            if (metadata instanceof PersistentValueMetadata(
-                    String schema, String table, String column, String fieldName, TypeName genericType
-            )) {
-                String schemaFieldName = fieldName + "$schema";
-                String tableFieldName = fieldName + "$table";
-                String columnFieldName = fieldName + "$column";
+            if (metadata instanceof PersistentValueMetadata persistentValueMetadata) {
+                String schemaFieldName = persistentValueMetadata.fieldName() + "$schema";
+                String tableFieldName = persistentValueMetadata.fieldName() + "$table";
+                String columnFieldName = persistentValueMetadata.fieldName() + "$column";
 
 
-                builderType.addField(genericType, fieldName, Modifier.PRIVATE);
+                builderType.addField(persistentValueMetadata.genericType(), persistentValueMetadata.fieldName(), Modifier.PRIVATE);
 
                 // since we support env variables in the name, parse these at runtime.
                 builderType.addField(FieldSpec.builder(String.class, schemaFieldName, Modifier.PRIVATE, Modifier.FINAL, Modifier.STATIC)
-                        .initializer("$T.parseValue($S)", ClassName.get("net.staticstudios.data.util", "ValueUtils"), schema)
+                        .initializer("$T.parseValue($S)", ClassName.get("net.staticstudios.data.util", "ValueUtils"), persistentValueMetadata.schema())
                         .build());
                 builderType.addField(FieldSpec.builder(String.class, tableFieldName, Modifier.PRIVATE, Modifier.FINAL, Modifier.STATIC)
-                        .initializer("$T.parseValue($S)", ClassName.get("net.staticstudios.data.util", "ValueUtils"), table)
+                        .initializer("$T.parseValue($S)", ClassName.get("net.staticstudios.data.util", "ValueUtils"), persistentValueMetadata.table())
                         .build());
                 builderType.addField(FieldSpec.builder(String.class, columnFieldName, Modifier.PRIVATE, Modifier.FINAL, Modifier.STATIC)
-                        .initializer("$T.parseValue($S)", ClassName.get("net.staticstudios.data.util", "ValueUtils"), column)
+                        .initializer("$T.parseValue($S)", ClassName.get("net.staticstudios.data.util", "ValueUtils"), persistentValueMetadata.column())
                         .build());
 
-                builderType.addMethod(MethodSpec.methodBuilder(fieldName)
+                builderType.addMethod(MethodSpec.methodBuilder(persistentValueMetadata.fieldName())
                         .addModifiers(Modifier.PUBLIC)
                         .returns(ClassName.get(packageName, factoryName, "Builder"))
-                        .addParameter(genericType, fieldName)
-                        .addStatement("this.$N = $N", fieldName, fieldName)
+                        .addParameter(persistentValueMetadata.genericType(), persistentValueMetadata.fieldName())
+                        .addStatement("this.$N = $N", persistentValueMetadata.fieldName(), persistentValueMetadata.fieldName())
                         .addStatement("return this")
                         .build());
 
-                insertModeMethod.addStatement("ctx.set($N, $N, $N, this.$N)",
-                        schemaFieldName,
-                        tableFieldName,
-                        columnFieldName,
-                        fieldName);
+                if (persistentValueMetadata instanceof ForeignPersistentValueMetadata foreignPersistentValueMetadata) {
+                    insertCtxMethod.beginControlFlow("if (this.$N != null)", persistentValueMetadata.fieldName());
+                }
+
                 insertCtxMethod.addStatement("ctx.set($N, $N, $N, this.$N)",
                         schemaFieldName,
                         tableFieldName,
                         columnFieldName,
-                        fieldName);
+                        persistentValueMetadata.fieldName());
+
+                if (persistentValueMetadata instanceof ForeignPersistentValueMetadata foreignPersistentValueMetadata) {
+                    int i = 0;
+                    for (Map.Entry<String, String> link : foreignPersistentValueMetadata.links().entrySet()) {
+                        String localColumn = link.getKey();
+                        String foreignColumn = link.getValue();
+
+                        PersistentValueMetadata localColumnMetadata = metadataList.stream()
+                                .filter(m -> m instanceof PersistentValueMetadata)
+                                .map(m -> (PersistentValueMetadata) m)
+                                .filter(m -> m.column().equals(localColumn) && m.table().equals(dataAnnotation.table()) && m.schema().equals(dataAnnotation.schema()))
+                                .findFirst()
+                                .orElseThrow(() -> new IllegalStateException("Could not find local column metadata for link: " + localColumn));
+
+                        String columnLinkFieldName = columnFieldName + "$" + localColumnMetadata.fieldName() + "$" + i;
+
+                        builderType.addField(FieldSpec.builder(String.class, columnLinkFieldName, Modifier.PRIVATE, Modifier.FINAL, Modifier.STATIC)
+                                .initializer("$T.parseValue($S)", ClassName.get("net.staticstudios.data.util", "ValueUtils"), foreignColumn)
+                                .build());
+
+
+                        insertCtxMethod.addStatement("ctx.set($N, $N, $N, this.$N)",
+                                schemaFieldName,
+                                tableFieldName,
+                                columnLinkFieldName,
+                                localColumnMetadata.fieldName());
+                        i++;
+                    }
+                    insertCtxMethod.endControlFlow();
+                }
+
             }
         }
 
-        insertModeMethod.addStatement("return ctx.insert(mode).get($T.class)", entityClass);
+        MethodSpec.Builder insertModeMethod = MethodSpec.methodBuilder("insert")
+                .addModifiers(Modifier.PUBLIC)
+                .returns(entityClass)
+                .addParameter(insertMode, "mode")
+                .addStatement("$T ctx = dataManager.createInsertContext()", insertContext)
+                .addStatement("this.insert(ctx)")
+                .addStatement("return ctx.insert(mode).get($T.class)", entityClass);
+
         builderType.addMethod(insertModeMethod.build());
         builderType.addMethod(insertCtxMethod.build());
 

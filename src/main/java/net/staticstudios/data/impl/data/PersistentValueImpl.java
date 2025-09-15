@@ -1,13 +1,7 @@
 package net.staticstudios.data.impl.data;
 
 import com.google.common.base.Preconditions;
-import com.google.common.base.Supplier;
-import net.staticstudios.data.DataAccessor;
-import net.staticstudios.data.PersistentValue;
-import net.staticstudios.data.UniqueData;
-import net.staticstudios.data.Column;
-import net.staticstudios.data.ForeignColumn;
-import net.staticstudios.data.IdColumn;
+import net.staticstudios.data.*;
 import net.staticstudios.data.util.*;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.Nullable;
@@ -25,7 +19,6 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
     private final String column;
     //    private final Deque<ValueUpdateHandler<T>> updateHandlers = new ConcurrentLinkedDeque<>();
     private Map<String, String> idColumnLinks;
-    private @Nullable Supplier<@Nullable T> defaultValueSupplier;
 
     private PersistentValueImpl(DataAccessor dataAccessor, UniqueData holder, Class<T> dataType, String schema, String table, String column, Map<String, String> idColumnLinks) {
         this.dataAccessor = dataAccessor;
@@ -65,15 +58,35 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
             if (idColumn != null) {
                 Preconditions.checkArgument(columnAnnotation == null, "PersistentValue field %s cannot be annotated with both @IdColumn and @Column", pair.field().getName());
                 Preconditions.checkArgument(foreignColumn == null, "PersistentValue field %s cannot be annotated with both @IdColumn and @ForeignColumn", pair.field().getName());
-                columnMetadata = new ColumnMetadata(ValueUtils.parseValue(idColumn.name()), ReflectionUtils.getGenericType(pair.field()), false, false, table, schema);
+                columnMetadata = new ColumnMetadata(
+                        schema,
+                        table,
+                        ValueUtils.parseValue(idColumn.name()),
+                        ReflectionUtils.getGenericType(pair.field()),
+                        false,
+                        false,
+                        ""
+                );
             } else if (columnAnnotation != null) {
-                columnMetadata = new ColumnMetadata(ValueUtils.parseValue(columnAnnotation.name()), ReflectionUtils.getGenericType(pair.field()), columnAnnotation.nullable(), columnAnnotation.index(),
+                columnMetadata = new ColumnMetadata(
+                        columnAnnotation.schema().isEmpty() ? schema : ValueUtils.parseValue(columnAnnotation.schema()),
                         columnAnnotation.table().isEmpty() ? table : ValueUtils.parseValue(columnAnnotation.table()),
-                        columnAnnotation.schema().isEmpty() ? schema : ValueUtils.parseValue(columnAnnotation.schema()));
+                        ValueUtils.parseValue(columnAnnotation.name()),
+                        ReflectionUtils.getGenericType(pair.field()),
+                        columnAnnotation.nullable(),
+                        columnAnnotation.index(),
+                        columnAnnotation.defaultValue()
+                );
             } else if (foreignColumn != null) {
-                columnMetadata = new ColumnMetadata(ValueUtils.parseValue(foreignColumn.name()), ReflectionUtils.getGenericType(pair.field()), foreignColumn.nullable(), foreignColumn.index(),
+                columnMetadata = new ColumnMetadata(
+                        foreignColumn.schema().isEmpty() ? schema : ValueUtils.parseValue(foreignColumn.schema()),
                         foreignColumn.table().isEmpty() ? table : ValueUtils.parseValue(foreignColumn.table()),
-                        foreignColumn.schema().isEmpty() ? schema : ValueUtils.parseValue(foreignColumn.schema()));
+                        ValueUtils.parseValue(foreignColumn.name()),
+                        ReflectionUtils.getGenericType(pair.field()),
+                        foreignColumn.nullable(),
+                        foreignColumn.index(),
+                        foreignColumn.defaultValue()
+                );
                 idColumnLinks = new HashMap<>();
                 List<String> links = StringUtils.parseCommaSeperatedList(foreignColumn.link());
                 for (String link : links) {
@@ -84,7 +97,7 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
             }
             Preconditions.checkNotNull(columnMetadata, "PersistentValue field %s is missing @Column annotation", pair.field().getName());
 
-            //todo: the primary key gets a bit more complicated when we are dealing with a foreign key. this needs to be handled, and a new ForeignKey created which properly maps my id column to the foreign key column.
+            //todo: the primary key gets a bit more complicated when we are dealing with a foreign key. this needs to be handled, and a new ForeignKey created which properly maps my id name to the foreign key name.
             //todo: update: what???
 
             if (pair.instance() instanceof PersistentValue.ProxyPersistentValue<?> proxyPv) {
@@ -123,17 +136,6 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
     }
 
     @Override
-    public PersistentValue<T> withDefault(@Nullable T defaultValue) {
-        return withDefault(() -> defaultValue);
-    }
-
-    @Override
-    public PersistentValue<T> withDefault(@Nullable Supplier<@Nullable T> defaultValueSupplier) {
-        this.defaultValueSupplier = defaultValueSupplier;
-        return this;
-    }
-
-    @Override
     public Map<String, String> getIdColumnLinks() {
         return idColumnLinks;
     }
@@ -156,9 +158,6 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
                 T deserialized = (T) serializedValue; //todo: this
                 return deserialized;
             }
-            if (defaultValueSupplier != null) {
-                return defaultValueSupplier.get();
-            }
             return null;
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -167,7 +166,7 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
 
     @Override
     public void set(T value) {
-        //todo: whenever we set an id column of something, we need to tell the datamanager to update any tracked instance of uniquedata with that id.
+        //todo: whenever we set an id name of something, we need to tell the datamanager to update any tracked instance of uniquedata with that id.
         T oldValue = get();
         StringBuilder sqlBuilder;
         if (idColumnLinks.isEmpty()) {

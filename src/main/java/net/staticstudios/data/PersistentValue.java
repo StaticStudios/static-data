@@ -1,7 +1,6 @@
 package net.staticstudios.data;
 
 import com.google.common.base.Preconditions;
-import com.google.common.base.Supplier;
 import net.staticstudios.data.util.*;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
@@ -10,8 +9,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-
-//todo: keep this as an interface, since we'll allow the data accessor decide what to use. for example are we writing to the DB or the cache.
 
 /**
  * A persistent value represents a single cell in a database table.
@@ -36,10 +33,6 @@ public interface PersistentValue<T> extends Value<T> {
 
     <U extends UniqueData> PersistentValue<T> onUpdate(Class<U> holderClass, ValueUpdateHandler<U, T> updateHandler);
 
-    PersistentValue<T> withDefault(@Nullable T defaultValue);
-
-    PersistentValue<T> withDefault(@Nullable Supplier<@Nullable T> defaultValueSupplier);
-
 
 //    PersistentValue<T> updateInterval(long intervalMillis);
 
@@ -47,12 +40,6 @@ public interface PersistentValue<T> extends Value<T> {
         protected final UniqueData holder;
         protected final Class<T> dataType;
         private final List<ValueUpdateHandlerWrapper<?, ?>> updateHandlers = new ArrayList<>();
-        //todo: here's how update handlers should be stored
-        // we store them globally on the data manager. we have a map of <schema.table.column, List<handler>>
-        // additionally, for every field of type PV, we store the update handlers once - after the first unique data object is created. we will set them right before setting the delegate.
-        // this also means that after weve set the delegate, we cannot add any more update handlers.
-        // i think it would be useful to expose a method on the DM publicly to add an update handler to a specific column
-        private @Nullable Supplier<@Nullable T> defaultValueSupplier;
         private @Nullable PersistentValue<T> delegate;
         private Map<String, String> idColumnLinks = Collections.emptyMap();
         private long updateIntervalMillis = -1;
@@ -66,14 +53,6 @@ public interface PersistentValue<T> extends Value<T> {
             Preconditions.checkNotNull(delegate, "Delegate cannot be null");
             Preconditions.checkState(this.delegate == null, "Delegate is already set");
             this.delegate = delegate;
-//            for (ValueUpdateHandler<T> handler : updateHandlers) {
-//                this.delegate.onUpdate(handler);
-//            }
-//            this.updateHandlers.clear();
-            if (this.defaultValueSupplier != null) {
-                this.delegate.withDefault(this.defaultValueSupplier);
-            }
-
             PersistentValueMetadata metadata = new PersistentValueMetadata(
                     holder.getClass(),
                     columnMetadata.schema(),
@@ -122,16 +101,6 @@ public interface PersistentValue<T> extends Value<T> {
             return this;
         }
 
-        @Override
-        public PersistentValue<T> withDefault(@Nullable Supplier<@Nullable T> defaultValueSupplier) {
-            if (delegate != null) {
-                delegate.withDefault(defaultValueSupplier);
-            } else {
-                this.defaultValueSupplier = defaultValueSupplier;
-            }
-            return this;
-        }
-
 //        @Override
 //        public PersistentValue<T> updateInterval(long intervalMillis) {
 //            if (delegate != null) {
@@ -141,11 +110,6 @@ public interface PersistentValue<T> extends Value<T> {
 //            this.updateIntervalMillis = intervalMillis;
 //            return this;
 //        }
-
-        @Override
-        public PersistentValue<T> withDefault(@Nullable T defaultValue) {
-            return withDefault(() -> defaultValue);
-        }
 
         @Override
         public T get() {

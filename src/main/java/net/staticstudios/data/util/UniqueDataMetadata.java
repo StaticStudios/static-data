@@ -1,7 +1,6 @@
-package net.staticstudios.data.parse;
+package net.staticstudios.data.util;
 
 import net.staticstudios.data.UniqueData;
-import net.staticstudios.data.util.ColumnMetadata;
 
 import java.util.List;
 

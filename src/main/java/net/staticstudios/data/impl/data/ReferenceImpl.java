@@ -2,10 +2,9 @@ package net.staticstudios.data.impl.data;
 
 import com.google.common.base.Preconditions;
 import net.staticstudios.data.DataAccessor;
+import net.staticstudios.data.OneToOne;
 import net.staticstudios.data.Reference;
 import net.staticstudios.data.UniqueData;
-import net.staticstudios.data.OneToOne;
-import net.staticstudios.data.parse.UniqueDataMetadata;
 import net.staticstudios.data.util.*;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.Nullable;
@@ -132,7 +131,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
                     break;
                 }
             }
-            Preconditions.checkNotNull(theirValue, "Could not find value for column %s in referenced object of type %s".formatted(theirColumn, type.getName()));
+            Preconditions.checkNotNull(theirValue, "Could not find value for name %s in referenced object of type %s".formatted(theirColumn, type.getName()));
 
             sqlBuilder.append("\"").append(myColumn).append("\" = ?, ");
             values.add(theirValue);
