@@ -10,6 +10,8 @@ import net.staticstudios.data.insert.InsertContext;
 import net.staticstudios.data.parse.*;
 import net.staticstudios.data.util.*;
 import net.staticstudios.data.util.TaskQueue;
+import net.staticstudios.utils.ThreadUtils;
+import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Blocking;
 import org.slf4j.Logger;
@@ -17,6 +19,7 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -55,9 +58,6 @@ public class DataManager {
         sqlBuilder = new SQLBuilder(this);
         this.taskQueue = new TaskQueue(dataSourceConfig, applicationName);
         dataAccessor = new H2DataAccessor(this, postgresListener, taskQueue);
-
-        //todo: when we parse UniqueData objects we should build an internal map, and then when we are done auto create the sql if the tables dont exist
-        //todo: this will be extremely useful for building the internal cache tables
 
         //todo: when we reconnect to postgres, refresh the internal cache from the source
 
@@ -129,7 +129,7 @@ public class DataManager {
                 Object deserializedOldValue = oldSerializedValues[columnIndex]; //todo: these
                 Object deserializedNewValue = newSerializedValues[columnIndex];
 
-                wrapper.unsafeHandle(instance, deserializedOldValue, deserializedNewValue);
+                ThreadUtils.submit(() -> wrapper.unsafeHandle(instance, deserializedOldValue, deserializedNewValue));
             }
         }
     }
@@ -174,10 +174,6 @@ public class DataManager {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
-
-        //todo: the sql builder needs to be altered to spit out the sql for the just walked class
-        //todo: then we need to create those tables in the cache and source, and then finally load all of that data into the cache
-        //todo: also, stare listening to events before we start grabbing data, queue them, and then process them after the initial load is done
     }
 
     public void extractMetadata(Class<? extends UniqueData> clazz) {
@@ -247,6 +243,59 @@ public class DataManager {
         });
     }
 
+    @ApiStatus.Internal
+    public synchronized void updateIdColumns(List<String> columnNames, String schema, String table, String column, Object[] oldValues, Object[] newValues) {
+        uniqueDataMetadataMap.values().forEach(uniqueDataMetadata -> {
+            if (!uniqueDataMetadata.schema().equals(schema) || !uniqueDataMetadata.table().equals(table)) {
+                return;
+            }
+
+            boolean idColumnWasUpdated = false;
+            for (ColumnMetadata idColumn : uniqueDataMetadata.idColumns()) {
+                if (idColumn.name().equals(column)) {
+                    idColumnWasUpdated = true;
+                    break;
+                }
+            }
+
+            if (!idColumnWasUpdated) {
+                return;
+            }
+
+            ColumnValuePair[] oldIdColumns = new ColumnValuePair[uniqueDataMetadata.idColumns().size()];
+            ColumnValuePair[] newIdColumns = new ColumnValuePair[uniqueDataMetadata.idColumns().size()];
+            for (ColumnMetadata idColumn : uniqueDataMetadata.idColumns()) {
+                boolean found = false;
+                for (int i = 0; i < columnNames.size(); i++) {
+                    if (idColumn.name().equals(columnNames.get(i))) {
+                        oldIdColumns[uniqueDataMetadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), oldValues[i]);
+                        newIdColumns[uniqueDataMetadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), newValues[i]);
+                        found = true;
+                        break;
+                    }
+                }
+                Preconditions.checkArgument(found, "Not all ID columns were provided for UniqueData class %s. Required: %s, Provided: %s", uniqueDataMetadata.clazz().getName(), uniqueDataMetadata.idColumns(), Arrays.toString(oldValues));
+            }
+            if (Arrays.equals(oldIdColumns, newIdColumns)) {
+                return; // no change to id columns here
+            }
+
+            ColumnValuePairs oldIdCols = new ColumnValuePairs(oldIdColumns);
+            Map<ColumnValuePairs, UniqueData> classCache = uniqueDataInstanceCache.get(uniqueDataMetadata.clazz());
+            if (classCache == null) {
+                return;
+            }
+            UniqueData instance = classCache.remove(oldIdCols);
+            if (instance == null) {
+                return;
+            }
+            ColumnValuePairs newIdCols = new ColumnValuePairs(newIdColumns);
+            instance.setIdColumns(newIdCols);
+            classCache.put(newIdCols, instance);
+        });
+
+    }
+
     @SuppressWarnings("unchecked")
     public <T extends UniqueData> T get(Class<T> clazz, ColumnValuePair... idColumnValues) {
         ColumnValuePairs idColumns = new ColumnValuePairs(idColumnValues);
@@ -280,6 +329,7 @@ public class DataManager {
             if (instance.isDeleted()) {
                 return null;
             }
+            return instance;
         }
 
         try {
@@ -293,10 +343,24 @@ public class DataManager {
         instance.setDataManager(this);
         instance.setIdColumns(idColumns);
 
-        Data dataAnnotation = clazz.getAnnotation(Data.class);
-        Preconditions.checkNotNull(dataAnnotation, "UniqueData class %s is missing @Data annotation", clazz.getName());
-        String schema = ValueUtils.parseValue(dataAnnotation.schema());
-        String table = ValueUtils.parseValue(dataAnnotation.table());
+        String schema = metadata.schema();
+        String table = metadata.table();
+
+        StringBuilder sqlBuilder = new StringBuilder();
+        sqlBuilder.append("SELECT 1 FROM \"").append(schema).append("\".\"").append(table).append("\" WHERE ");
+        for (ColumnValuePair columnValuePair : idColumns) {
+            sqlBuilder.append("\"").append(columnValuePair.column()).append("\" = ? AND ");
+        }
+        sqlBuilder.setLength(sqlBuilder.length() - 5);
+        @Language("SQL") String sql = sqlBuilder.toString();
+        try (ResultSet rs = dataAccessor.executeQuery(sql, idColumns.stream().map(ColumnValuePair::value).toList())) {
+            if (!rs.next()) {
+                return null;
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
         PersistentValueImpl.delegate(schema, table, instance);
         ReferenceImpl.delegate(instance);
 
@@ -367,7 +431,7 @@ public class DataManager {
             tables.add(table);
         });
 
-        //sort tables based on foreign key dependencies. tables who are depended on should come first
+        //sort tables based on foreign key dependencies. tables who are depended on should come last
 
         // Build dependency graph: table -> set of tables it depends on
         Map<SQLTable, Set<SQLTable>> dependencyGraph = new HashMap<>();
@@ -396,6 +460,7 @@ public class DataManager {
         for (SQLTable table : dependencyGraph.keySet()) {
             topoSort(table, dependencyGraph, visited, orderedTables);
         }
+        Collections.reverse(orderedTables);
 
         List<SQlStatement> sqlStatements = new ArrayList<>();
 
@@ -436,6 +501,54 @@ public class DataManager {
         try {
             insertContext.markInserted();
             dataAccessor.insert(sqlStatements, insertMode);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void set(String schema, String table, String column, ColumnValuePairs idColumns, Map<String, String> idColumnLinks, Object value) {
+        StringBuilder sqlBuilder;
+        if (idColumnLinks.isEmpty()) {
+            sqlBuilder = new StringBuilder().append("UPDATE \"").append(schema).append("\".\"").append(table).append("\" SET \"").append(column).append("\" = ? WHERE ");
+            for (ColumnValuePair columnValuePair : idColumns) {
+                String name = idColumnLinks.getOrDefault(columnValuePair.column(), columnValuePair.column());
+                sqlBuilder.append("\"").append(name).append("\" = ? AND ");
+            }
+            sqlBuilder.setLength(sqlBuilder.length() - 5);
+        } else { // we're dealing with a foreign key
+            sqlBuilder = new StringBuilder().append("MERGE INTO \"").append(schema).append("\".\"").append(table).append("\" target USING (VALUES (?");
+            sqlBuilder.append(", ?".repeat(idColumns.getPairs().length));
+            sqlBuilder.append(")) AS source (\"").append(column).append("\"");
+            for (ColumnValuePair columnValuePair : idColumns) {
+                String name = idColumnLinks.getOrDefault(columnValuePair.column(), columnValuePair.column());
+                sqlBuilder.append(", \"").append(name).append("\"");
+            }
+            sqlBuilder.append(") ON ");
+            for (ColumnValuePair columnValuePair : idColumns) {
+                String name = idColumnLinks.getOrDefault(columnValuePair.column(), columnValuePair.column());
+                sqlBuilder.append("target.\"").append(name).append("\" = source.\"").append(name).append("\" AND ");
+            }
+            sqlBuilder.setLength(sqlBuilder.length() - 5);
+            sqlBuilder.append(" WHEN MATCHED THEN UPDATE SET \"").append(column).append("\" = source.\"").append(column).append("\" WHEN NOT MATCHED THEN INSERT (\"").append(column).append("\"");
+            for (ColumnValuePair columnValuePair : idColumns) {
+                String name = idColumnLinks.getOrDefault(columnValuePair.column(), columnValuePair.column());
+                sqlBuilder.append(", \"").append(name).append("\"");
+            }
+            sqlBuilder.append(") VALUES (source.\"").append(column).append("\"");
+            for (ColumnValuePair columnValuePair : idColumns) {
+                String name = idColumnLinks.getOrDefault(columnValuePair.column(), columnValuePair.column());
+                sqlBuilder.append(", source.\"").append(name).append("\"");
+            }
+            sqlBuilder.append(")");
+        }
+        @Language("SQL") String sql = sqlBuilder.toString();
+        List<Object> values = new ArrayList<>(1 + idColumns.getPairs().length);
+        values.add(value);
+        for (ColumnValuePair columnValuePair : idColumns) {
+            values.add(columnValuePair.value());
+        }
+        try {
+            dataAccessor.executeUpdate(sql, values);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }

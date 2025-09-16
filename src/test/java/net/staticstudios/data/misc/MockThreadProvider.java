@@ -4,6 +4,8 @@ import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ShutdownTask;
 import net.staticstudios.utils.ThreadUtilProvider;
 import net.staticstudios.utils.ThreadUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -11,13 +13,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
-import java.util.logging.Logger;
 
 public class MockThreadProvider implements ThreadUtilProvider {
     private final ExecutorService mainThreadExecutorService;
     private final List<Runnable> syncOnDisableTasksRunNext = Collections.synchronizedList(new ArrayList<>());
     private final List<ShutdownTask> shutdownTasks = Collections.synchronizedList(new ArrayList<>());
-    private final Logger logger = Logger.getLogger(MockThreadProvider.class.getName());
+    private final Logger logger = LoggerFactory.getLogger(MockThreadProvider.class.getName());
     private ExecutorService executorService;
     private boolean isShuttingDown = false;
     private boolean doneShuttingDown = false;
@@ -104,7 +105,7 @@ public class MockThreadProvider implements ThreadUtilProvider {
                         try {
                             CompletableFuture.allOf(asyncFutures.toArray(new CompletableFuture[0])).get(30, TimeUnit.SECONDS);
                         } catch (Exception e) {
-                            getLogger().severe("Failed to wait for async tasks to finish during shutdown stage " + stage);
+                            getLogger().error("Failed to wait for async tasks to finish during shutdown stage " + stage);
                             e.printStackTrace();
                         }
 

@@ -8,7 +8,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class PersistentValueImpl<T> implements PersistentValue<T> {
     private final DataAccessor dataAccessor;
@@ -96,9 +99,6 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
             }
             Preconditions.checkNotNull(columnMetadata, "PersistentValue field %s is missing @Column annotation", pair.field().getName());
 
-            //todo: the primary key gets a bit more complicated when we are dealing with a foreign key. this needs to be handled, and a new ForeignKey created which properly maps my id name to the foreign key name.
-            //todo: update: what???
-
             if (pair.instance() instanceof PersistentValue.ProxyPersistentValue<?> proxyPv) {
                 PersistentValueImpl.createAndDelegate(proxyPv, columnMetadata);
             } else {
@@ -167,53 +167,7 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
     @Override
     public void set(T value) {
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot set value on a deleted UniqueData instance");
-        //todo: whenever we set an id name of something, we need to tell the datamanager to update any tracked instance of uniquedata with that id.
-        T oldValue = get();
-        StringBuilder sqlBuilder;
-        if (idColumnLinks.isEmpty()) {
-            sqlBuilder = new StringBuilder().append("UPDATE \"").append(schema).append("\".\"").append(table).append("\" SET \"").append(column).append("\" = ? WHERE ");
-            for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
-                String name = idColumnLinks.getOrDefault(columnValuePair.column(), columnValuePair.column());
-                sqlBuilder.append("\"").append(name).append("\" = ? AND ");
-            }
-            sqlBuilder.setLength(sqlBuilder.length() - 5);
-        } else { // we're dealing with a foreign key
-            sqlBuilder = new StringBuilder().append("MERGE INTO \"").append(schema).append("\".\"").append(table).append("\" target USING (VALUES (?");
-            sqlBuilder.append(", ?".repeat(holder.getIdColumns().getPairs().length));
-            sqlBuilder.append(")) AS source (\"").append(column).append("\"");
-            for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
-                String name = idColumnLinks.getOrDefault(columnValuePair.column(), columnValuePair.column());
-                sqlBuilder.append(", \"").append(name).append("\"");
-            }
-            sqlBuilder.append(") ON ");
-            for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
-                String name = idColumnLinks.getOrDefault(columnValuePair.column(), columnValuePair.column());
-                sqlBuilder.append("target.\"").append(name).append("\" = source.\"").append(name).append("\" AND ");
-            }
-            sqlBuilder.setLength(sqlBuilder.length() - 5);
-            sqlBuilder.append(" WHEN MATCHED THEN UPDATE SET \"").append(column).append("\" = source.\"").append(column).append("\" WHEN NOT MATCHED THEN INSERT (\"").append(column).append("\"");
-            for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
-                String name = idColumnLinks.getOrDefault(columnValuePair.column(), columnValuePair.column());
-                sqlBuilder.append(", \"").append(name).append("\"");
-            }
-            sqlBuilder.append(") VALUES (source.\"").append(column).append("\"");
-            for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
-                String name = idColumnLinks.getOrDefault(columnValuePair.column(), columnValuePair.column());
-                sqlBuilder.append(", source.\"").append(name).append("\"");
-            }
-            sqlBuilder.append(")");
-        }
-        @Language("SQL") String sql = sqlBuilder.toString();
-        List<Object> values = new ArrayList<>(1 + holder.getIdColumns().getPairs().length);
-        values.add(value);
-        for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
-            values.add(columnValuePair.value());
-        }
-        try {
-            dataAccessor.executeUpdate(sql, values);
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
+        holder.getDataManager().set(schema, table, column, holder.getIdColumns(), idColumnLinks, value);
     }
 
     //todo: support set with SetMode, or operationMode (SYNC vs ASYNC)

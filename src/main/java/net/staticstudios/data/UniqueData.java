@@ -10,8 +10,6 @@ public abstract class UniqueData {
     private DataManager dataManager;
     private volatile boolean isDeleted = false;
 
-    //todo: when an update is done to an id column, we need to handle it here.
-    //todo: when this row is deleted from the database, we should mark this with a deleted flag and throw an error if any operations are attempted on it. more specifically, any pvs referencing this object should throw an error if this has been deleted.
     @ApiStatus.Internal
     protected final void setDataManager(DataManager dataManager) {
         this.dataManager = dataManager;

@@ -86,8 +86,8 @@ public class SQLParseTest extends DataTest {
                     ADD CONSTRAINT posts_interactions_pkey PRIMARY KEY (post_id);
                 ALTER TABLE ONLY social_media.posts
                     ADD CONSTRAINT posts_pkey PRIMARY KEY (post_id);
-                ALTER TABLE ONLY social_media.posts
-                    ADD CONSTRAINT fk_posts_post_id_to_social_media_posts_interactions_post_id FOREIGN KEY (post_id) REFERENCES social_media.posts_interactions(post_id) ON DELETE CASCADE;
+                ALTER TABLE ONLY social_media.posts_interactions
+                    ADD CONSTRAINT fk_social_media_posts_interactions_post_id_to_posts_post_id FOREIGN KEY (post_id) REFERENCES social_media.posts(post_id) ON UPDATE CASCADE ON DELETE CASCADE;
                 """;
 
         assertEquals(expected.trim(), cleanedDump.toString().trim());

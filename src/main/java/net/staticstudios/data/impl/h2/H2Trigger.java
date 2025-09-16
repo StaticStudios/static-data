@@ -81,10 +81,12 @@ public class H2Trigger implements Trigger {
         }
 
         for (String changedColumn : changedColumns) {
-            dataManager.callUpdateHandlers(columnNames, schema, table, changedColumn, oldRow, newRow);
+            dataManager.updateIdColumns(columnNames, schema, table, changedColumn, oldRow, newRow);
         }
 
-        //todo: handle id columns being changed
+        for (String changedColumn : changedColumns) {
+            dataManager.callUpdateHandlers(columnNames, schema, table, changedColumn, oldRow, newRow);
+        }
     }
 
     private void handleDelete(Object[] oldRow) {

@@ -11,7 +11,7 @@ public class SQLTable {
     private final String name;
     private final List<ColumnMetadata> idColumns;
     private final Map<String, SQLColumn> columns;
-    private final List<ForeignKey> foreignKeys;
+    private final List<ForeignKey> foreignKeys; //todo: NOTE: these are actually fkeys thet REFER to this table. this implies something else and should probably be adjusted
 
     public SQLTable(SQLSchema schema, String name, List<ColumnMetadata> idColumns) {
         this.schema = schema;

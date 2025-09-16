@@ -134,15 +134,20 @@ public class PersistentValueTest extends DataTest {
         mockUser = dataManager.get(MockUser.class, ColumnValuePair.of("id", id)); // should have a cache miss
         //the handler for this pv should not have been registered again
         assertEquals(1, dataManager.getUpdateHandlers("public", "users", "name", MockUser.class).size());
+        waitForUpdateHandlers();
         assertEquals(0, mockUser.getNameUpdates());
 
         mockUser.name.set("new name");
+        waitForUpdateHandlers();
         assertEquals(1, mockUser.getNameUpdates());
         mockUser.name.set("new name");
+        waitForUpdateHandlers();
         assertEquals(1, mockUser.getNameUpdates());
         mockUser.name.set("new name2");
+        waitForUpdateHandlers();
         assertEquals(2, mockUser.getNameUpdates());
         mockUser.name.set("new name");
+        waitForUpdateHandlers();
         assertEquals(3, mockUser.getNameUpdates());
     }
 
@@ -184,15 +189,15 @@ public class PersistentValueTest extends DataTest {
         try (PreparedStatement preferencesStatement = getConnection().prepareStatement("INSERT INTO user_preferences (user_id, fav_color) VALUES (?, ?)");
              PreparedStatement metadataStatement = getConnection().prepareStatement("INSERT INTO user_metadata (user_id, name_updates) VALUES (?, ?)");
              PreparedStatement userStatement = getConnection().prepareStatement("INSERT INTO users (id, name) VALUES (?, ?)")) {
+            userStatement.setObject(1, id);
+            userStatement.setString(2, "inserted from pg");
+            userStatement.executeUpdate();
             preferencesStatement.setObject(1, id);
             preferencesStatement.setObject(2, 0);
             preferencesStatement.executeUpdate();
             metadataStatement.setObject(1, id);
             metadataStatement.setInt(2, 0);
             metadataStatement.executeUpdate();
-            userStatement.setObject(1, id);
-            userStatement.setString(2, "inserted from pg");
-            userStatement.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
@@ -234,5 +239,76 @@ public class PersistentValueTest extends DataTest {
 
         mockUser = dataManager.get(MockUser.class, ColumnValuePair.of("id", id));
         assertNull(mockUser);
+    }
+
+    @Test
+    public void testChangeIdColumn() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        UUID id = UUID.randomUUID();
+        MockUser mockUser = MockUserFactory.builder(dataManager)
+                .id(id)
+                .name("test user")
+                .favoriteColor("orange")
+                .nameUpdates(0)
+                .insert(InsertMode.SYNC);
+
+        assertEquals(id, mockUser.id.get());
+        assertEquals(0, mockUser.nameUpdates.get());
+        mockUser.name.set("new name");
+        waitForUpdateHandlers();
+        assertEquals(1, mockUser.nameUpdates.get());
+        UUID newId = UUID.randomUUID();
+        mockUser.id.set(newId);
+        assertEquals(newId, mockUser.id.get());
+        assertNull(dataManager.get(MockUser.class, ColumnValuePair.of("id", id)));
+        assertNotNull(dataManager.get(MockUser.class, ColumnValuePair.of("id", newId)));
+        assertSame(dataManager.get(MockUser.class, ColumnValuePair.of("id", newId)), mockUser);
+        assertEquals(1, mockUser.nameUpdates.get());
+        mockUser.name.set("new name2");
+        waitForUpdateHandlers();
+        assertEquals(2, mockUser.nameUpdates.get());
+    }
+
+    @Test
+    public void testChangeIdColumnInPostgres() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        UUID id = UUID.randomUUID();
+        MockUser mockUser = MockUserFactory.builder(dataManager)
+                .id(id)
+                .name("test user")
+                .favoriteColor("orange")
+                .nameUpdates(0)
+                .insert(InsertMode.SYNC);
+
+        assertEquals(id, mockUser.id.get());
+        assertEquals(0, mockUser.nameUpdates.get());
+        mockUser.name.set("new name");
+
+        waitForUpdateHandlers();
+
+        assertEquals(1, mockUser.nameUpdates.get());
+        UUID newId = UUID.randomUUID();
+
+        try (PreparedStatement preparedStatement = getConnection().prepareStatement("UPDATE users SET id = ? WHERE id = ?")) {
+            preparedStatement.setObject(1, newId);
+            preparedStatement.setObject(2, id);
+            preparedStatement.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        waitForDataPropagation();
+
+        assertEquals(newId, mockUser.id.get());
+        assertNull(dataManager.get(MockUser.class, ColumnValuePair.of("id", id)));
+        assertNotNull(dataManager.get(MockUser.class, ColumnValuePair.of("id", newId)));
+        assertSame(dataManager.get(MockUser.class, ColumnValuePair.of("id", newId)), mockUser);
+        waitForUpdateHandlers();
+        assertEquals(1, mockUser.nameUpdates.get());
+        mockUser.name.set("new name2");
+        waitForUpdateHandlers();
+        assertEquals(2, mockUser.nameUpdates.get());
     }
 }

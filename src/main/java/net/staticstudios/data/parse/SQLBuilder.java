@@ -3,6 +3,7 @@ package net.staticstudios.data.parse;
 import com.google.common.base.Preconditions;
 import net.staticstudios.data.*;
 import net.staticstudios.data.util.*;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Field;
@@ -11,6 +12,7 @@ import java.util.*;
 public class SQLBuilder {
     public static final String INDENT = "  ";
     private final Map<String, SQLSchema> parsedSchemas;
+    private final Map<String, List<ForeignKey>> foreignKeys = new HashMap<>();
     private final DataManager dataManager;
 
     public SQLBuilder(DataManager dataManager) {
@@ -52,6 +54,11 @@ public class SQLBuilder {
         }
 
         return getDefs(schemas.values());
+    }
+
+    public @NotNull List<ForeignKey> getForeignKeysReferencingColumn(String schema, String table, String column) {
+        String key = schema + "." + table + "." + column;
+        return foreignKeys.getOrDefault(key, Collections.emptyList());
     }
 
     public @Nullable SQLSchema getSchema(String name) {
@@ -109,43 +116,43 @@ public class SQLBuilder {
                     if (foreignKey == null) {
                         continue;
                     }
-                    String fKeyName = "fk_" + table.getName() + "_" + String.join("_", foreignKey.getLinkingColumns().keySet()) + "_to_" + foreignKey.getSchema() + "_" + foreignKey.getTable() + "_" + String.join("_", foreignKey.getLinkingColumns().values());
+                    String fKeyName = "fk_" + foreignKey.getSchema() + "_" + foreignKey.getTable() + "_" + String.join("_", foreignKey.getLinkingColumns().values()) + "_to_" + table.getName() + "_" + String.join("_", foreignKey.getLinkingColumns().keySet());
                     StringBuilder sb = new StringBuilder();
-                    sb.append("ALTER TABLE \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" ");
+                    sb.append("ALTER TABLE \"").append(foreignKey.getSchema()).append("\".\"").append(foreignKey.getTable()).append("\" ");
                     sb.append("ADD CONSTRAINT IF NOT EXISTS ").append(fKeyName).append(" ");
                     sb.append("FOREIGN KEY (");
-                    for (String localCol : foreignKey.getLinkingColumns().keySet()) {
+                    for (String localCol : foreignKey.getLinkingColumns().values()) {
                         sb.append("\"").append(localCol).append("\", ");
                     }
                     sb.setLength(sb.length() - 2);
                     sb.append(") ");
-                    sb.append("REFERENCES \"").append(foreignKey.getSchema()).append("\".\"").append(foreignKey.getTable()).append("\" (");
-                    for (String foreignCol : foreignKey.getLinkingColumns().values()) {
+                    sb.append("REFERENCES \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" (");
+                    for (String foreignCol : foreignKey.getLinkingColumns().keySet()) {
                         sb.append("\"").append(foreignCol).append("\", ");
                     }
                     sb.setLength(sb.length() - 2);
-                    sb.append(") ON DELETE CASCADE;"); //todo: on delete cascade or no action or set null? depends on type
+                    sb.append(") ON DELETE CASCADE ON UPDATE CASCADE;"); //todo: on delete cascade or no action or set null? depends on type
                     String h2 = sb.toString();
 
 
                     sb = new StringBuilder();
                     sb.append("DO $$ BEGIN ");
-                    sb.append("IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = '").append(fKeyName).append("' AND table_name = '").append(table.getName()).append("' AND constraint_schema = '").append(schema.getName()).append("' AND constraint_type = 'FOREIGN KEY') THEN ");
+                    sb.append("IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = '").append(fKeyName).append("' AND table_name = '").append(foreignKey.getTable()).append("' AND constraint_schema = '").append(foreignKey.getSchema()).append("' AND constraint_type = 'FOREIGN KEY') THEN ");
 
-                    sb.append("ALTER TABLE \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" ");
+                    sb.append("ALTER TABLE \"").append(foreignKey.getSchema()).append("\".\"").append(foreignKey.getTable()).append("\" ");
                     sb.append("ADD CONSTRAINT ").append(fKeyName).append(" ");
                     sb.append("FOREIGN KEY (");
-                    for (String localCol : foreignKey.getLinkingColumns().keySet()) {
+                    for (String localCol : foreignKey.getLinkingColumns().values()) {
                         sb.append("\"").append(localCol).append("\", ");
                     }
                     sb.setLength(sb.length() - 2);
                     sb.append(") ");
-                    sb.append("REFERENCES \"").append(foreignKey.getSchema()).append("\".\"").append(foreignKey.getTable()).append("\" (");
-                    for (String foreignCol : foreignKey.getLinkingColumns().values()) {
+                    sb.append("REFERENCES \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" (");
+                    for (String foreignCol : foreignKey.getLinkingColumns().keySet()) {
                         sb.append("\"").append(foreignCol).append("\", ");
                     }
                     sb.setLength(sb.length() - 2);
-                    sb.append(") ON DELETE CASCADE;"); //todo: on delete cascade or no action or set null? depends on type
+                    sb.append(") ON DELETE CASCADE ON UPDATE CASCADE;"); //todo: on delete cascade or no action or set null? depends on type
                     sb.append(" END IF; END $$;");
                     String pg = sb.toString();
                     statements.add(DDLStatement.of(h2, pg));
@@ -307,11 +314,12 @@ public class SQLBuilder {
                     String localColumn = ValueUtils.parseValue(parts[0].trim());
                     String otherColumn = ValueUtils.parseValue(parts[1].trim());
                     foreignKey.addColumnMapping(localColumn, otherColumn);
+                    String schemaTableColumn = schemaName + "." + tableName + "." + localColumn;
+                    foreignKeys.computeIfAbsent(schemaTableColumn, k -> new ArrayList<>()).add(foreignKey);
                 }
 
                 dataSqlTable.getForeignKeys().add(foreignKey);
             }
-
 
             Class<?> type = ReflectionUtils.getGenericType(field); //todo: handle custom types to sql types
             SQLColumn sqlColumn = new SQLColumn(table, type, columnName, nullable, indexed, defaultValue.isEmpty() ? null : SQLUtils.parseDefaultValue(type, defaultValue));

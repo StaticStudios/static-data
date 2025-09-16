@@ -135,6 +135,18 @@ public class DataTest {
         return 500 + (Objects.equals(System.getenv("GITHUB_ACTIONS"), "true") ? 1000 : 0);
     }
 
+    public int getWaitForUpdateHandlersTime() {
+        return 100 + (Objects.equals(System.getenv("GITHUB_ACTIONS"), "true") ? 500 : 0);
+    }
+
+    public void waitForUpdateHandlers() {
+        try {
+            Thread.sleep(getWaitForUpdateHandlersTime());
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public void waitForDataPropagation() {
         try {
             Thread.sleep(getWaitForDataPropagationTime());

@@ -61,7 +61,7 @@ public class H2DataAccessor implements DataAccessor {
                 SQLTable sqlTable = sqlSchema.getTable(notification.getTable());
                 Preconditions.checkNotNull(sqlTable, "Table %s.%s not found".formatted(notification.getSchema(), notification.getTable()));
                 switch (notification.getOperation()) {
-                    case UPDATE -> { //todo: when we update an id column, we have to update references to uniquedata objects, and the map. do this logic in the H2Trigger.
+                    case UPDATE -> {
                         List<Object> values = new ArrayList<>();
                         StringBuilder sb = new StringBuilder("UPDATE \"").append(notification.getSchema()).append("\".\"").append(notification.getTable()).append("\" SET ");
                         Pair<String, String>[] changedValues = new Pair[notification.getData().newDataValueMap().size()];
@@ -375,6 +375,9 @@ public class H2DataAccessor implements DataAccessor {
         }
         logger.debug("[H2] {}", sql);
         cachePreparedStatement.executeUpdate();
+        if (!getConnection().getAutoCommit()) {
+            getConnection().commit();
+        }
 
         taskQueue.submitTask(connection -> {
             PreparedStatement realPreparedStatement = connection.prepareStatement(sql);
