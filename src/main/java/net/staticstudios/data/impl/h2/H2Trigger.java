@@ -34,7 +34,7 @@ public class H2Trigger implements Trigger {
 
     @Override
     public void fire(Connection connection, Object[] oldRow, Object[] newRow) throws SQLException {
-        //todo: when were loading our initial data, we should ignore all triggers.
+        //todo: when were syncing data, we should ignore all triggers. we should globally pause basically everything.
         int dataLength = oldRow != null ? oldRow.length : (newRow != null ? newRow.length : 0);
         if (columnNames.size() != dataLength) {
             List<String> columns = new ArrayList<>(dataLength);
@@ -83,8 +83,11 @@ public class H2Trigger implements Trigger {
         for (String changedColumn : changedColumns) {
             dataManager.callUpdateHandlers(columnNames, schema, table, changedColumn, oldRow, newRow);
         }
+
+        //todo: handle id columns being changed
     }
 
     private void handleDelete(Object[] oldRow) {
+        dataManager.delete(columnNames, schema, table, oldRow);
     }
 }

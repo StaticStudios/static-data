@@ -1,6 +1,5 @@
 package net.staticstudios.data;
 
-import net.staticstudios.data.impl.h2.H2DataAccessor;
 import net.staticstudios.data.misc.DataTest;
 import net.staticstudios.data.misc.MockEnvironment;
 import net.staticstudios.data.mock.MockUser;
@@ -9,9 +8,7 @@ import net.staticstudios.data.mock.MockUserSettings;
 import net.staticstudios.data.util.ColumnValuePair;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -19,8 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class PersistentValueTest extends DataTest {
 
@@ -40,17 +36,7 @@ public class PersistentValueTest extends DataTest {
                     .insert(InsertMode.SYNC);
         }
 
-
-        Connection h2Connection;
-        try {
-            Method getConnectionMethod = H2DataAccessor.class.getDeclaredMethod("getConnection");
-            getConnectionMethod.setAccessible(true);
-            h2Connection = (Connection) getConnectionMethod.invoke(dataManager.getDataAccessor());
-        } catch (NoSuchMethodException | InvocationTargetException | IllegalAccessException e) {
-            throw new RuntimeException(e);
-        }
-
-        try (Statement statement = h2Connection.createStatement()) {
+        try (Statement statement = getH2Connection(dataManager).createStatement()) {
             ResultSet rs = statement.executeQuery("SCRIPT");
             while (rs.next()) {
                 System.out.println(rs.getString(1));
@@ -158,5 +144,95 @@ public class PersistentValueTest extends DataTest {
         assertEquals(2, mockUser.getNameUpdates());
         mockUser.name.set("new name");
         assertEquals(3, mockUser.getNameUpdates());
+    }
+
+    @Test
+    public void testReceiveUpdateFromPostgres() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        UUID id = UUID.randomUUID();
+        MockUser mockUser = MockUserFactory.builder(dataManager)
+                .id(id)
+                .name("test user")
+                .favoriteColor("orange")
+                .nameUpdates(0)
+                .insert(InsertMode.SYNC);
+
+        assertEquals("test user", mockUser.name.get());
+        assertEquals(0, mockUser.getNameUpdates());
+
+        try (PreparedStatement preparedStatement = getConnection().prepareStatement("UPDATE users SET name = ? WHERE id = ?")) {
+            preparedStatement.setString(1, "updated from pg");
+            preparedStatement.setObject(2, id);
+            preparedStatement.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        waitForDataPropagation();
+
+        assertEquals("updated from pg", mockUser.name.get());
+        assertEquals(1, mockUser.getNameUpdates());
+    }
+
+    @Test
+    public void testReceiveInsertFromPostgres() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        UUID id = UUID.randomUUID();
+
+        try (PreparedStatement preferencesStatement = getConnection().prepareStatement("INSERT INTO user_preferences (user_id, fav_color) VALUES (?, ?)");
+             PreparedStatement metadataStatement = getConnection().prepareStatement("INSERT INTO user_metadata (user_id, name_updates) VALUES (?, ?)");
+             PreparedStatement userStatement = getConnection().prepareStatement("INSERT INTO users (id, name) VALUES (?, ?)")) {
+            preferencesStatement.setObject(1, id);
+            preferencesStatement.setObject(2, 0);
+            preferencesStatement.executeUpdate();
+            metadataStatement.setObject(1, id);
+            metadataStatement.setInt(2, 0);
+            metadataStatement.executeUpdate();
+            userStatement.setObject(1, id);
+            userStatement.setString(2, "inserted from pg");
+            userStatement.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        waitForDataPropagation();
+
+        MockUser mockUser = dataManager.get(MockUser.class, ColumnValuePair.of("id", id)); //todo: i want a type safe version of this. query builder?
+
+        assertEquals("inserted from pg", mockUser.name.get());
+        assertEquals(0, mockUser.getNameUpdates());
+    }
+
+    @Test
+    public void testReceiveDeleteFromPostgres() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        UUID id = UUID.randomUUID();
+        MockUser mockUser = MockUserFactory.builder(dataManager)
+                .id(id)
+                .name("test user")
+                .favoriteColor("orange")
+                .nameUpdates(0)
+                .insert(InsertMode.SYNC);
+
+        assertEquals("test user", mockUser.name.get());
+        assertEquals(0, mockUser.getNameUpdates());
+        assertFalse(mockUser.isDeleted());
+
+        try (PreparedStatement preparedStatement = getConnection().prepareStatement("DELETE FROM users WHERE id = ?")) {
+            preparedStatement.setObject(1, id);
+            preparedStatement.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        waitForDataPropagation();
+
+        assertTrue(mockUser.isDeleted());
+
+        mockUser = dataManager.get(MockUser.class, ColumnValuePair.of("id", id));
+        assertNull(mockUser);
     }
 }

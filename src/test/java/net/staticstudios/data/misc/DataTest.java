@@ -2,6 +2,7 @@ package net.staticstudios.data.misc;
 
 import com.redis.testcontainers.RedisContainer;
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.impl.h2.H2DataAccessor;
 import net.staticstudios.data.util.DataSourceConfig;
 import net.staticstudios.utils.ThreadUtils;
 import org.junit.jupiter.api.AfterAll;
@@ -13,6 +14,8 @@ import org.testcontainers.utility.DockerImageName;
 import redis.clients.jedis.Jedis;
 
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.sql.*;
 import java.util.LinkedList;
 import java.util.List;
@@ -140,4 +143,15 @@ public class DataTest {
         }
     }
 
+    public Connection getH2Connection(DataManager dataManager) {
+        Connection h2Connection;
+        try {
+            Method getConnectionMethod = H2DataAccessor.class.getDeclaredMethod("getConnection");
+            getConnectionMethod.setAccessible(true);
+            h2Connection = (Connection) getConnectionMethod.invoke(dataManager.getDataAccessor());
+        } catch (NoSuchMethodException | InvocationTargetException | IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+        return h2Connection;
+    }
 }

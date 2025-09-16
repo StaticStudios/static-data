@@ -1,14 +1,21 @@
 package net.staticstudios.data.impl.h2;
 
+import com.google.common.base.Preconditions;
 import com.impossibl.postgres.api.jdbc.PGConnection;
 import net.staticstudios.data.DataAccessor;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.InsertMode;
 import net.staticstudios.data.impl.pg.PostgresListener;
 import net.staticstudios.data.parse.DDLStatement;
+import net.staticstudios.data.parse.SQLColumn;
+import net.staticstudios.data.parse.SQLSchema;
+import net.staticstudios.data.parse.SQLTable;
+import net.staticstudios.data.primative.Primitives;
+import net.staticstudios.data.util.ColumnMetadata;
 import net.staticstudios.data.util.SQlStatement;
 import net.staticstudios.data.util.SchemaTable;
 import net.staticstudios.data.util.TaskQueue;
+import net.staticstudios.utils.Pair;
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
 import org.intellij.lang.annotations.Language;
@@ -48,13 +55,127 @@ public class H2DataAccessor implements DataAccessor {
         this.dataManager = dataManager;
 
         postgresListener.addHandler(notification -> {
-            switch (notification.getOperation()) { //todo: update our cache
-                case UPDATE -> {
+            try {
+                SQLSchema sqlSchema = dataManager.getSQLBuilder().getSchema(notification.getSchema());
+                Preconditions.checkNotNull(sqlSchema, "Schema %s not found".formatted(notification.getSchema()));
+                SQLTable sqlTable = sqlSchema.getTable(notification.getTable());
+                Preconditions.checkNotNull(sqlTable, "Table %s.%s not found".formatted(notification.getSchema(), notification.getTable()));
+                switch (notification.getOperation()) {
+                    case UPDATE -> { //todo: when we update an id column, we have to update references to uniquedata objects, and the map. do this logic in the H2Trigger.
+                        List<Object> values = new ArrayList<>();
+                        StringBuilder sb = new StringBuilder("UPDATE \"").append(notification.getSchema()).append("\".\"").append(notification.getTable()).append("\" SET ");
+                        Pair<String, String>[] changedValues = new Pair[notification.getData().newDataValueMap().size()];
+
+                        int index = 0;
+                        for (Map.Entry<String, String> entry : notification.getData().newDataValueMap().entrySet()) {
+                            String column = entry.getKey();
+                            String newValue = entry.getValue();
+                            String oldValue = notification.getData().oldDataValueMap().get(column);
+                            if (!Objects.equals(newValue, oldValue)) {
+                                changedValues[index++] = Pair.of(column, newValue);
+                            }
+                        }
+
+                        for (Pair<String, String> changed : changedValues) {
+                            if (changed == null) break;
+                            String column = changed.first();
+                            String encoded = changed.second();
+                            SQLColumn sqlColumn = sqlTable.getColumn(column);
+                            Preconditions.checkNotNull(sqlColumn, "Column %s.%s.%s not found".formatted(notification.getSchema(), notification.getTable(), column));
+                            Object decoded = encoded == null ? null : Primitives.decodePrimitive(sqlColumn.getType(), encoded);
+                            values.add(decoded);
+                            sb.append("\"").append(column).append("\" = ?, ");
+                        }
+                        sb.setLength(sb.length() - 2);
+                        sb.append(" WHERE ");
+                        for (ColumnMetadata idColumnMetadata : sqlTable.getIdColumns()) {
+                            String idColumn = idColumnMetadata.name();
+                            sb.append("\"").append(idColumn).append("\" = ? AND ");
+                            SQLColumn sqlColumn = sqlTable.getColumn(idColumn);
+                            Preconditions.checkNotNull(sqlColumn, "Column %s.%s.%s not found".formatted(notification.getSchema(), notification.getTable(), idColumn));
+                            String encoded = notification.getData().oldDataValueMap().get(idColumn);
+                            Preconditions.checkNotNull(encoded, "ID Column %s.%s.%s not found in notification".formatted(notification.getSchema(), notification.getTable(), idColumn));
+                            Object decoded = Primitives.decodePrimitive(sqlColumn.getType(), encoded);
+                            values.add(decoded);
+                        }
+                        sb.setLength(sb.length() - 5);
+                        String sql = sb.toString();
+
+                        Connection connection = getConnection();
+                        try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+                            for (int i = 0; i < values.size(); i++) {
+                                preparedStatement.setObject(i + 1, values.get(i));
+                            }
+                            logger.debug("[H2] [HANDLE POSTGRES UPDATE] {}", sql);
+                            preparedStatement.executeUpdate();
+                            if (!connection.getAutoCommit()) {
+                                connection.commit();
+                            }
+                        }
+                    }
+                    case INSERT -> {
+                        List<Object> values = new ArrayList<>();
+                        StringBuilder sb = new StringBuilder("INSERT INTO \"").append(notification.getSchema()).append("\".\"").append(notification.getTable()).append("\" (");
+
+                        for (Map.Entry<String, String> entry : notification.getData().newDataValueMap().entrySet()) {
+                            String column = entry.getKey();
+                            String encoded = entry.getValue();
+                            SQLColumn sqlColumn = sqlTable.getColumn(column);
+                            Preconditions.checkNotNull(sqlColumn, "Column %s.%s.%s not found".formatted(notification.getSchema(), notification.getTable(), column));
+                            Object decoded = encoded == null ? null : Primitives.decodePrimitive(sqlColumn.getType(), encoded);
+                            values.add(decoded);
+                            sb.append("\"").append(column).append("\", ");
+                        }
+                        sb.setLength(sb.length() - 2);
+                        sb.append(") VALUES (");
+                        sb.append("?, ".repeat(values.size()));
+                        sb.setLength(sb.length() - 2);
+                        sb.append(")");
+                        String sql = sb.toString();
+
+                        Connection connection = getConnection();
+                        try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+                            for (int i = 0; i < values.size(); i++) {
+                                preparedStatement.setObject(i + 1, values.get(i));
+                            }
+                            logger.debug("[H2] [HANDLE POSTGRES INSERT] {}", sql);
+                            preparedStatement.executeUpdate();
+                            if (!connection.getAutoCommit()) {
+                                connection.commit();
+                            }
+                        }
+                    }
+                    case DELETE -> {
+                        List<Object> values = new ArrayList<>();
+                        StringBuilder sb = new StringBuilder("DELETE FROM \"").append(notification.getSchema()).append("\".\"").append(notification.getTable()).append("\" WHERE ");
+                        for (ColumnMetadata idColumnMetadata : sqlTable.getIdColumns()) {
+                            String idColumn = idColumnMetadata.name();
+                            sb.append("\"").append(idColumn).append("\" = ? AND ");
+                            SQLColumn sqlColumn = sqlTable.getColumn(idColumn);
+                            Preconditions.checkNotNull(sqlColumn, "Column %s.%s.%s not found".formatted(notification.getSchema(), notification.getTable(), idColumn));
+                            String encoded = notification.getData().oldDataValueMap().get(idColumn);
+                            Preconditions.checkNotNull(encoded, "ID Column %s.%s.%s not found in notification".formatted(notification.getSchema(), notification.getTable(), idColumn));
+                            Object decoded = Primitives.decodePrimitive(sqlColumn.getType(), encoded);
+                            values.add(decoded);
+                        }
+                        sb.setLength(sb.length() - 5);
+                        String sql = sb.toString();
+
+                        Connection connection = getConnection();
+                        try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+                            for (int i = 0; i < values.size(); i++) {
+                                preparedStatement.setObject(i + 1, values.get(i));
+                            }
+                            logger.debug("[H2] [HANDLE POSTGRES DELETE] {}", sql);
+                            preparedStatement.executeUpdate();
+                            if (!connection.getAutoCommit()) {
+                                connection.commit();
+                            }
+                        }
+                    }
                 }
-                case INSERT -> {
-                }
-                case DELETE -> {
-                }
+            } catch (Exception e) {
+                logger.error("Error handling notification from postgres", e);
             }
         });
 

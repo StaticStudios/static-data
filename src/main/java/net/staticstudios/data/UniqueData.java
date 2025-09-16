@@ -1,5 +1,6 @@
 package net.staticstudios.data;
 
+import net.staticstudios.data.util.ColumnValuePair;
 import net.staticstudios.data.util.ColumnValuePairs;
 import net.staticstudios.data.util.UniqueDataMetadata;
 import org.jetbrains.annotations.ApiStatus;
@@ -7,8 +8,9 @@ import org.jetbrains.annotations.ApiStatus;
 public abstract class UniqueData {
     private ColumnValuePairs idColumns;
     private DataManager dataManager;
+    private volatile boolean isDeleted = false;
 
-    //todo: when an update is done to an id name, we need to handle it here.
+    //todo: when an update is done to an id column, we need to handle it here.
     //todo: when this row is deleted from the database, we should mark this with a deleted flag and throw an error if any operations are attempted on it. more specifically, any pvs referencing this object should throw an error if this has been deleted.
     @ApiStatus.Internal
     protected final void setDataManager(DataManager dataManager) {
@@ -18,6 +20,14 @@ public abstract class UniqueData {
     @ApiStatus.Internal
     protected final synchronized void setIdColumns(ColumnValuePairs idColumns) {
         this.idColumns = idColumns;
+    }
+
+    protected final synchronized void markDeleted() {
+        this.isDeleted = true;
+    }
+
+    public final synchronized boolean isDeleted() {
+        return isDeleted;
     }
 
     public DataManager getDataManager() {
@@ -32,5 +42,30 @@ public abstract class UniqueData {
         return dataManager.getMetadata(this.getClass());
     }
 
-    //todo: toString, equals, hashcode - all based on the id columns and class type
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append(this.getClass().getSimpleName()).append("{");
+        for (ColumnValuePair idColumn : idColumns) {
+            sb.append(idColumn.column()).append("=").append(idColumn.value()).append(", ");
+        }
+        if (!idColumns.isEmpty()) {
+            sb.setLength(sb.length() - 2);
+        }
+        sb.append("}");
+        return sb.toString();
+    }
+
+    @Override
+    public final int hashCode() {
+        return idColumns.hashCode();
+    }
+
+    @Override
+    public final boolean equals(Object obj) {
+        if (this == obj) return true;
+        if (!(obj instanceof UniqueData other)) return false;
+        if (!this.getClass().equals(other.getClass())) return false;
+        return this.dataManager.equals(other.dataManager) && this.idColumns.equals(other.idColumns);
+    }
 }

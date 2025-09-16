@@ -219,6 +219,34 @@ public class DataManager {
         return metadata;
     }
 
+    @ApiStatus.Internal
+    public void delete(List<String> columnNames, String schema, String table, Object[] values) {
+        uniqueDataMetadataMap.values().forEach(uniqueDataMetadata -> {
+            if (!uniqueDataMetadata.schema().equals(schema) || !uniqueDataMetadata.table().equals(table)) {
+                return;
+            }
+
+            ColumnValuePair[] idColumns = new ColumnValuePair[uniqueDataMetadata.idColumns().size()];
+            for (ColumnMetadata idColumn : uniqueDataMetadata.idColumns()) {
+                boolean found = false;
+                for (int i = 0; i < columnNames.size(); i++) {
+                    if (idColumn.name().equals(columnNames.get(i))) {
+                        idColumns[uniqueDataMetadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), values[i]);
+                        found = true;
+                        break;
+                    }
+                }
+                Preconditions.checkArgument(found, "Not all ID columns were provided for UniqueData class %s. Required: %s, Provided: %s", uniqueDataMetadata.clazz().getName(), uniqueDataMetadata.idColumns(), Arrays.toString(values));
+            }
+
+            UniqueData instance = uniqueDataInstanceCache.getOrDefault(uniqueDataMetadata.clazz(), Collections.emptyMap()).get(new ColumnValuePairs(idColumns));
+            if (instance == null) {
+                return;
+            }
+            instance.markDeleted();
+        });
+    }
+
     @SuppressWarnings("unchecked")
     public <T extends UniqueData> T get(Class<T> clazz, ColumnValuePair... idColumnValues) {
         ColumnValuePairs idColumns = new ColumnValuePairs(idColumnValues);
@@ -245,12 +273,15 @@ public class DataManager {
 
         Preconditions.checkArgument(hasAllIdColumns, "Not all @IdColumn columns were provided for UniqueData class %s. Required: %s, Provided: %s", clazz.getName(), metadata.idColumns(), idColumns);
 
+        T instance;
         if (uniqueDataInstanceCache.containsKey(clazz) && uniqueDataInstanceCache.get(clazz).containsKey(idColumns)) {
             logger.trace("Cache hit for UniqueData class {} with ID columns {}", clazz.getName(), idColumns);
-            return (T) uniqueDataInstanceCache.get(clazz).get(idColumns);
+            instance = (T) uniqueDataInstanceCache.get(clazz).get(idColumns);
+            if (instance.isDeleted()) {
+                return null;
+            }
         }
 
-        T instance;
         try {
             Constructor<T> constructor = clazz.getDeclaredConstructor();
             constructor.setAccessible(true);

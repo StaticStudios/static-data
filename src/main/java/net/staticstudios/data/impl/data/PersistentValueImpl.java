@@ -17,8 +17,7 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
     private final String schema;
     private final String table;
     private final String column;
-    //    private final Deque<ValueUpdateHandler<T>> updateHandlers = new ConcurrentLinkedDeque<>();
-    private Map<String, String> idColumnLinks;
+    private final Map<String, String> idColumnLinks;
 
     private PersistentValueImpl(DataAccessor dataAccessor, UniqueData holder, Class<T> dataType, String schema, String table, String column, Map<String, String> idColumnLinks) {
         this.dataAccessor = dataAccessor;
@@ -142,6 +141,7 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
 
     @Override
     public T get() {
+        Preconditions.checkArgument(!holder.isDeleted(), "Cannot get value from a deleted UniqueData instance");
         StringBuilder sqlBuilder = new StringBuilder().append("SELECT \"").append(column).append("\" FROM \"").append(schema).append("\".\"").append(table).append("\" WHERE ");
         for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
             String name = idColumnLinks.getOrDefault(columnValuePair.column(), columnValuePair.column());
@@ -166,6 +166,7 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
 
     @Override
     public void set(T value) {
+        Preconditions.checkArgument(!holder.isDeleted(), "Cannot set value on a deleted UniqueData instance");
         //todo: whenever we set an id name of something, we need to tell the datamanager to update any tracked instance of uniquedata with that id.
         T oldValue = get();
         StringBuilder sqlBuilder;

@@ -83,6 +83,7 @@ public class PostgresListener {
                         logger.warn("Connection closed, re-establishing connection");
                         try {
                             setPgConnection(dataManager, ds);
+                            //todo: after we reconnect (not on the initial connection) we should re-sync everything.
                         } catch (SQLException e) {
                             logger.error("Error re-establishing connection", e);
                         }

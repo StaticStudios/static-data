@@ -25,6 +25,10 @@ public final class ColumnValuePairs implements Iterable<ColumnValuePair> {
         return Arrays.stream(pairs);
     }
 
+    public boolean isEmpty() {
+        return pairs.length == 0;
+    }
+
     @Override
     public java.util.@NotNull Iterator<ColumnValuePair> iterator() {
         return new java.util.Iterator<>() {

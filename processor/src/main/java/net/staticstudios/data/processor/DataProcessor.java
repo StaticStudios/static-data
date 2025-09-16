@@ -41,6 +41,7 @@ public class DataProcessor extends AbstractProcessor {
 
     private void generateFactory(TypeElement entityType) throws IOException {
         if (entityType.getModifiers().contains(Modifier.ABSTRACT)) {
+            //todo: if abstract, we can ignore the factory, but we still need to generate a queryBuilder or something
             return;
         }
 
