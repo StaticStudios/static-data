@@ -111,7 +111,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
             }
         }
 
-        return holder.getDataManager().get(type, idColumns);
+        return holder.getDataManager().getInstance(type, idColumns);
     }
 
     @Override

@@ -97,6 +97,6 @@ public class InsertContext { //todo: insert strategy, on a per pv level.
         for (int i = 0; i < metadata.idColumns().size(); i++) {
             idColumnValues[i] = new ColumnValuePair(metadata.idColumns().get(i).name(), entries.get(new SimpleColumnMetadata(metadata.idColumns().get(i))));
         }
-        return dataManager.get(holderClass, idColumnValues);
+        return dataManager.getInstance(holderClass, idColumnValues);
     }
 }

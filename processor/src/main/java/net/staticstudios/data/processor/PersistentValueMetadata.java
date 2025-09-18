@@ -8,14 +8,17 @@ public class PersistentValueMetadata implements Metadata {
     private final String column;
     private final String fieldName;
     private final TypeName genericType;
+    private final boolean nullable;
+
 
     public PersistentValueMetadata(String schema, String table, String column, String fieldName,
-                                   TypeName genericType) {
+                                   TypeName genericType, boolean nullable) {
         this.schema = schema;
         this.table = table;
         this.column = column;
         this.fieldName = fieldName;
         this.genericType = genericType;
+        this.nullable = nullable;
     }
 
     public String schema() {
@@ -32,6 +35,10 @@ public class PersistentValueMetadata implements Metadata {
 
     public String fieldName() {
         return fieldName;
+    }
+
+    public boolean nullable() {
+        return nullable;
     }
 
     public TypeName genericType() {

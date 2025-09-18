@@ -3,11 +3,8 @@ package net.staticstudios.data.impl.data;
 import com.google.common.base.Preconditions;
 import net.staticstudios.data.*;
 import net.staticstudios.data.util.*;
-import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.Nullable;
 
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -122,13 +119,6 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
         return dataType;
     }
 
-//    @Override
-//    public PersistentValue<T> onUpdate(ValueUpdateHandler<T> updateHandler) {
-//        updateHandlers.add(updateHandler);
-//        return this;
-//    }
-
-
     @Override
     public <U extends UniqueData> PersistentValue<T> onUpdate(Class<U> holderClass, ValueUpdateHandler<U, T> updateHandler) {
         throw new UnsupportedOperationException("Dynamically adding update handlers is not supported");
@@ -142,26 +132,7 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
     @Override
     public T get() {
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot get value from a deleted UniqueData instance");
-        StringBuilder sqlBuilder = new StringBuilder().append("SELECT \"").append(column).append("\" FROM \"").append(schema).append("\".\"").append(table).append("\" WHERE ");
-        for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
-            String name = idColumnLinks.getOrDefault(columnValuePair.column(), columnValuePair.column());
-            sqlBuilder.append("\"").append(name).append("\" = ? AND ");
-        }
-        sqlBuilder.setLength(sqlBuilder.length() - 5);
-        @Language("SQL") String sql = sqlBuilder.toString();
-        try (ResultSet rs = dataAccessor.executeQuery(sql, holder.getIdColumns().stream().map(ColumnValuePair::value).toList())) {
-            Object serializedValue = null;
-            if (rs.next()) {
-                serializedValue = rs.getObject(column);
-            }
-            if (serializedValue != null) {
-                T deserialized = (T) serializedValue; //todo: this
-                return deserialized;
-            }
-            return null;
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
+        return holder.getDataManager().get(schema, table, column, holder.getIdColumns(), idColumnLinks, dataType);
     }
 
     @Override

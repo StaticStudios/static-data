@@ -63,6 +63,7 @@ public class MetadataUtils {
         String schemaName = null;
         String tableName = null;
         String columnName = null;
+        boolean nullable = false;
 
         IdColumn idColumn = field.getAnnotation(IdColumn.class);
         Column column = field.getAnnotation(Column.class);
@@ -76,10 +77,12 @@ public class MetadataUtils {
             tableName = dataAnnotation.table();
             schemaName = dataAnnotation.schema();
             columnName = column.name();
+            nullable = column.nullable();
         } else if (foreignColumn != null) {
             tableName = foreignColumn.table().isEmpty() ? dataAnnotation.table() : foreignColumn.table();
             schemaName = foreignColumn.schema().isEmpty() ? dataAnnotation.schema() : foreignColumn.schema();
             columnName = foreignColumn.name();
+            nullable = foreignColumn.nullable();
         }
 
         if (idColumn != null || column != null) {
@@ -88,7 +91,8 @@ public class MetadataUtils {
                     tableName,
                     columnName,
                     field.getSimpleName().toString(),
-                    typeName
+                    typeName,
+                    nullable
             );
         }
         if (foreignColumn != null) {
@@ -106,6 +110,7 @@ public class MetadataUtils {
                     columnName,
                     field.getSimpleName().toString(),
                     typeName,
+                    nullable,
                     links
             );
         }

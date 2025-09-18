@@ -27,7 +27,12 @@ public class DataProcessor extends AbstractProcessor {
             if (!(annotated instanceof TypeElement type)) continue;
 
             try {
-                generateFactory(type);
+                Data dataAnnotation = type.getAnnotation(Data.class);
+                assert dataAnnotation != null;
+                List<Metadata> metadataList = MetadataUtils.extractMetadata(type);
+
+                generateFactory(type, dataAnnotation, metadataList);
+                new QueryFactory(processingEnv, type, dataAnnotation, metadataList).generateQueryBuilder();
             } catch (IOException e) {
                 processingEnv.getMessager().printMessage(
                         Diagnostic.Kind.ERROR,
@@ -39,9 +44,8 @@ public class DataProcessor extends AbstractProcessor {
         return true;
     }
 
-    private void generateFactory(TypeElement entityType) throws IOException {
+    private void generateFactory(TypeElement entityType, Data dataAnnotation, List<Metadata> metadataList) throws IOException {
         if (entityType.getModifiers().contains(Modifier.ABSTRACT)) {
-            //todo: if abstract, we can ignore the factory, but we still need to generate a queryBuilder or something
             return;
         }
 
@@ -55,10 +59,8 @@ public class DataProcessor extends AbstractProcessor {
         ClassName insertMode = ClassName.get("net.staticstudios.data", "InsertMode");
         ClassName insertContext = ClassName.get("net.staticstudios.data.insert", "InsertContext");
 
-        Data dataAnnotation = entityType.getAnnotation(Data.class);
-        assert dataAnnotation != null;
-        List<Metadata> metadataList = MetadataUtils.extractMetadata(entityType);
 
+        TypeSpec.Builder factoryBuilder = TypeSpec.classBuilder(factoryName);
         TypeSpec.Builder builderType = TypeSpec.classBuilder("Builder")
                 .addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
                 .addField(dataManager, "dataManager", Modifier.PRIVATE, Modifier.FINAL)
@@ -77,23 +79,8 @@ public class DataProcessor extends AbstractProcessor {
 
         for (Metadata metadata : metadataList) {
             if (metadata instanceof PersistentValueMetadata persistentValueMetadata) {
-                String schemaFieldName = persistentValueMetadata.fieldName() + "$schema";
-                String tableFieldName = persistentValueMetadata.fieldName() + "$table";
-                String columnFieldName = persistentValueMetadata.fieldName() + "$column";
-
-
+                SchemaTableColumnStatics statics = SchemaTableColumnStatics.generateSchemaTableColumnStatics(builderType, persistentValueMetadata);
                 builderType.addField(persistentValueMetadata.genericType(), persistentValueMetadata.fieldName(), Modifier.PRIVATE);
-
-                // since we support env variables in the name, parse these at runtime.
-                builderType.addField(FieldSpec.builder(String.class, schemaFieldName, Modifier.PRIVATE, Modifier.FINAL, Modifier.STATIC)
-                        .initializer("$T.parseValue($S)", ClassName.get("net.staticstudios.data.util", "ValueUtils"), persistentValueMetadata.schema())
-                        .build());
-                builderType.addField(FieldSpec.builder(String.class, tableFieldName, Modifier.PRIVATE, Modifier.FINAL, Modifier.STATIC)
-                        .initializer("$T.parseValue($S)", ClassName.get("net.staticstudios.data.util", "ValueUtils"), persistentValueMetadata.table())
-                        .build());
-                builderType.addField(FieldSpec.builder(String.class, columnFieldName, Modifier.PRIVATE, Modifier.FINAL, Modifier.STATIC)
-                        .initializer("$T.parseValue($S)", ClassName.get("net.staticstudios.data.util", "ValueUtils"), persistentValueMetadata.column())
-                        .build());
 
                 builderType.addMethod(MethodSpec.methodBuilder(persistentValueMetadata.fieldName())
                         .addModifiers(Modifier.PUBLIC)
@@ -108,9 +95,9 @@ public class DataProcessor extends AbstractProcessor {
                 }
 
                 insertCtxMethod.addStatement("ctx.set($N, $N, $N, this.$N)",
-                        schemaFieldName,
-                        tableFieldName,
-                        columnFieldName,
+                        statics.schemaFieldName(),
+                        statics.tableFieldName(),
+                        statics.columnFieldName(),
                         persistentValueMetadata.fieldName());
 
                 if (persistentValueMetadata instanceof ForeignPersistentValueMetadata foreignPersistentValueMetadata) {
@@ -126,7 +113,7 @@ public class DataProcessor extends AbstractProcessor {
                                 .findFirst()
                                 .orElseThrow(() -> new IllegalStateException("Could not find local column metadata for link: " + localColumn));
 
-                        String columnLinkFieldName = columnFieldName + "$" + localColumnMetadata.fieldName() + "$" + i;
+                        String columnLinkFieldName = statics.columnFieldName() + "$" + localColumnMetadata.fieldName() + "$" + i;
 
                         builderType.addField(FieldSpec.builder(String.class, columnLinkFieldName, Modifier.PRIVATE, Modifier.FINAL, Modifier.STATIC)
                                 .initializer("$T.parseValue($S)", ClassName.get("net.staticstudios.data.util", "ValueUtils"), foreignColumn)
@@ -134,8 +121,8 @@ public class DataProcessor extends AbstractProcessor {
 
 
                         insertCtxMethod.addStatement("ctx.set($N, $N, $N, this.$N)",
-                                schemaFieldName,
-                                tableFieldName,
+                                statics.schemaFieldName(),
+                                statics.tableFieldName(),
                                 columnLinkFieldName,
                                 localColumnMetadata.fieldName());
                         i++;
@@ -157,7 +144,7 @@ public class DataProcessor extends AbstractProcessor {
         builderType.addMethod(insertModeMethod.build());
         builderType.addMethod(insertCtxMethod.build());
 
-        TypeSpec factory = TypeSpec.classBuilder(factoryName)
+        TypeSpec factory = factoryBuilder
                 .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
                 .addMethod(MethodSpec.constructorBuilder()
                         .addModifiers(Modifier.PRIVATE)

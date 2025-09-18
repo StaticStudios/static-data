@@ -123,7 +123,7 @@ public class DataManager {
                     throw new IllegalArgumentException("Not all ID columns were provided for UniqueData class " + holderClass.getName() + ". Required: " + metadata.idColumns() + ", Provided: " + columnNames);
                 }
             }
-            UniqueData instance = get(holderClass, idColumns);
+            UniqueData instance = getInstance(holderClass, idColumns);
             for (ValueUpdateHandlerWrapper<?, ?> wrapper : handlers) {
                 Class<?> dataType = wrapper.getDataType();
                 Object deserializedOldValue = oldSerializedValues[columnIndex]; //todo: these
@@ -293,11 +293,43 @@ public class DataManager {
             instance.setIdColumns(newIdCols);
             classCache.put(newIdCols, instance);
         });
+    }
 
+    public <T extends UniqueData> List<T> query(Class<T> clazz, String where, List<Object> values) {
+        UniqueDataMetadata metadata = getMetadata(clazz);
+        Preconditions.checkNotNull(metadata, "UniqueData class %s has not been parsed yet", clazz.getName());
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("SELECT ");
+        for (ColumnMetadata idColumn : metadata.idColumns()) {
+            sb.append("\"").append(idColumn.name()).append("\", ");
+        }
+        sb.setLength(sb.length() - 2);
+        sb.append(" FROM \"").append(metadata.schema()).append("\".\"").append(metadata.table()).append("\" ");
+        sb.append(where);
+        @Language("SQL") String sql = sb.toString();
+        List<T> results = new ArrayList<>();
+        try (ResultSet rs = dataAccessor.executeQuery(sql, values)) {
+            while (rs.next()) {
+                ColumnValuePair[] idColumns = new ColumnValuePair[metadata.idColumns().size()];
+                for (int i = 0; i < metadata.idColumns().size(); i++) {
+                    ColumnMetadata idColumn = metadata.idColumns().get(i);
+                    Object value = rs.getObject(idColumn.name());
+                    idColumns[i] = new ColumnValuePair(idColumn.name(), value);
+                }
+                T instance = getInstance(clazz, idColumns);
+                if (instance != null) {
+                    results.add(instance);
+                }
+            }
+            return results;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @SuppressWarnings("unchecked")
-    public <T extends UniqueData> T get(Class<T> clazz, ColumnValuePair... idColumnValues) {
+    public <T extends UniqueData> T getInstance(Class<T> clazz, ColumnValuePair... idColumnValues) {
         ColumnValuePairs idColumns = new ColumnValuePairs(idColumnValues);
         UniqueDataMetadata metadata = getMetadata(clazz);
         Preconditions.checkNotNull(metadata, "UniqueData class %s has not been parsed yet", clazz.getName());
@@ -501,6 +533,31 @@ public class DataManager {
         try {
             insertContext.markInserted();
             dataAccessor.insert(sqlStatements, insertMode);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public <T> T get(String schema, String table, String column, ColumnValuePairs idColumns, Map<String, String> idColumnLinks, Class<T> dataType) {
+        //todo: caffeine cache for these as well.
+        StringBuilder sqlBuilder = new StringBuilder().append("SELECT \"").append(column).append("\" FROM \"").append(schema).append("\".\"").append(table).append("\" WHERE ");
+        for (ColumnValuePair columnValuePair : idColumns) {
+            String name = idColumnLinks.getOrDefault(columnValuePair.column(), columnValuePair.column());
+            sqlBuilder.append("\"").append(name).append("\" = ? AND ");
+        }
+        sqlBuilder.setLength(sqlBuilder.length() - 5);
+        @Language("SQL") String sql = sqlBuilder.toString();
+        try (ResultSet rs = dataAccessor.executeQuery(sql, idColumns.stream().map(ColumnValuePair::value).toList())) {
+            Object serializedValue = null;
+            if (rs.next()) {
+                serializedValue = rs.getObject(column);
+            }
+            if (serializedValue != null) {
+                //todo: do some type validation here, either on the serialized or un serialized type. this method will be exposed so we need to be careful
+                T deserialized = (T) serializedValue; //todo: this
+                return deserialized;
+            }
+            return null;
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }

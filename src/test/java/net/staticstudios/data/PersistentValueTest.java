@@ -4,14 +4,14 @@ import net.staticstudios.data.misc.DataTest;
 import net.staticstudios.data.misc.MockEnvironment;
 import net.staticstudios.data.mock.MockUser;
 import net.staticstudios.data.mock.MockUserFactory;
+import net.staticstudios.data.mock.MockUserQuery;
 import net.staticstudios.data.mock.MockUserSettings;
+import net.staticstudios.data.query.Order;
 import net.staticstudios.data.util.ColumnValuePair;
 import org.junit.jupiter.api.Test;
 
 import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -36,15 +36,8 @@ public class PersistentValueTest extends DataTest {
                     .insert(InsertMode.SYNC);
         }
 
-        try (Statement statement = getH2Connection(dataManager).createStatement()) {
-            ResultSet rs = statement.executeQuery("SCRIPT");
-            while (rs.next()) {
-                System.out.println(rs.getString(1));
-            }
-        }
-
         for (UUID id : userIds) {
-            MockUser user = dataManager.get(MockUser.class, ColumnValuePair.of("id", id));
+            MockUser user = dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id));
             assertEquals("user " + id, user.name.get());
             assertNull(user.age.get());
         }
@@ -55,7 +48,7 @@ public class PersistentValueTest extends DataTest {
         DataManager dataManager2 = environment2.dataManager();
         dataManager2.load(MockUser.class);
         for (UUID id : userIds) {
-            MockUser user = dataManager2.get(MockUser.class, ColumnValuePair.of("id", id));
+            MockUser user = dataManager2.getInstance(MockUser.class, ColumnValuePair.of("id", id));
             assertEquals("user " + id, user.name.get());
             assertNull(user.age.get());
         }
@@ -79,10 +72,10 @@ public class PersistentValueTest extends DataTest {
         mockUser.age.set(25);
         assertEquals(25, mockUser.age.get());
 
-        mockUser = dataManager.get(MockUser.class, ColumnValuePair.of("id", id));
+        mockUser = dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id));
         mockUser = null; // remove strong reference
         System.gc();
-        mockUser = dataManager.get(MockUser.class, ColumnValuePair.of("id", id)); // should have a cache miss
+        mockUser = dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id)); // should have a cache miss
 
         assertNull(mockUser.favoriteColor.get());
         mockUser.favoriteColor.set("blue");
@@ -131,7 +124,7 @@ public class PersistentValueTest extends DataTest {
         assertEquals(1, dataManager.getUpdateHandlers("public", "users", "name", MockUser.class).size());
         mockUser = null; // remove strong reference
         System.gc();
-        mockUser = dataManager.get(MockUser.class, ColumnValuePair.of("id", id)); // should have a cache miss
+        mockUser = dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id)); // should have a cache miss
         //the handler for this pv should not have been registered again
         assertEquals(1, dataManager.getUpdateHandlers("public", "users", "name", MockUser.class).size());
         waitForUpdateHandlers();
@@ -204,7 +197,7 @@ public class PersistentValueTest extends DataTest {
 
         waitForDataPropagation();
 
-        MockUser mockUser = dataManager.get(MockUser.class, ColumnValuePair.of("id", id)); //todo: i want a type safe version of this. query builder?
+        MockUser mockUser = dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id)); //todo: i want a type safe version of this. query builder?
 
         assertEquals("inserted from pg", mockUser.name.get());
         assertEquals(0, mockUser.getNameUpdates());
@@ -237,7 +230,7 @@ public class PersistentValueTest extends DataTest {
 
         assertTrue(mockUser.isDeleted());
 
-        mockUser = dataManager.get(MockUser.class, ColumnValuePair.of("id", id));
+        mockUser = dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id));
         assertNull(mockUser);
     }
 
@@ -261,9 +254,9 @@ public class PersistentValueTest extends DataTest {
         UUID newId = UUID.randomUUID();
         mockUser.id.set(newId);
         assertEquals(newId, mockUser.id.get());
-        assertNull(dataManager.get(MockUser.class, ColumnValuePair.of("id", id)));
-        assertNotNull(dataManager.get(MockUser.class, ColumnValuePair.of("id", newId)));
-        assertSame(dataManager.get(MockUser.class, ColumnValuePair.of("id", newId)), mockUser);
+        assertNull(dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id)));
+        assertNotNull(dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", newId)));
+        assertSame(dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", newId)), mockUser);
         assertEquals(1, mockUser.nameUpdates.get());
         mockUser.name.set("new name2");
         waitForUpdateHandlers();
@@ -302,13 +295,101 @@ public class PersistentValueTest extends DataTest {
         waitForDataPropagation();
 
         assertEquals(newId, mockUser.id.get());
-        assertNull(dataManager.get(MockUser.class, ColumnValuePair.of("id", id)));
-        assertNotNull(dataManager.get(MockUser.class, ColumnValuePair.of("id", newId)));
-        assertSame(dataManager.get(MockUser.class, ColumnValuePair.of("id", newId)), mockUser);
+        assertNull(dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id)));
+        assertNotNull(dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", newId)));
+        assertSame(dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", newId)), mockUser);
         waitForUpdateHandlers();
         assertEquals(1, mockUser.nameUpdates.get());
         mockUser.name.set("new name2");
         waitForUpdateHandlers();
         assertEquals(2, mockUser.nameUpdates.get());
+    }
+
+    @Test
+    public void testFindOneEquals() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        UUID id = UUID.randomUUID();
+        MockUser original = MockUserFactory.builder(dataManager)
+                .id(id)
+                .name("test user")
+                .insert(InsertMode.SYNC);
+
+        MockUser got = MockUserQuery.where(dataManager)
+                .idIs(id)
+                .findOne();
+        assertSame(original, got);
+    }
+
+    @Test
+    public void testFindAllLike() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+
+        MockUser original1 = MockUserFactory.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("test user")
+                .age(0)
+                .insert(InsertMode.SYNC);
+        MockUser original2 = MockUserFactory.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("test user2")
+                .age(5)
+                .insert(InsertMode.SYNC);
+
+        List<MockUser> got = MockUserQuery.where(dataManager)
+                .nameIsLike("%test user%")
+                .orderByAge(Order.ASCENDING)
+                .findAll();
+
+        assertEquals(2, got.size());
+        assertTrue(got.contains(original1));
+        assertTrue(got.contains(original2));
+
+        assertSame(original1, got.get(0));
+        assertSame(original2, got.get(1));
+
+        got = MockUserQuery.where(dataManager)
+                .nameIsLike("%test user%")
+                .orderByAge(Order.DESCENDING)
+                .findAll();
+
+        assertEquals(2, got.size());
+        assertTrue(got.contains(original1));
+        assertTrue(got.contains(original2));
+
+        assertSame(original2, got.get(0));
+        assertSame(original1, got.get(1));
+    }
+
+    @Test
+    public void testQuery() { //todo: test each clause and ensure it outputs the proper sql
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+
+//        String where = MockUserQuery.where(dataManager)
+//                .idIs(UUID.randomUUID())
+//                .or()
+//                .nameIs("user name")
+//                .or(q -> q.ageIsLessThan(10)
+//                        .and()
+//                        .ageIsLessThanOrEqualTo(5)
+//                )
+//                .or()
+//                .nameIsIn("name1", "name2", "name3")
+//                .or()
+//                .nameIsIn(List.of("name4", "name5", "name6"))
+//                .limit(10)
+//                .offset(2)
+//                .and()
+//                .ageIsBetween(0, 3)
+//                .and()
+//                .ageIsNotNull()
+//                .and()
+//                .nameIsLike("%something%")
+//                .and()
+//                .nameIsNotLike("%nothing%")
+//                .orderByAge(Order.ASCENDING)
+//                .toString();
+//        System.out.println(where);
     }
 }
