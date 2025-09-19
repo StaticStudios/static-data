@@ -197,7 +197,7 @@ public class PersistentValueTest extends DataTest {
 
         waitForDataPropagation();
 
-        MockUser mockUser = dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id)); //todo: i want a type safe version of this. query builder?
+        MockUser mockUser = dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id));
 
         assertEquals("inserted from pg", mockUser.name.get());
         assertEquals(0, mockUser.getNameUpdates());
@@ -363,12 +363,49 @@ public class PersistentValueTest extends DataTest {
     }
 
     @Test
+    public void testQueryOnForeignColumn() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+
+        MockUser likesRed = MockUserFactory.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("Likes Red")
+                .favoriteColor("red")
+                .insert(InsertMode.SYNC);
+        MockUser likesGreen = MockUserFactory.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("Likes Green")
+                .favoriteColor("green")
+                .insert(InsertMode.SYNC);
+
+        assertNull(MockUserQuery.where(dataManager)
+                .favoriteColorIs("blue")
+                .findOne());
+
+        assertSame(likesRed, MockUserQuery.where(dataManager)
+                .favoriteColorIs("red")
+                .findOne());
+
+        assertSame(likesGreen, MockUserQuery.where(dataManager)
+                .favoriteColorIs("green")
+                .findOne());
+
+        List<MockUser> users = MockUserQuery.where(dataManager)
+                .favoriteColorIsIn("red", "green")
+                .orderByName(Order.ASCENDING)
+                .findAll();
+        assertEquals(2, users.size());
+        assertSame(likesGreen, users.get(0));
+        assertSame(likesRed, users.get(1));
+    }
+
+    @Test
     public void testQuery() { //todo: test each clause and ensure it outputs the proper sql
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
 
-//        String where = MockUserQuery.where(dataManager)
-//                .idIs(UUID.randomUUID())
-//                .or()
+        String where = MockUserQuery.where(dataManager)
+                .idIs(UUID.randomUUID())
+                .or()
 //                .nameIs("user name")
 //                .or(q -> q.ageIsLessThan(10)
 //                        .and()
@@ -389,7 +426,9 @@ public class PersistentValueTest extends DataTest {
 //                .and()
 //                .nameIsNotLike("%nothing%")
 //                .orderByAge(Order.ASCENDING)
-//                .toString();
-//        System.out.println(where);
+//                .and()
+                .nameUpdatesIs(4)
+                .toString();
+        System.out.println(where);
     }
 }

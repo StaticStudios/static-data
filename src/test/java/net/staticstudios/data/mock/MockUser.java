@@ -20,7 +20,8 @@ public class MockUser extends UniqueData {
     public PersistentValue<Integer> age;
     @ForeignColumn(name = "fav_color", table = "user_preferences", nullable = true, link = "id=user_id")
     public PersistentValue<String> favoriteColor;
-    @OneToOne(link = "settings_id=user_id") //todo: this should generate an fkey
+    @OneToOne(link = "settings_id=user_id")
+    //todo: this should generate an fkey (add an option to control what happens on update/delete)
     public Reference<MockUserSettings> settings;
     @ForeignColumn(name = "name_updates", table = "user_metadata", link = "id=user_id", defaultValue = "0")
     public PersistentValue<Integer> nameUpdates;

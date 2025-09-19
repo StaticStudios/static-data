@@ -6,7 +6,7 @@ import com.palantir.javapoet.TypeSpec;
 
 import javax.lang.model.element.Modifier;
 
-record SchemaTableColumnStatics(String schemaFieldName, String tableFieldName, String columnFieldName) {
+public record SchemaTableColumnStatics(String schemaFieldName, String tableFieldName, String columnFieldName) {
     public static SchemaTableColumnStatics generateSchemaTableColumnStatics(TypeSpec.Builder builderType, PersistentValueMetadata persistentValueMetadata) {
         String schemaFieldName = persistentValueMetadata.fieldName() + "$schema";
         String tableFieldName = persistentValueMetadata.fieldName() + "$table";

@@ -1,6 +1,9 @@
 package net.staticstudios.data.processor;
 
+import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.FieldSpec;
 import com.palantir.javapoet.TypeName;
+import com.palantir.javapoet.TypeSpec;
 import net.staticstudios.data.Column;
 import net.staticstudios.data.Data;
 import net.staticstudios.data.ForeignColumn;
@@ -115,6 +118,32 @@ public class MetadataUtils {
             );
         }
         throw new IllegalStateException("Field " + field.getSimpleName() + " is not annotated with @IdColumn, @Column, or @ForeignColumn");
+    }
+
+    public static List<ForeignLink> makeFPVStatics(TypeSpec.Builder builder, ForeignPersistentValueMetadata foreignPersistentValueMetadata, List<Metadata> metadataList, Data dataAnnotation, SchemaTableColumnStatics statics) {
+        List<ForeignLink> staticNames = new ArrayList<>();
+        int i = 0;
+        for (Map.Entry<String, String> link : foreignPersistentValueMetadata.links().entrySet()) {
+            String localColumn = link.getKey();
+            String foreignColumn = link.getValue();
+
+            PersistentValueMetadata localColumnMetadata = metadataList.stream()
+                    .filter(m -> m instanceof PersistentValueMetadata)
+                    .map(m -> (PersistentValueMetadata) m)
+                    .filter(m -> m.column().equals(localColumn) && m.table().equals(dataAnnotation.table()) && m.schema().equals(dataAnnotation.schema()))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException("Could not find local column metadata for link: " + localColumn));
+
+            String columnLinkFieldName = statics.columnFieldName() + "$" + localColumnMetadata.fieldName() + "$" + i;
+
+            builder.addField(FieldSpec.builder(String.class, columnLinkFieldName, Modifier.PRIVATE, Modifier.FINAL, Modifier.STATIC)
+                    .initializer("$T.parseValue($S)", ClassName.get("net.staticstudios.data.util", "ValueUtils"), foreignColumn)
+                    .build());
+
+            staticNames.add(new ForeignLink(columnLinkFieldName, localColumnMetadata));
+            i++;
+        }
+        return staticNames;
     }
 
 }

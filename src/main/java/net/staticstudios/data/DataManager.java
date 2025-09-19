@@ -34,10 +34,9 @@ public class DataManager {
     private final SQLBuilder sqlBuilder;
     private final TaskQueue taskQueue;
     private final ConcurrentHashMap<Class<? extends UniqueData>, UniqueDataMetadata> uniqueDataMetadataMap = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<Class<? extends UniqueData>, Map<ColumnValuePairs, UniqueData>> uniqueDataInstanceCache = new ConcurrentHashMap<>(); //todo: weak reference map
+    private final ConcurrentHashMap<Class<? extends UniqueData>, Map<ColumnValuePairs, UniqueData>> uniqueDataInstanceCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Map<Class<? extends UniqueData>, List<ValueUpdateHandlerWrapper<?, ?>>>> updateHandlers = new ConcurrentHashMap<>();
     private final PostgresListener postgresListener;
-    //todo: use the class as a key since we will need to pass the instance as a param on each update
     private final Set<PersistentValueMetadata> registeredUpdateHandlersForColumns = Collections.synchronizedSet(new HashSet<>());
 
     public DataManager(DataSourceConfig dataSourceConfig) {

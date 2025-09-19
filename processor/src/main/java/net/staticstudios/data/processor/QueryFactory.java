@@ -8,7 +8,10 @@ import javax.lang.model.element.Modifier;
 import javax.lang.model.element.PackageElement;
 import javax.lang.model.element.TypeElement;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class QueryFactory {
     private static final ClassName DATA_MANAGER_CLASS_NAME = ClassName.get("net.staticstudios.data", "DataManager");
@@ -23,6 +26,8 @@ public class QueryFactory {
     private final ClassName entityClass;
     private final ClassName builderClassName;
     private final ClassName conditionalBuilderClassName;
+    private final Map<ForeignPersistentValueMetadata, List<ForeignLink>> foreignPersistentValueLinkFieldNames = new HashMap<>();
+    private final Map<PersistentValueMetadata, SchemaTableColumnStatics> persistentValueStatics = new HashMap<>();
 
     public QueryFactory(ProcessingEnvironment processingEnv, TypeElement entityType, Data dataAnnotation, List<Metadata> metadataList) {
         this.processingEnv = processingEnv;
@@ -40,6 +45,20 @@ public class QueryFactory {
 
     public void generateQueryBuilder() throws IOException {
         TypeSpec.Builder queryBuilder = TypeSpec.classBuilder(queryName);
+
+        foreignPersistentValueLinkFieldNames.clear();
+        for (Metadata metadata : metadataList) {
+            if (!(metadata instanceof PersistentValueMetadata persistentValueMetadata)) {
+                continue;
+            }
+            SchemaTableColumnStatics statics = SchemaTableColumnStatics.generateSchemaTableColumnStatics(queryBuilder, persistentValueMetadata);
+            persistentValueStatics.put(persistentValueMetadata, statics);
+            if (metadata instanceof ForeignPersistentValueMetadata foreignPersistentValueMetadata) {
+                foreignPersistentValueLinkFieldNames.put(foreignPersistentValueMetadata, MetadataUtils.makeFPVStatics(queryBuilder, foreignPersistentValueMetadata, metadataList, dataAnnotation, statics));
+            }
+        }
+
+
         TypeSpec.Builder conditionalBuilderType = TypeSpec.classBuilder("ConditionalBuilder")
                 .superclass(ParameterizedTypeName.get(ClassName.get("net.staticstudios.data.query", "AbstractConditionalBuilder"), builderClassName, conditionalBuilderClassName, entityClass))
                 .addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
@@ -68,10 +87,6 @@ public class QueryFactory {
 
         for (Metadata metadata : metadataList) {
             if (metadata instanceof PersistentValueMetadata persistentValueMetadata) {
-                if (metadata instanceof ForeignPersistentValueMetadata) {
-                    continue; //todo: for now we dont support these queries. we will need to tho and integrate joins
-                }
-                SchemaTableColumnStatics.generateSchemaTableColumnStatics(queryBuilder, persistentValueMetadata);
                 makeEqualsClause(builderType, persistentValueMetadata);
                 makeNotEqualsClause(builderType, persistentValueMetadata);
                 makeInClause(builderType, persistentValueMetadata);
@@ -215,18 +230,53 @@ public class QueryFactory {
     }
 
     private void makeClause(TypeSpec.Builder builderType, PersistentValueMetadata persistentValueMetadata, TypeName clauseTypeName, String suffix, boolean varargs, TypeName parameterType) {
-        builderType.addMethod(MethodSpec.methodBuilder(persistentValueMetadata.fieldName() + suffix)
+        MethodSpec.Builder builder = MethodSpec.methodBuilder(persistentValueMetadata.fieldName() + suffix)
                 .addModifiers(Modifier.PUBLIC)
                 .returns(conditionalBuilderClassName)
-                .addParameter(varargs ? ArrayTypeName.of(parameterType) : parameterType, persistentValueMetadata.fieldName())
-                .varargs(varargs)
+                .addParameter(varargs ? ArrayTypeName.of(parameterType) : parameterType, persistentValueMetadata.fieldName());
+
+        if (persistentValueMetadata instanceof ForeignPersistentValueMetadata foreignPersistentValueMetadata) {
+            AtomicReference<SchemaTableColumnStatics> localStatics = new AtomicReference<>();
+            String[] columns = foreignPersistentValueMetadata.links().keySet().stream()
+                    .map(column -> metadataList.stream()
+                            .filter(m -> m instanceof PersistentValueMetadata)
+                            .map(m -> (PersistentValueMetadata) m)
+                            .filter(m -> m.column().equals(column) && m.table().equals(dataAnnotation.table()) && m.schema().equals(dataAnnotation.schema()))
+                            .findFirst()
+                            .orElseThrow(() -> new IllegalStateException("Could not find local column metadata for link: " + column)))
+                    .peek(m -> {
+                        if (localStatics.get() == null) {
+                            localStatics.set(persistentValueStatics.get(m));
+                        }
+                    })
+                    .map(m -> persistentValueStatics.get(m).columnFieldName())
+                    .toArray(String[]::new);
+            String[] foreignColumns = foreignPersistentValueLinkFieldNames.get(foreignPersistentValueMetadata).stream()
+                    .map(ForeignLink::foreignColumnFieldName)
+                    .toArray(String[]::new);
+
+            SchemaTableColumnStatics foreignStatics = persistentValueStatics.get(persistentValueMetadata);
+
+            builder.addStatement("super.innerJoin($N, $N, $L, $N, $N, $L)",
+                    localStatics.get().schemaFieldName(),
+                    localStatics.get().tableFieldName(),
+                    CodeBlock.of("new String[]{ $L }", String.join(", ", columns)),
+                    foreignStatics.schemaFieldName(),
+                    foreignStatics.tableFieldName(),
+                    CodeBlock.of("new String[]{ $L }", String.join(", ", foreignColumns))
+            );
+        }
+
+        builder.varargs(varargs)
                 .addStatement("return set(new $T($N, $N, $N, $N))",
                         clauseTypeName,
                         persistentValueMetadata.fieldName() + "$schema",
                         persistentValueMetadata.fieldName() + "$table",
                         persistentValueMetadata.fieldName() + "$column",
-                        persistentValueMetadata.fieldName())
-                .build());
+                        persistentValueMetadata.fieldName());
+
+
+        builderType.addMethod(builder.build());
     }
 
     private void makeNonValuedClause(TypeSpec.Builder builderType, PersistentValueMetadata persistentValueMetadata, TypeName clauseTypeName, String suffix) {

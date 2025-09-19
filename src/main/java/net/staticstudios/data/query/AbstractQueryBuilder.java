@@ -10,7 +10,9 @@ import net.staticstudios.data.query.clause.ValueClause;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public abstract class AbstractQueryBuilder<Q extends AbstractQueryBuilder<Q, C, T>,
         C extends AbstractConditionalBuilder<Q, C, T>,
@@ -27,6 +29,7 @@ public abstract class AbstractQueryBuilder<Q extends AbstractQueryBuilder<Q, C, 
     private String orderByTable;
     private String orderByColumn;
     private Order order = Order.ASCENDING;
+    private Set<InnerJoin> innerJoins = new HashSet<>();
 
     protected AbstractQueryBuilder(DataManager dataManager, Class<T> type) {
         this.dataManager = dataManager;
@@ -46,7 +49,19 @@ public abstract class AbstractQueryBuilder<Q extends AbstractQueryBuilder<Q, C, 
     private ComputedClause compute(int limit, int offset) {
         Preconditions.checkState(!temp, "Cannot call compute on a temporary query builder");
         Preconditions.checkNotNull(clause, "No clause defined");
-        StringBuilder sb = new StringBuilder("WHERE ");
+        StringBuilder sb = new StringBuilder();
+        for (InnerJoin join : innerJoins) {
+            sb.append("INNER JOIN \"").append(join.foreignSchema()).append("\".\"").append(join.foreignTable()).append("\" ON ");
+            for (int i = 0; i < join.columns().length; i++) {
+                sb.append("\"").append(join.schema()).append("\".\"").append(join.table()).append("\".\"").append(join.columns()[i]).append("\" = \"")
+                        .append(join.foreignSchema()).append("\".\"").append(join.foreignTable()).append("\".\"").append(join.foreignColumns()[i]).append("\"");
+                if (i < join.columns().length - 1) {
+                    sb.append(" AND ");
+                }
+            }
+            sb.append(" ");
+        }
+        sb.append("WHERE ");
         List<Object> parameters = clause.append(sb);
         if (limit > 0) {
             sb.append(" LIMIT ").append(limit);
@@ -104,6 +119,9 @@ public abstract class AbstractQueryBuilder<Q extends AbstractQueryBuilder<Q, C, 
         return self();
     }
 
+    protected void innerJoin(String schema, String table, String[] columns, String foreignSchema, String foreignTable, String[] foreignColumns) {
+        innerJoins.add(new InnerJoin(schema, table, columns, foreignSchema, foreignTable, foreignColumns));
+    }
 
     protected C set(Clause clause) {
         switch (state) {

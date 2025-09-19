@@ -15,7 +15,6 @@ import javax.lang.model.element.TypeElement;
 import javax.tools.Diagnostic;
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 @SupportedAnnotationTypes("net.staticstudios.data.Data")
@@ -100,36 +99,17 @@ public class DataProcessor extends AbstractProcessor {
                         statics.columnFieldName(),
                         persistentValueMetadata.fieldName());
 
+
                 if (persistentValueMetadata instanceof ForeignPersistentValueMetadata foreignPersistentValueMetadata) {
-                    int i = 0;
-                    for (Map.Entry<String, String> link : foreignPersistentValueMetadata.links().entrySet()) {
-                        String localColumn = link.getKey();
-                        String foreignColumn = link.getValue();
-
-                        PersistentValueMetadata localColumnMetadata = metadataList.stream()
-                                .filter(m -> m instanceof PersistentValueMetadata)
-                                .map(m -> (PersistentValueMetadata) m)
-                                .filter(m -> m.column().equals(localColumn) && m.table().equals(dataAnnotation.table()) && m.schema().equals(dataAnnotation.schema()))
-                                .findFirst()
-                                .orElseThrow(() -> new IllegalStateException("Could not find local column metadata for link: " + localColumn));
-
-                        String columnLinkFieldName = statics.columnFieldName() + "$" + localColumnMetadata.fieldName() + "$" + i;
-
-                        builderType.addField(FieldSpec.builder(String.class, columnLinkFieldName, Modifier.PRIVATE, Modifier.FINAL, Modifier.STATIC)
-                                .initializer("$T.parseValue($S)", ClassName.get("net.staticstudios.data.util", "ValueUtils"), foreignColumn)
-                                .build());
-
-
+                    for (ForeignLink link : MetadataUtils.makeFPVStatics(builderType, foreignPersistentValueMetadata, metadataList, dataAnnotation, statics)) {
                         insertCtxMethod.addStatement("ctx.set($N, $N, $N, this.$N)",
                                 statics.schemaFieldName(),
                                 statics.tableFieldName(),
-                                columnLinkFieldName,
-                                localColumnMetadata.fieldName());
-                        i++;
+                                link.foreignColumnFieldName(),
+                                link.localColumnMetadata().fieldName());
                     }
                     insertCtxMethod.endControlFlow();
                 }
-
             }
         }
 
