@@ -235,6 +235,57 @@ public class QueryFactory {
                 .returns(conditionalBuilderClassName)
                 .addParameter(varargs ? ArrayTypeName.of(parameterType) : parameterType, persistentValueMetadata.fieldName());
 
+        handleForeignPersistentValue(builder, persistentValueMetadata);
+
+        builder.varargs(varargs)
+                .addStatement("return set(new $T($N, $N, $N, $N))",
+                        clauseTypeName,
+                        persistentValueMetadata.fieldName() + "$schema",
+                        persistentValueMetadata.fieldName() + "$table",
+                        persistentValueMetadata.fieldName() + "$column",
+                        persistentValueMetadata.fieldName());
+
+
+        builderType.addMethod(builder.build());
+    }
+
+    private void makeNonValuedClause(TypeSpec.Builder builderType, PersistentValueMetadata persistentValueMetadata, TypeName clauseTypeName, String suffix) {
+        MethodSpec.Builder builder = MethodSpec.methodBuilder(persistentValueMetadata.fieldName() + suffix)
+                .addModifiers(Modifier.PUBLIC)
+                .returns(conditionalBuilderClassName);
+
+        handleForeignPersistentValue(builder, persistentValueMetadata);
+
+        builder.addStatement("return set(new $T($N, $N, $N))",
+                clauseTypeName,
+                persistentValueMetadata.fieldName() + "$schema",
+                persistentValueMetadata.fieldName() + "$table",
+                persistentValueMetadata.fieldName() + "$column"
+        );
+
+        builderType.addMethod(builder.build());
+    }
+
+    private void makeOrderByClause(TypeSpec.Builder builderType, PersistentValueMetadata persistentValueMetadata, ClassName returnType) {
+        String methodName = "orderBy" + persistentValueMetadata.fieldName().substring(0, 1).toUpperCase() + persistentValueMetadata.fieldName().substring(1);
+        MethodSpec.Builder builder = MethodSpec.methodBuilder(methodName)
+                .addModifiers(Modifier.PUBLIC)
+                .returns(returnType)
+                .addParameter(ClassName.get("net.staticstudios.data.query", "Order"), "order");
+
+        handleForeignPersistentValue(builder, persistentValueMetadata);
+
+        builder.addStatement("orderBy($N, $N, $N, order)",
+                        persistentValueMetadata.fieldName() + "$schema",
+                        persistentValueMetadata.fieldName() + "$table",
+                        persistentValueMetadata.fieldName() + "$column"
+                )
+                .addStatement("return this");
+
+        builderType.addMethod(builder.build());
+    }
+
+    private void handleForeignPersistentValue(MethodSpec.Builder builder, PersistentValueMetadata persistentValueMetadata) {
         if (persistentValueMetadata instanceof ForeignPersistentValueMetadata foreignPersistentValueMetadata) {
             AtomicReference<SchemaTableColumnStatics> localStatics = new AtomicReference<>();
             String[] columns = foreignPersistentValueMetadata.links().keySet().stream()
@@ -266,44 +317,5 @@ public class QueryFactory {
                     CodeBlock.of("new String[]{ $L }", String.join(", ", foreignColumns))
             );
         }
-
-        builder.varargs(varargs)
-                .addStatement("return set(new $T($N, $N, $N, $N))",
-                        clauseTypeName,
-                        persistentValueMetadata.fieldName() + "$schema",
-                        persistentValueMetadata.fieldName() + "$table",
-                        persistentValueMetadata.fieldName() + "$column",
-                        persistentValueMetadata.fieldName());
-
-
-        builderType.addMethod(builder.build());
-    }
-
-    private void makeNonValuedClause(TypeSpec.Builder builderType, PersistentValueMetadata persistentValueMetadata, TypeName clauseTypeName, String suffix) {
-        builderType.addMethod(MethodSpec.methodBuilder(persistentValueMetadata.fieldName() + suffix)
-                .addModifiers(Modifier.PUBLIC)
-                .returns(conditionalBuilderClassName)
-                .addStatement("return set(new $T($N, $N, $N))",
-                        clauseTypeName,
-                        persistentValueMetadata.fieldName() + "$schema",
-                        persistentValueMetadata.fieldName() + "$table",
-                        persistentValueMetadata.fieldName() + "$column"
-                )
-                .build());
-    }
-
-    private void makeOrderByClause(TypeSpec.Builder builderType, PersistentValueMetadata persistentValueMetadata, ClassName returnType) {
-        String methodName = "orderBy" + persistentValueMetadata.fieldName().substring(0, 1).toUpperCase() + persistentValueMetadata.fieldName().substring(1);
-        builderType.addMethod(MethodSpec.methodBuilder(methodName)
-                .addModifiers(Modifier.PUBLIC)
-                .returns(returnType)
-                .addParameter(ClassName.get("net.staticstudios.data.query", "Order"), "order")
-                .addStatement("orderBy($N, $N, $N, order)",
-                        persistentValueMetadata.fieldName() + "$schema",
-                        persistentValueMetadata.fieldName() + "$table",
-                        persistentValueMetadata.fieldName() + "$column"
-                )
-                .addStatement("return this")
-                .build());
     }
 }

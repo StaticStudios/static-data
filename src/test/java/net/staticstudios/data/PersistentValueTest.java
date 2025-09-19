@@ -397,6 +397,14 @@ public class PersistentValueTest extends DataTest {
         assertEquals(2, users.size());
         assertSame(likesGreen, users.get(0));
         assertSame(likesRed, users.get(1));
+
+        users = MockUserQuery.where(dataManager)
+                .favoriteColorIsNotNull()
+                .orderByFavoriteColor(Order.DESCENDING)
+                .findAll();
+        assertEquals(2, users.size());
+        assertSame(likesRed, users.get(0));
+        assertSame(likesGreen, users.get(1));
     }
 
     @Test

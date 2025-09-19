@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 public abstract class AbstractConditionalBuilder<Q extends AbstractQueryBuilder<Q, C, T>, C extends AbstractConditionalBuilder<Q, C, T>, T extends UniqueData> implements QueryLike<T> {
-    private final AbstractQueryBuilder<Q, C, T> queryBuilder;
+    protected final AbstractQueryBuilder<Q, C, T> queryBuilder;
 
     public AbstractConditionalBuilder(AbstractQueryBuilder<Q, C, T> queryBuilder) {
         this.queryBuilder = queryBuilder;
@@ -91,6 +91,10 @@ public abstract class AbstractConditionalBuilder<Q extends AbstractQueryBuilder<
 
     protected void orderBy(String schema, String table, String column, Order order) {
         queryBuilder.orderBy(schema, table, column, order);
+    }
+
+    protected void innerJoin(String schema, String table, String[] columns, String foreignSchema, String foreignTable, String[] foreignColumns) {
+        queryBuilder.innerJoin(schema, table, columns, foreignSchema, foreignTable, foreignColumns);
     }
 
     @Override
