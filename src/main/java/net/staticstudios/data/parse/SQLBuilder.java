@@ -112,23 +112,25 @@ public class SQLBuilder {
         // define fkeys after table creation, to ensure all tables exist before adding fkeys
         for (SQLSchema schema : schemas) {
             for (SQLTable table : schema.getTables()) {
-                for (ForeignKey foreignKey : table.getForeignKeys()) {
+                for (ForeignKey foreignKey : table.getForeignKeysThatReferenceThisTable()) {
                     if (foreignKey == null) {
                         continue;
                     }
-                    String fKeyName = "fk_" + foreignKey.getSchema() + "_" + foreignKey.getTable() + "_" + String.join("_", foreignKey.getLinkingColumns().values()) + "_to_" + table.getName() + "_" + String.join("_", foreignKey.getLinkingColumns().keySet());
+                    String fKeyName = "fk_" + foreignKey.getSchema() + "_" + foreignKey.getTable() + "_"
+                            + String.join("_", foreignKey.getLinkingColumns().stream().map(ForeignKey.Link::columnInReferringTable).toList())
+                            + "_to_" + table.getName() + "_" + String.join("_", foreignKey.getLinkingColumns().stream().map(ForeignKey.Link::columnInReferencedTable).toList());
                     StringBuilder sb = new StringBuilder();
                     sb.append("ALTER TABLE \"").append(foreignKey.getSchema()).append("\".\"").append(foreignKey.getTable()).append("\" ");
                     sb.append("ADD CONSTRAINT IF NOT EXISTS ").append(fKeyName).append(" ");
                     sb.append("FOREIGN KEY (");
-                    for (String localCol : foreignKey.getLinkingColumns().values()) {
-                        sb.append("\"").append(localCol).append("\", ");
+                    for (ForeignKey.Link link : foreignKey.getLinkingColumns()) {
+                        sb.append("\"").append(link.columnInReferringTable()).append("\", ");
                     }
                     sb.setLength(sb.length() - 2);
                     sb.append(") ");
                     sb.append("REFERENCES \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" (");
-                    for (String foreignCol : foreignKey.getLinkingColumns().keySet()) {
-                        sb.append("\"").append(foreignCol).append("\", ");
+                    for (ForeignKey.Link link : foreignKey.getLinkingColumns()) {
+                        sb.append("\"").append(link.columnInReferencedTable()).append("\", ");
                     }
                     sb.setLength(sb.length() - 2);
                     sb.append(") ON DELETE CASCADE ON UPDATE CASCADE;"); //todo: on delete cascade or no action or set null? depends on type
@@ -142,14 +144,14 @@ public class SQLBuilder {
                     sb.append("ALTER TABLE \"").append(foreignKey.getSchema()).append("\".\"").append(foreignKey.getTable()).append("\" ");
                     sb.append("ADD CONSTRAINT ").append(fKeyName).append(" ");
                     sb.append("FOREIGN KEY (");
-                    for (String localCol : foreignKey.getLinkingColumns().values()) {
-                        sb.append("\"").append(localCol).append("\", ");
+                    for (ForeignKey.Link link : foreignKey.getLinkingColumns()) {
+                        sb.append("\"").append(link.columnInReferringTable()).append("\", ");
                     }
                     sb.setLength(sb.length() - 2);
                     sb.append(") ");
                     sb.append("REFERENCES \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" (");
-                    for (String foreignCol : foreignKey.getLinkingColumns().keySet()) {
-                        sb.append("\"").append(foreignCol).append("\", ");
+                    for (ForeignKey.Link link : foreignKey.getLinkingColumns()) {
+                        sb.append("\"").append(link.columnInReferencedTable()).append("\", ");
                     }
                     sb.setLength(sb.length() - 2);
                     sb.append(") ON DELETE CASCADE ON UPDATE CASCADE;"); //todo: on delete cascade or no action or set null? depends on type
@@ -306,19 +308,19 @@ public class SQLBuilder {
                     otherTable = tableName;
                 }
 
-                ForeignKey foreignKey = new ForeignKey(otherSchema, otherTable, foreignColumn.name());
+                ForeignKey foreignKey = new ForeignKey(otherSchema, otherTable);
                 for (String link : StringUtils.parseCommaSeperatedList(foreignColumn.link())) {
                     String[] parts = link.split("=");
                     Preconditions.checkArgument(parts.length == 2, "Invalid link format in ForeignColumn annotation on field %s in class %s. Expected format: localColumn=foreignColumn", field.getName(), clazz.getName());
 
                     String localColumn = ValueUtils.parseValue(parts[0].trim());
                     String otherColumn = ValueUtils.parseValue(parts[1].trim());
-                    foreignKey.addColumnMapping(localColumn, otherColumn);
+                    foreignKey.addColumnMapping(new ForeignKey.Link(localColumn, otherColumn));
                     String schemaTableColumn = schemaName + "." + tableName + "." + localColumn;
                     foreignKeys.computeIfAbsent(schemaTableColumn, k -> new ArrayList<>()).add(foreignKey);
                 }
 
-                dataSqlTable.getForeignKeys().add(foreignKey);
+                dataSqlTable.getForeignKeysThatReferenceThisTable().add(foreignKey);
             }
 
             Class<?> type = ReflectionUtils.getGenericType(field); //todo: handle custom types to sql types

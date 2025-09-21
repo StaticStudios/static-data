@@ -91,11 +91,9 @@ public class DataManager {
                 .add(handler);
     }
 
-    //todo: when a row is updated, provide the entire row to this method (so we can grab id cols). this is the responsibility of the data accessor impl
     @ApiStatus.Internal
     public void callUpdateHandlers(List<String> columnNames, String schema, String table, String column, Object[] oldSerializedValues, Object[] newSerializedValues) {
-        logger.trace("Calling update handlers for {}/{}/{} with old values {} and new values {}", schema, table, column, Arrays.toString(oldSerializedValues), Arrays.toString(newSerializedValues));
-        //todo: submit to somewhere for where to run these, configured during setup. default to thread utils
+        logger.trace("Calling update handlers for {}.{}.{} with old values {} and new values {}", schema, table, column, Arrays.toString(oldSerializedValues), Arrays.toString(newSerializedValues));
         Map<Class<? extends UniqueData>, List<ValueUpdateHandlerWrapper<?, ?>>> handlersForColumn = updateHandlers.get(schema + "." + table + "." + column);
         if (handlersForColumn == null) {
             return;
@@ -128,6 +126,7 @@ public class DataManager {
                 Object deserializedOldValue = oldSerializedValues[columnIndex]; //todo: these
                 Object deserializedNewValue = newSerializedValues[columnIndex];
 
+                //todo: submit to somewhere for where to run these, configured during setup. default to thread utils
                 ThreadUtils.submit(() -> wrapper.unsafeHandle(instance, deserializedOldValue, deserializedNewValue));
             }
         }
@@ -444,12 +443,12 @@ public class DataManager {
 
         // handle foreign keys. for each foreign key, if we have a value for the local column, we need to set the value for the foreign column. this consists of linking ids mostly.
         for (SQLTable table : tables) {
-            for (ForeignKey fKey : table.getForeignKeys()) {
+            for (ForeignKey fKey : table.getForeignKeysThatReferenceThisTable()) {
                 SQLSchema otherSchema = Objects.requireNonNull(sqlBuilder.getSchema(fKey.getSchema()));
                 SQLTable otherTable = Objects.requireNonNull(otherSchema.getTable(fKey.getTable()));
-                for (Map.Entry<String, String> link : fKey.getLinkingColumns().entrySet()) {
-                    String myColumnName = link.getKey();
-                    String otherColumnName = link.getValue();
+                for (ForeignKey.Link link : fKey.getLinkingColumns()) {
+                    String myColumnName = link.columnInReferencedTable();
+                    String otherColumnName = link.columnInReferringTable();
                     SQLColumn otherColumn = Objects.requireNonNull(otherTable.getColumn(otherColumnName));
                     insertContext.set(fKey.getSchema(), fKey.getTable(), otherColumn.getName(), insertContext.getEntries().get(new SimpleColumnMetadata(table.getSchema().getName(), table.getName(), myColumnName, otherColumn.getType())));
                 }
@@ -468,7 +467,7 @@ public class DataManager {
         Map<SQLTable, Set<SQLTable>> dependencyGraph = new HashMap<>();
         for (SQLTable table : tables) {
             Set<SQLTable> dependsOn = new HashSet<>();
-            for (ForeignKey fKey : table.getForeignKeys()) {
+            for (ForeignKey fKey : table.getForeignKeysThatReferenceThisTable()) {
                 SQLSchema otherSchema = Objects.requireNonNull(sqlBuilder.getSchema(fKey.getSchema()));
                 SQLTable otherTable = Objects.requireNonNull(otherSchema.getTable(fKey.getTable()));
                 dependsOn.add(otherTable);

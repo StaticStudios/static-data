@@ -1,27 +1,26 @@
 package net.staticstudios.data.parse;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Objects;
+import java.util.Set;
 
 public class ForeignKey {
-    // my column -> foreign schema.table.column
-    private final String column;
-    private final Map<String, String> linkingColumns = new HashMap<>();
+    private final Set<Link> links = new LinkedHashSet<>();
     private final String schema;
     private final String table;
 
-    public ForeignKey(String schema, String table, String column) {
+    public ForeignKey(String schema, String table) {
         this.schema = schema;
         this.table = table;
-        this.column = column;
     }
 
-    public void addColumnMapping(String myColumn, String foreignColumn) {
-        linkingColumns.put(myColumn, foreignColumn);
+    public void addColumnMapping(Link link) {
+        links.add(link);
     }
 
-    public Map<String, String> getLinkingColumns() {
-        return linkingColumns;
+    public Set<Link> getLinkingColumns() {
+        return Collections.unmodifiableSet(links);
     }
 
     public String getSchema() {
@@ -32,7 +31,18 @@ public class ForeignKey {
         return table;
     }
 
-    public String getColumn() {
-        return column;
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof ForeignKey that)) return false;
+        return Objects.equals(links, that.links) && Objects.equals(schema, that.schema) && Objects.equals(table, that.table);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(links, schema, table);
+    }
+
+    public record Link(String columnInReferencedTable, String columnInReferringTable) {
     }
 }
