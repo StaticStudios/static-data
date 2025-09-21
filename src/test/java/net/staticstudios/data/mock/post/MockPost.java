@@ -12,7 +12,7 @@ public class MockPost extends UniqueData {
     @OneToOne(link = "${POST_ID_COLUMN}=metadata_id")
     public Reference<MockPostMetadata> metadata;
 
-    @Column(name = "text_content")
+    @Column(name = "text_content", index = true)
     public PersistentValue<String> textContent;
     @Column(name = "likes", defaultValue = "0")
     public PersistentValue<Integer> likes;

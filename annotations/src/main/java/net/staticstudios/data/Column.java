@@ -11,7 +11,7 @@ public @interface Column {
 
     String table() default "";
 
-    boolean index() default false; //todo: this
+    boolean index() default false;
 
     boolean nullable() default false;
 

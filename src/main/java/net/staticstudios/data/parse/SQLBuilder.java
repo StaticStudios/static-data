@@ -3,6 +3,7 @@ package net.staticstudios.data.parse;
 import com.google.common.base.Preconditions;
 import net.staticstudios.data.*;
 import net.staticstudios.data.util.*;
+import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,13 +65,12 @@ public class SQLBuilder {
         return parsedSchemas.get(name);
     }
 
-    private List<DDLStatement> getDefs(Collection<SQLSchema> schemas) { //todo: add indexes
+    private List<DDLStatement> getDefs(Collection<SQLSchema> schemas) {
         List<DDLStatement> statements = new ArrayList<>();
         for (SQLSchema schema : schemas) {
             statements.add(DDLStatement.both("CREATE SCHEMA IF NOT EXISTS \"" + schema.getName() + "\";"));
             StringBuilder sb;
             for (SQLTable table : schema.getTables()) {
-//                if (metadata.table().equals(table.getName()) && metadata.schema().equals(schema.getName())) {
                 sb = new StringBuilder();
                 sb.append("CREATE TABLE IF NOT EXISTS \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" (\n");
                 for (ColumnMetadata idColumn : table.getIdColumns()) {
@@ -84,7 +84,6 @@ public class SQLBuilder {
                 sb.append(")\n");
                 sb.append(");");
                 statements.add(DDLStatement.both(sb.toString()));
-//                }
                 if (!table.getColumns().isEmpty()) {
                     for (SQLColumn column : table.getColumns()) {
                         sb = new StringBuilder();
@@ -96,17 +95,24 @@ public class SQLBuilder {
                             sb.append(" DEFAULT ").append(column.getDefaultValue());
                         }
 
-                        if (column.isIndexed()) {
-//                            sb.append(" INDEXED");
-                            //todo: this is not valid sql, need to create index separately
-                        }
-
                         if (column.isUnique()) {
                             sb.append(" UNIQUE");
                         }
 
                         sb.append(";");
                         statements.add(DDLStatement.both(sb.toString()));
+                    }
+                }
+            }
+        }
+
+        for (SQLSchema schema : schemas) {
+            for (SQLTable table : schema.getTables()) {
+                for (SQLColumn column : table.getColumns()) {
+                    if (column.isIndexed() && !column.isUnique()) {
+                        String indexName = "idx_" + schema.getName() + "_" + table.getName() + "_" + column.getName();
+                        @Language("SQL") String h2 = "CREATE INDEX IF NOT EXISTS " + indexName + " ON \"" + schema.getName() + "\".\"" + table.getName() + "\" (\"" + column.getName() + "\");";
+                        statements.add(DDLStatement.both(h2));
                     }
                 }
             }

@@ -92,6 +92,7 @@ public class SQLParseTest extends DataTest {
                     ADD CONSTRAINT posts_metadata_pkey PRIMARY KEY (metadata_id);
                 ALTER TABLE ONLY social_media.posts
                     ADD CONSTRAINT posts_pkey PRIMARY KEY (post_id);
+                CREATE INDEX idx_social_media_posts_text_content ON social_media.posts USING btree (text_content);
                 ALTER TABLE ONLY social_media.posts_interactions
                     ADD CONSTRAINT fk_social_media_posts_interactions_post_id_to_posts_post_id FOREIGN KEY (post_id) REFERENCES social_media.posts(post_id) ON UPDATE CASCADE ON DELETE CASCADE;
                 ALTER TABLE ONLY social_media.posts
@@ -99,6 +100,5 @@ public class SQLParseTest extends DataTest {
                 """;
 
         assertEquals(expected.trim(), cleanedDump.toString().trim());
-        //todo: test with a reference
     }
 }
