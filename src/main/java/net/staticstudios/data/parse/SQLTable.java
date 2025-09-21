@@ -38,7 +38,18 @@ public class SQLTable {
     }
 
     public Set<ForeignKey> getForeignKeysThatReferenceThisTable() {
-        return foreignKeysThatReferenceThisTable;
+        return Collections.unmodifiableSet(foreignKeysThatReferenceThisTable);
+    }
+
+    public void addForeignKeyThatReferencesThisTable(ForeignKey foreignKey) {
+        ForeignKey existingKey = foreignKeysThatReferenceThisTable.stream()
+                .filter(fk -> fk.getSchema().equals(foreignKey.getSchema()) && fk.getTable().equals(foreignKey.getTable()))
+                .findFirst()
+                .orElse(null);
+        if (existingKey != null && !Objects.equals(existingKey, foreignKey)) {
+            throw new IllegalArgumentException("Foreign key from " + foreignKey.getSchema() + "." + foreignKey.getTable() + " already exists and is different from the one being added! Existing: " + existingKey + ", New: " + foreignKey);
+        }
+        foreignKeysThatReferenceThisTable.add(foreignKey);
     }
 
     public List<ColumnMetadata> getIdColumns() {

@@ -17,15 +17,13 @@ import java.util.List;
 import java.util.Map;
 
 public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
-    private final UniqueDataMetadata referenceMetadata;
     private final UniqueData holder;
     private final Class<T> type;
     private final Map<String, String> link;
 
-    public ReferenceImpl(UniqueData holder, Class<T> type, UniqueDataMetadata referenceMetadata, Map<String, String> link) {
+    public ReferenceImpl(UniqueData holder, Class<T> type, Map<String, String> link) {
         this.holder = holder;
         this.type = type;
-        this.referenceMetadata = referenceMetadata;
         this.link = link;
     }
 
@@ -33,14 +31,13 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
         ReferenceImpl<T> delegate = new ReferenceImpl<>(
                 proxy.getHolder(),
                 proxy.getReferenceType(),
-                proxy.getHolder().getDataManager().getMetadata(proxy.getReferenceType()),
                 link
         );
         proxy.setDelegate(delegate);
     }
 
-    public static <T extends UniqueData> ReferenceImpl<T> create(UniqueData holder, Class<T> type, UniqueDataMetadata referenceMetadata, Map<String, String> link) {
-        return new ReferenceImpl<>(holder, type, referenceMetadata, link);
+    public static <T extends UniqueData> ReferenceImpl<T> create(UniqueData holder, Class<T> type, Map<String, String> link) {
+        return new ReferenceImpl<>(holder, type, link);
     }
 
     public static <T extends UniqueData> void delegate(T instance) {
@@ -49,7 +46,6 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
             Preconditions.checkNotNull(oneToOneAnnotation, "Field %s in class %s is missing @OneToOne annotation".formatted(pair.field().getName(), instance.getClass().getName()));
             Class<?> referencedClass = ReflectionUtils.getGenericType(pair.field());
             Preconditions.checkNotNull(referencedClass, "Field %s in class %s is not parameterized".formatted(pair.field().getName(), instance.getClass().getName()));
-            UniqueDataMetadata referenceMetadata = instance.getDataManager().getMetadata((Class<? extends UniqueData>) referencedClass);
             Map<String, String> link = new HashMap<>();
             for (String l : StringUtils.parseCommaSeperatedList(oneToOneAnnotation.link())) {
                 String[] split = l.split("=");
@@ -62,7 +58,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
             } else {
                 pair.field().setAccessible(true);
                 try {
-                    pair.field().set(instance, create(instance, (Class<? extends UniqueData>) referencedClass, referenceMetadata, link));
+                    pair.field().set(instance, create(instance, (Class<? extends UniqueData>) referencedClass, link));
                 } catch (IllegalAccessException e) {
                     throw new RuntimeException(e);
                 }
@@ -81,7 +77,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
     }
 
     @Override
-    public T get() {
+    public @Nullable T get() {
         ColumnValuePair[] idColumns = new ColumnValuePair[link.size()];
         int i = 0;
         UniqueDataMetadata holderMetadata = holder.getMetadata();
@@ -115,14 +111,18 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
     }
 
     @Override
-    public void set(T value) {
-        //todo: set local columns to the value's id columns
+    public void set(@Nullable T value) {
         UniqueDataMetadata holderMetadata = holder.getMetadata();
         List<Object> values = new ArrayList<>();
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("UPDATE \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\" SET ");
         for (Map.Entry<String, String> entry : link.entrySet()) {
             String myColumn = entry.getKey();
+            if (value == null) {
+                sqlBuilder.append("\"").append(myColumn).append("\" = NULL, ");
+                continue;
+            }
+            
             String theirColumn = entry.getValue();
             Object theirValue = null;
             for (ColumnValuePair columnValuePair : value.getIdColumns()) {
@@ -146,7 +146,6 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
         for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
             values.add(columnValuePair.value());
         }
-
 
         try {
             holder.getDataManager().getDataAccessor().executeUpdate(sqlBuilder.toString(), values);

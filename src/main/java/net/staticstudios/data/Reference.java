@@ -9,9 +9,9 @@ public interface Reference<T extends UniqueData> extends Relation<T> {
 
     Class<T> getReferenceType();
 
-    T get();
+    @Nullable T get();
 
-    void set(T value);
+    void set(@Nullable T value);
 
     class ProxyReference<T extends UniqueData> implements Reference<T> {
         private final UniqueData holder;

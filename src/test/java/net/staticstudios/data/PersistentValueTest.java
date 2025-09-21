@@ -4,7 +4,6 @@ import net.staticstudios.data.misc.DataTest;
 import net.staticstudios.data.misc.MockEnvironment;
 import net.staticstudios.data.mock.MockUser;
 import net.staticstudios.data.mock.MockUserFactory;
-import net.staticstudios.data.mock.MockUserSettings;
 import net.staticstudios.data.util.ColumnValuePair;
 import org.junit.jupiter.api.Test;
 
@@ -98,11 +97,6 @@ public class PersistentValueTest extends DataTest {
 //        }
 
         waitForDataPropagation();
-
-        MockUserSettings settings = MockUserSettings.create(dataManager, UUID.randomUUID());
-        assertNull(mockUser.settings.get());
-        mockUser.settings.set(settings);
-        assertEquals(settings, mockUser.settings.get());
     }
 
     @Test

@@ -450,6 +450,12 @@ public class DataManager {
                     String myColumnName = link.columnInReferencedTable();
                     String otherColumnName = link.columnInReferringTable();
                     SQLColumn otherColumn = Objects.requireNonNull(otherTable.getColumn(otherColumnName));
+
+                    // if its nullable and we don't have a value, skip it.
+                    if (otherColumn.isNullable()) {
+                        continue;
+                    }
+
                     insertContext.set(fKey.getSchema(), fKey.getTable(), otherColumn.getName(), insertContext.getEntries().get(new SimpleColumnMetadata(table.getSchema().getName(), table.getName(), myColumnName, otherColumn.getType())));
                 }
             }
@@ -464,21 +470,45 @@ public class DataManager {
         //sort tables based on foreign key dependencies. tables who are depended on should come last
 
         // Build dependency graph: table -> set of tables it depends on
-        Map<SQLTable, Set<SQLTable>> dependencyGraph = new HashMap<>();
+        Map<String, Set<SQLTable>> dependencyGraph = new HashMap<>();
         for (SQLTable table : tables) {
             Set<SQLTable> dependsOn = new HashSet<>();
             for (ForeignKey fKey : table.getForeignKeysThatReferenceThisTable()) {
                 SQLSchema otherSchema = Objects.requireNonNull(sqlBuilder.getSchema(fKey.getSchema()));
                 SQLTable otherTable = Objects.requireNonNull(otherSchema.getTable(fKey.getTable()));
-                dependsOn.add(otherTable);
+
+                boolean addDependency = true;
+                // if one of the linking columns is not present in the insert context, we can't add the dependency
+                for (ForeignKey.Link link : fKey.getLinkingColumns()) {
+                    Object value = insertContext.getEntries().entrySet().stream()
+                            .filter(entry -> {
+                                SimpleColumnMetadata key = entry.getKey();
+                                return key.schema().equals(fKey.getSchema()) &&
+                                        key.table().equals(fKey.getTable()) &&
+                                        key.name().equals(link.columnInReferringTable());
+                            })
+                            .findFirst()
+                            .orElse(null);
+
+                    if (value == null) {
+                        addDependency = false;
+                        break;
+                    }
+                }
+
+                if (addDependency) {
+                    dependsOn.add(otherTable);
+                }
             }
-            dependencyGraph.put(table, dependsOn);
+            if (!dependsOn.isEmpty()) {
+                dependencyGraph.put(table.getName(), dependsOn);
+            }
         }
 
         // DFS to detect cycles
         Set<SQLTable> visited = new HashSet<>();
         Set<SQLTable> stack = new HashSet<>();
-        for (SQLTable table : dependencyGraph.keySet()) {
+        for (SQLTable table : tables) {
             if (hasCycle(table, dependencyGraph, visited, stack)) {
                 throw new IllegalStateException(String.format("Cycle detected in foreign key dependencies involving table %s.%s", table.getSchema().getName(), table.getName()));
             }
@@ -487,7 +517,7 @@ public class DataManager {
         // Topological sort for insert order
         List<SQLTable> orderedTables = new ArrayList<>();
         visited.clear();
-        for (SQLTable table : dependencyGraph.keySet()) {
+        for (SQLTable table : tables) {
             topoSort(table, dependencyGraph, visited, orderedTables);
         }
         Collections.reverse(orderedTables);
@@ -609,7 +639,7 @@ public class DataManager {
         }
     }
 
-    private boolean hasCycle(SQLTable table, Map<SQLTable, Set<SQLTable>> dependencyGraph, Set<SQLTable> visited, Set<SQLTable> stack) {
+    private boolean hasCycle(SQLTable table, Map<String, Set<SQLTable>> dependencyGraph, Set<SQLTable> visited, Set<SQLTable> stack) {
         if (stack.contains(table)) {
             return true;
         }
@@ -618,7 +648,7 @@ public class DataManager {
         }
         visited.add(table);
         stack.add(table);
-        for (SQLTable dep : dependencyGraph.get(table)) {
+        for (SQLTable dep : dependencyGraph.getOrDefault(table.getName(), Collections.emptySet())) {
             if (hasCycle(dep, dependencyGraph, visited, stack)) {
                 return true;
             }
@@ -627,12 +657,12 @@ public class DataManager {
         return false;
     }
 
-    private void topoSort(SQLTable table, Map<SQLTable, Set<SQLTable>> dependencyGraph, Set<SQLTable> visited, List<SQLTable> ordered) {
+    private void topoSort(SQLTable table, Map<String, Set<SQLTable>> dependencyGraph, Set<SQLTable> visited, List<SQLTable> ordered) {
         if (visited.contains(table)) {
             return;
         }
         visited.add(table);
-        for (SQLTable dep : dependencyGraph.get(table)) {
+        for (SQLTable dep : dependencyGraph.getOrDefault(table.getName(), Collections.emptySet())) {
             topoSort(dep, dependencyGraph, visited, ordered);
         }
         ordered.add(table);

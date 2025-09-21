@@ -1,7 +1,7 @@
 package net.staticstudios.data;
 
 import net.staticstudios.data.misc.DataTest;
-import net.staticstudios.data.mock.MockPost;
+import net.staticstudios.data.mock.post.MockPost;
 import net.staticstudios.data.parse.DDLStatement;
 import net.staticstudios.data.util.EnvironmentVariableAccessor;
 import net.staticstudios.data.util.ValueUtils;
@@ -82,14 +82,23 @@ public class SQLParseTest extends DataTest {
                     post_id integer NOT NULL,
                     interactions integer DEFAULT 0 NOT NULL
                 );
+                CREATE TABLE social_media.posts_metadata (
+                    metadata_id integer NOT NULL,
+                    flag boolean NOT NULL
+                );
                 ALTER TABLE ONLY social_media.posts_interactions
                     ADD CONSTRAINT posts_interactions_pkey PRIMARY KEY (post_id);
+                ALTER TABLE ONLY social_media.posts_metadata
+                    ADD CONSTRAINT posts_metadata_pkey PRIMARY KEY (metadata_id);
                 ALTER TABLE ONLY social_media.posts
                     ADD CONSTRAINT posts_pkey PRIMARY KEY (post_id);
                 ALTER TABLE ONLY social_media.posts_interactions
                     ADD CONSTRAINT fk_social_media_posts_interactions_post_id_to_posts_post_id FOREIGN KEY (post_id) REFERENCES social_media.posts(post_id) ON UPDATE CASCADE ON DELETE CASCADE;
+                ALTER TABLE ONLY social_media.posts
+                    ADD CONSTRAINT fk_social_media_posts_post_id_to_posts_metadata_metadata_id FOREIGN KEY (post_id) REFERENCES social_media.posts_metadata(metadata_id) ON UPDATE CASCADE;
                 """;
 
         assertEquals(expected.trim(), cleanedDump.toString().trim());
+        //todo: test with a reference
     }
 }

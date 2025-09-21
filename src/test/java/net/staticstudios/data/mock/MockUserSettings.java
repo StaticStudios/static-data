@@ -9,12 +9,5 @@ public class MockUserSettings extends UniqueData {
     @IdColumn(name = "user_id")
     public PersistentValue<UUID> id;
     @Column(name = "font_size", defaultValue = "10")
-    public PersistentValue<Integer> fontSide;
-
-    public static MockUserSettings create(DataManager dataManager, UUID id) {
-        return dataManager.createInsertContext()
-                .set(MockUserSettings.class, "user_id", id)
-                .insert(InsertMode.SYNC)
-                .get(MockUserSettings.class);
-    }
+    public PersistentValue<Integer> fontSize;
 }

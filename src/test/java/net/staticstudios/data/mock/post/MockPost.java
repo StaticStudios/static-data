@@ -1,4 +1,4 @@
-package net.staticstudios.data.mock;
+package net.staticstudios.data.mock.post;
 
 import net.staticstudios.data.*;
 
@@ -9,6 +9,8 @@ import net.staticstudios.data.*;
 public class MockPost extends UniqueData {
     @IdColumn(name = "${POST_ID_COLUMN}")
     public PersistentValue<Integer> id;
+    @OneToOne(link = "${POST_ID_COLUMN}=metadata_id")
+    public Reference<MockPostMetadata> metadata;
 
     @Column(name = "text_content")
     public PersistentValue<String> textContent;
@@ -16,6 +18,4 @@ public class MockPost extends UniqueData {
     public PersistentValue<Integer> likes;
     @ForeignColumn(name = "interactions", table = "${POST_TABLE}_interactions", link = "${POST_ID_COLUMN}=post_id", defaultValue = "0")
     public PersistentValue<Integer> interactions;
-
-    //todo: test relationships
 }

@@ -15,4 +15,6 @@ public @interface OneToOne {
     String link();
 
     DeleteStrategy deleteStrategy() default DeleteStrategy.NO_ACTION;
+
+    UpdateStrategy updateStrategy() default UpdateStrategy.CASCADE;
 }

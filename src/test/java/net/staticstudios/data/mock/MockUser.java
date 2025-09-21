@@ -14,13 +14,13 @@ public class MockUser extends UniqueData {
     //todo: note - maybe PC's add and remove handlers can be implemented using update handlers
     @IdColumn(name = "id")
     public PersistentValue<UUID> id = PersistentValue.of(this, UUID.class);
-    @Column(name = "settings_id", nullable = true)
+    @Column(name = "settings_id", nullable = true, unique = true)
     public PersistentValue<UUID> settingsId = PersistentValue.of(this, UUID.class);
     @Column(name = "age", nullable = true)
     public PersistentValue<Integer> age;
     @ForeignColumn(name = "fav_color", table = "user_preferences", nullable = true, link = "id=user_id")
     public PersistentValue<String> favoriteColor;
-    @OneToOne(link = "settings_id=user_id")
+    @OneToOne(link = "settings_id=user_id", deleteStrategy = DeleteStrategy.CASCADE)
     //todo: this should generate an fkey (add an option to control what happens on update/delete)
     public Reference<MockUserSettings> settings;
     @ForeignColumn(name = "name_updates", table = "user_metadata", link = "id=user_id", defaultValue = "0")
