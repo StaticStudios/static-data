@@ -8,6 +8,7 @@ import net.staticstudios.data.impl.h2.H2DataAccessor;
 import net.staticstudios.data.impl.pg.PostgresListener;
 import net.staticstudios.data.insert.InsertContext;
 import net.staticstudios.data.parse.*;
+import net.staticstudios.data.primative.Primitives;
 import net.staticstudios.data.util.*;
 import net.staticstudios.data.util.TaskQueue;
 import net.staticstudios.utils.ThreadUtils;
@@ -38,6 +39,8 @@ public class DataManager {
     private final ConcurrentHashMap<String, Map<Class<? extends UniqueData>, List<ValueUpdateHandlerWrapper<?, ?>>>> updateHandlers = new ConcurrentHashMap<>();
     private final PostgresListener postgresListener;
     private final Set<PersistentValueMetadata> registeredUpdateHandlersForColumns = Collections.synchronizedSet(new HashSet<>());
+    private final List<ValueSerializer<?, ?>> valueSerializers = new CopyOnWriteArrayList<>();
+    //todo: custom types are serialized and deserialized all the time currently, we should have a cache for these. caffeine with time based eviction sounds good.
 
     public DataManager(DataSourceConfig dataSourceConfig) {
         this(dataSourceConfig, true);
@@ -123,10 +126,10 @@ public class DataManager {
             UniqueData instance = getInstance(holderClass, idColumns);
             for (ValueUpdateHandlerWrapper<?, ?> wrapper : handlers) {
                 Class<?> dataType = wrapper.getDataType();
-                Object deserializedOldValue = oldSerializedValues[columnIndex]; //todo: these
-                Object deserializedNewValue = newSerializedValues[columnIndex];
+                Object deserializedOldValue = deserialize(dataType, oldSerializedValues[columnIndex]);
+                Object deserializedNewValue = deserialize(dataType, newSerializedValues[columnIndex]);
 
-                //todo: submit to somewhere for where to run these, configured during setup. default to thread utils
+                //todo: allow configuring where to submit update handlers to. note that we cannot call them immediately since we are inside a transaction.
                 ThreadUtils.submit(() -> wrapper.unsafeHandle(instance, deserializedOldValue, deserializedNewValue));
             }
         }
@@ -552,7 +555,7 @@ public class DataManager {
             List<Object> values = new ArrayList<>();
             for (SimpleColumnMetadata column : columnsInTable) {
                 Object deserializedValue = insertContext.getEntries().get(column);
-                Object serializedValue = deserializedValue; //todo: serialization
+                Object serializedValue = serialize(column.type(), deserializedValue);
                 values.add(serializedValue);
             }
             sqlStatements.add(new SQlStatement(sql, values));
@@ -580,17 +583,14 @@ public class DataManager {
             if (rs.next()) {
                 serializedValue = rs.getObject(column);
             }
-            if (serializedValue != null) {
-                //todo: do some type validation here, either on the serialized or un serialized type. this method will be exposed so we need to be careful
-                T deserialized = (T) serializedValue; //todo: this
-                return deserialized;
-            }
-            return null;
+            //todo: do some type validation here, either on the serialized or un serialized type. this method will be exposed so we need to be careful
+            return deserialize(dataType, serializedValue);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
     }
 
+    @ApiStatus.Internal
     public void set(String schema, String table, String column, ColumnValuePairs idColumns, Map<String, String> idColumnLinks, Object value) {
         StringBuilder sqlBuilder;
         if (idColumnLinks.isEmpty()) {
@@ -628,7 +628,7 @@ public class DataManager {
         }
         @Language("SQL") String sql = sqlBuilder.toString();
         List<Object> values = new ArrayList<>(1 + idColumns.getPairs().length);
-        values.add(value);
+        values.add(serialize(value.getClass(), value));
         for (ColumnValuePair columnValuePair : idColumns) {
             values.add(columnValuePair.value());
         }
@@ -666,5 +666,63 @@ public class DataManager {
             topoSort(dep, dependencyGraph, visited, ordered);
         }
         ordered.add(table);
+    }
+
+    public void registerValueSerializer(ValueSerializer<?, ?> serializer) {
+        if (Primitives.isPrimitive(serializer.getDeserializedType())) {
+            throw new IllegalArgumentException("Cannot register a serializer for a primitive type");
+        }
+
+        if (!Primitives.isPrimitive(serializer.getSerializedType())) {
+            throw new IllegalArgumentException("Cannot register a ValueSerializer that serializes to a non-primitive type");
+        }
+
+        for (ValueSerializer<?, ?> s : valueSerializers) {
+            if (s.getDeserializedType().isAssignableFrom(serializer.getDeserializedType())) {
+                throw new IllegalArgumentException("A serializer for " + serializer.getDeserializedType() + " is already registered! (" + s.getClass() + ")");
+            }
+        }
+
+        valueSerializers.add(serializer);
+    }
+
+    private ValueSerializer<?, ?> getValueSerializer(Class<?> deserializedType) {
+        for (ValueSerializer<?, ?> s : valueSerializers) {
+            if (s.getDeserializedType().isAssignableFrom(deserializedType)) {
+                return s;
+            }
+        }
+
+        throw new IllegalStateException("No ValueSerializer registered for type " + deserializedType.getName());
+    }
+
+    private <T> T deserialize(Class<T> clazz, Object serialized) {
+        if (Primitives.isPrimitive(clazz) || serialized == null) {
+            return (T) serialized;
+        }
+        return (T) deserialize(getValueSerializer(clazz), serialized);
+    }
+
+    private <T> T serialize(Class<T> clazz, Object deserialized) {
+        if (Primitives.isPrimitive(clazz) || deserialized == null) {
+            return (T) deserialized;
+        }
+        return (T) serialize(getValueSerializer(clazz), deserialized);
+    }
+
+    private <D, S> D deserialize(ValueSerializer<D, S> serializer, Object serialized) {
+        return serializer.deserialize(serializer.getSerializedType().cast(serialized));
+    }
+
+    private <D, S> S serialize(ValueSerializer<D, S> serializer, Object deserialized) {
+        return serializer.serialize(serializer.getDeserializedType().cast(deserialized));
+    }
+
+    public Class<?> getSerializedType(Class<?> clazz) {
+        if (Primitives.isPrimitive(clazz)) {
+            return clazz;
+        }
+        ValueSerializer<?, ?> serializer = getValueSerializer(clazz);
+        return serializer.getSerializedType();
     }
 }

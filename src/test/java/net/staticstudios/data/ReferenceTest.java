@@ -2,10 +2,10 @@ package net.staticstudios.data;
 
 import net.staticstudios.data.insert.InsertContext;
 import net.staticstudios.data.misc.DataTest;
-import net.staticstudios.data.mock.MockUser;
-import net.staticstudios.data.mock.MockUserFactory;
-import net.staticstudios.data.mock.MockUserSettings;
-import net.staticstudios.data.mock.MockUserSettingsFactory;
+import net.staticstudios.data.mock.user.MockUser;
+import net.staticstudios.data.mock.user.MockUserFactory;
+import net.staticstudios.data.mock.user.MockUserSettings;
+import net.staticstudios.data.mock.user.MockUserSettingsFactory;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;

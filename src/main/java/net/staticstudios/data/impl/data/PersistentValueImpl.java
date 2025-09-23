@@ -47,7 +47,7 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
         return new PersistentValueImpl<>(dataAccessor, holder, dataType, schema, table, column, idColumnLinks);
     }
 
-    public static <T extends UniqueData> void delegate(String schema, String table, T instance) {
+    public static <T extends UniqueData> void delegate(String schema, String table, T instance) { //todo: cache this info. can we use the uniquedatametadata?
         for (FieldInstancePair<@Nullable PersistentValue> pair : ReflectionUtils.getFieldInstancePairs(instance, PersistentValue.class)) {
             IdColumn idColumn = pair.field().getAnnotation(IdColumn.class);
             Column columnAnnotation = pair.field().getAnnotation(Column.class);
@@ -101,7 +101,7 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
             } else {
                 pair.field().setAccessible(true);
                 try {
-                    pair.field().set(instance, PersistentValueImpl.create(instance.getDataManager().getDataAccessor(), instance, pair.field().getType(), columnMetadata.schema(), columnMetadata.table(), columnMetadata.name(), idColumnLinks));
+                    pair.field().set(instance, PersistentValueImpl.create(instance.getDataManager().getDataAccessor(), instance, ReflectionUtils.getGenericType(pair.field()), columnMetadata.schema(), columnMetadata.table(), columnMetadata.name(), idColumnLinks));
                 } catch (IllegalAccessException e) {
                     throw new RuntimeException(e);
                 }

@@ -366,7 +366,7 @@ public class SQLBuilder {
             dataSqlTable.addForeignKeyThatReferencesThisTable(foreignKey);
         }
 
-        Class<?> type = ReflectionUtils.getGenericType(field); //todo: handle custom types to sql types
+        Class<?> type = dataManager.getSerializedType(ReflectionUtils.getGenericType(field));
         SQLColumn sqlColumn = new SQLColumn(table, type, columnName, nullable, indexed, unique, defaultValue.isEmpty() ? null : SQLUtils.parseDefaultValue(type, defaultValue));
 
         SQLColumn existingColumn = table.getColumn(columnName);

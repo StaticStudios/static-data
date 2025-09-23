@@ -2,8 +2,8 @@ package net.staticstudios.data;
 
 import net.staticstudios.data.misc.DataTest;
 import net.staticstudios.data.misc.MockEnvironment;
-import net.staticstudios.data.mock.MockUser;
-import net.staticstudios.data.mock.MockUserFactory;
+import net.staticstudios.data.mock.user.MockUser;
+import net.staticstudios.data.mock.user.MockUserFactory;
 import net.staticstudios.data.util.ColumnValuePair;
 import org.junit.jupiter.api.Test;
 

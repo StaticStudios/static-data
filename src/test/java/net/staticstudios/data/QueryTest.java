@@ -1,9 +1,9 @@
 package net.staticstudios.data;
 
 import net.staticstudios.data.misc.DataTest;
-import net.staticstudios.data.mock.MockUser;
-import net.staticstudios.data.mock.MockUserFactory;
-import net.staticstudios.data.mock.MockUserQuery;
+import net.staticstudios.data.mock.user.MockUser;
+import net.staticstudios.data.mock.user.MockUserFactory;
+import net.staticstudios.data.mock.user.MockUserQuery;
 import net.staticstudios.data.query.Order;
 import org.junit.jupiter.api.Test;
 

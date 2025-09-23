@@ -40,7 +40,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
         return new ReferenceImpl<>(holder, type, link);
     }
 
-    public static <T extends UniqueData> void delegate(T instance) {
+    public static <T extends UniqueData> void delegate(T instance) { //todo: cache this info. can we use the uniquedatametadata?
         for (FieldInstancePair<@Nullable Reference> pair : ReflectionUtils.getFieldInstancePairs(instance, Reference.class)) {
             OneToOne oneToOneAnnotation = pair.field().getAnnotation(OneToOne.class);
             Preconditions.checkNotNull(oneToOneAnnotation, "Field %s in class %s is missing @OneToOne annotation".formatted(pair.field().getName(), instance.getClass().getName()));
@@ -122,7 +122,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
                 sqlBuilder.append("\"").append(myColumn).append("\" = NULL, ");
                 continue;
             }
-            
+
             String theirColumn = entry.getValue();
             Object theirValue = null;
             for (ColumnValuePair columnValuePair : value.getIdColumns()) {

@@ -1,4 +1,4 @@
-package net.staticstudios.data.mock;
+package net.staticstudios.data.mock.user;
 
 import net.staticstudios.data.*;
 
