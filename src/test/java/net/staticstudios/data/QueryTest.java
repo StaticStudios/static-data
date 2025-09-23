@@ -116,35 +116,131 @@ public class QueryTest extends DataTest {
     }
 
     @Test
-    public void testQuery() { //todo: test each clause and ensure it outputs the proper sql
+    public void testEqualsClause() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"id\" = ?", MockUserQuery.where(dataManager).idIs(UUID.randomUUID()).toString());
+    }
 
-        String where = MockUserQuery.where(dataManager)
-                .idIs(UUID.randomUUID())
-                .or()
-//                .nameIs("user name")
-//                .or(q -> q.ageIsLessThan(10)
-//                        .and()
-//                        .ageIsLessThanOrEqualTo(5)
-//                )
-//                .or()
-//                .nameIsIn("name1", "name2", "name3")
-//                .or()
-//                .nameIsIn(List.of("name4", "name5", "name6"))
-//                .limit(10)
-//                .offset(2)
-//                .and()
-//                .ageIsBetween(0, 3)
-//                .and()
-//                .ageIsNotNull()
-//                .and()
-//                .nameIsLike("%something%")
-//                .and()
-//                .nameIsNotLike("%nothing%")
-//                .orderByAge(Order.ASCENDING)
-//                .and()
-                .nameUpdatesIs(4)
-                .toString();
-        System.out.println(where);
+    @Test
+    public void testBetweenClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"age\" BETWEEN ? AND ?", MockUserQuery.where(dataManager).ageIsBetween(0, 0).toString());
+    }
+
+    @Test
+    public void testAgeIsLessThanClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"age\" < ?", MockUserQuery.where(dataManager).ageIsLessThan(0).toString());
+    }
+
+    @Test
+    public void testAgeIsLessThanOrEqualToClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"age\" <= ?", MockUserQuery.where(dataManager).ageIsLessThanOrEqualTo(0).toString());
+    }
+
+    @Test
+    public void testAgeIsGreaterThanClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"age\" > ?", MockUserQuery.where(dataManager).ageIsGreaterThan(0).toString());
+    }
+
+    @Test
+    public void testAgeIsGreaterThanOrEqualToClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"age\" >= ?", MockUserQuery.where(dataManager).ageIsGreaterThanOrEqualTo(0).toString());
+    }
+
+    @Test
+    public void testAgeIsNullClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"age\" IS NULL", MockUserQuery.where(dataManager).ageIsNull().toString());
+    }
+
+    @Test
+    public void testAgeIsNotNullClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"age\" IS NOT NULL", MockUserQuery.where(dataManager).ageIsNotNull().toString());
+    }
+
+    @Test
+    public void testNameIsLikeClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"name\" LIKE ?", MockUserQuery.where(dataManager).nameIsLike("%test%").toString());
+    }
+
+    @Test
+    public void testNameIsNotLikeClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"name\" NOT LIKE ?", MockUserQuery.where(dataManager).nameIsNotLike("%test%").toString());
+    }
+
+    @Test
+    public void testNameIsInClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"name\" IN (?, ?, ?)", MockUserQuery.where(dataManager).nameIsIn("name1", "name2", "name3").toString());
+    }
+
+    @Test
+    public void testNameIsInListClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"name\" IN (?, ?, ?)", MockUserQuery.where(dataManager).nameIsIn(List.of("name1", "name2", "name3")).toString());
+    }
+
+    @Test
+    public void testLimitClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"id\" = ? LIMIT 10", MockUserQuery.where(dataManager).idIs(UUID.randomUUID()).limit(10).toString());
+    }
+
+    @Test
+    public void testOffsetClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"id\" = ? OFFSET 5", MockUserQuery.where(dataManager).idIs(UUID.randomUUID()).offset(5).toString());
+    }
+
+    @Test
+    public void testOrderByClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"id\" = ? ORDER BY \"public\".\"users\".\"age\" ASC", MockUserQuery.where(dataManager).idIs(UUID.randomUUID()).orderByAge(Order.ASCENDING).toString());
+    }
+
+    @Test
+    public void testAndClauseWithoutParentheses() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"id\" = ? AND \"public\".\"users\".\"age\" BETWEEN ? AND ?", MockUserQuery.where(dataManager).idIs(UUID.randomUUID()).and().ageIsBetween(0, 5).toString());
+    }
+
+    @Test
+    public void testOrClauseWithoutParentheses() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"id\" = ? OR \"public\".\"users\".\"age\" BETWEEN ? AND ?", MockUserQuery.where(dataManager).idIs(UUID.randomUUID()).or().ageIsBetween(0, 5).toString());
+    }
+
+    @Test
+    public void testAndClauseWithParentheses() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"id\" = ? AND (\"public\".\"users\".\"age\" BETWEEN ? AND ?)", MockUserQuery.where(dataManager).idIs(UUID.randomUUID()).and(q -> q.ageIsBetween(0, 5)).toString());
+    }
+
+    @Test
+    public void testOrClauseWithParentheses() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"id\" = ? OR (\"public\".\"users\".\"age\" BETWEEN ? AND ?)", MockUserQuery.where(dataManager).idIs(UUID.randomUUID()).or(q -> q.ageIsBetween(0, 5)).toString());
+    }
+
+    @Test
+    public void testComplexClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        assertEquals("WHERE \"public\".\"users\".\"id\" = ? OR (\"public\".\"users\".\"age\" BETWEEN ? AND ?) AND \"public\".\"users\".\"name\" LIKE ? LIMIT 10 OFFSET 5 ORDER BY \"public\".\"users\".\"age\" DESC",
+                MockUserQuery.where(dataManager)
+                        .idIs(UUID.randomUUID())
+                        .or(q -> q.ageIsBetween(0, 5))
+                        .and()
+                        .nameIsLike("%test%")
+                        .orderByAge(Order.DESCENDING)
+                        .limit(10)
+                        .offset(5)
+                        .toString());
     }
 }

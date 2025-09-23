@@ -140,6 +140,4 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot set value on a deleted UniqueData instance");
         holder.getDataManager().set(schema, table, column, holder.getIdColumns(), idColumnLinks, value);
     }
-
-    //todo: support set with SetMode, or operationMode (SYNC vs ASYNC)
 }
