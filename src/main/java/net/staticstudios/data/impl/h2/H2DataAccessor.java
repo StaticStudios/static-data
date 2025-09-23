@@ -28,8 +28,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.*;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
+import java.util.concurrent.*;
+import java.util.function.Consumer;
 
 /**
  * This data accessor uses a write-behind caching strategy with an in-memory H2 database to optimize read and write operations.
@@ -47,6 +47,12 @@ public class H2DataAccessor implements DataAccessor {
     private final Set<String> knownTables = new HashSet<>();
     private final DataManager dataManager;
     private final PostgresListener postgresListener;
+    private final Map<DelayedDatabaseTask, Consumer<DelayedDatabaseTask>> delayedTasks = new ConcurrentHashMap<>();
+    private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(thread -> {
+        Thread t = new Thread(thread);
+        t.setName(H2DataAccessor.class.getSimpleName() + "-ScheduledExecutor");
+        return t;
+    });
 
     public H2DataAccessor(DataManager dataManager, PostgresListener postgresListener, TaskQueue taskQueue) {
         this.taskQueue = taskQueue;
@@ -188,6 +194,16 @@ public class H2DataAccessor implements DataAccessor {
                 }
             } catch (SQLException e) {
                 logger.error("Failed to shutdown H2 database", e);
+            }
+        });
+
+
+        ThreadUtils.onShutdownRunSync(ShutdownStage.EARLY, () -> {
+            List<Runnable> tasks = scheduledExecutorService.shutdownNow();
+
+            logger.info("Shutting down {}, running {} enqueued tasks", H2DataAccessor.class.getSimpleName(), tasks.size());
+            for (Runnable task : tasks) {
+                task.run();
             }
         });
     }
@@ -368,7 +384,7 @@ public class H2DataAccessor implements DataAccessor {
     }
 
     @Override
-    public void executeUpdate(@Language("SQL") String sql, List<Object> values) throws SQLException {
+    public void executeUpdate(@Language("SQL") String sql, List<Object> values, int delay) throws SQLException {
         PreparedStatement cachePreparedStatement = prepareStatement(sql);
         for (int i = 0; i < values.size(); i++) {
             cachePreparedStatement.setObject(i + 1, values.get(i));
@@ -379,14 +395,7 @@ public class H2DataAccessor implements DataAccessor {
             getConnection().commit();
         }
 
-        taskQueue.submitTask(connection -> {
-            PreparedStatement realPreparedStatement = connection.prepareStatement(sql);
-            for (int i = 0; i < values.size(); i++) {
-                realPreparedStatement.setObject(i + 1, values.get(i));
-            }
-            logger.debug("[DB] {}}", sql);
-            realPreparedStatement.executeUpdate();
-        });
+        runDatabaseTask(sql, values.toArray(), delay);
     }
 
     @Override
@@ -455,6 +464,31 @@ public class H2DataAccessor implements DataAccessor {
             }
         }
         return columns;
+    }
+
+    private void runDatabaseTask(String sql, Object[] params, int delay) {
+        Consumer<DelayedDatabaseTask> consumer = task -> taskQueue.submitTask(connection -> {
+            PreparedStatement realPreparedStatement = connection.prepareStatement(task.sql());
+            for (int i = 0; i < task.params().length; i++) {
+                realPreparedStatement.setObject(i + 1, task.params()[i]);
+            }
+            logger.debug("[DB] {}}", task.sql());
+            realPreparedStatement.executeUpdate();
+        });
+
+        DelayedDatabaseTask task = new DelayedDatabaseTask(sql, params);
+        if (delay <= 0) {
+            consumer.accept(task);
+            return;
+        }
+        if (delayedTasks.put(task, consumer) == null) {
+            scheduledExecutorService.schedule(() -> {
+                Consumer<DelayedDatabaseTask> removed = delayedTasks.remove(task);
+                if (removed != null) {
+                    removed.accept(task);
+                }
+            }, delay, TimeUnit.MILLISECONDS);
+        }
     }
 }
 

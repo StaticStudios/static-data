@@ -5,29 +5,28 @@ import net.staticstudios.data.DataAccessor;
 import net.staticstudios.data.OneToOne;
 import net.staticstudios.data.Reference;
 import net.staticstudios.data.UniqueData;
+import net.staticstudios.data.parse.ForeignKey;
 import net.staticstudios.data.util.*;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.reflect.Field;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
     private final UniqueData holder;
     private final Class<T> type;
-    private final Map<String, String> link;
+    private final List<ForeignKey.Link> link;
 
-    public ReferenceImpl(UniqueData holder, Class<T> type, Map<String, String> link) {
+    public ReferenceImpl(UniqueData holder, Class<T> type, List<ForeignKey.Link> link) {
         this.holder = holder;
         this.type = type;
         this.link = link;
     }
 
-    public static <T extends UniqueData> void createAndDelegate(Reference.ProxyReference<T> proxy, Map<String, String> link) {
+    public static <T extends UniqueData> void createAndDelegate(Reference.ProxyReference<T> proxy, List<ForeignKey.Link> link) {
         ReferenceImpl<T> delegate = new ReferenceImpl<>(
                 proxy.getHolder(),
                 proxy.getReferenceType(),
@@ -36,34 +35,46 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
         proxy.setDelegate(delegate);
     }
 
-    public static <T extends UniqueData> ReferenceImpl<T> create(UniqueData holder, Class<T> type, Map<String, String> link) {
+    public static <T extends UniqueData> ReferenceImpl<T> create(UniqueData holder, Class<T> type, List<ForeignKey.Link> link) {
         return new ReferenceImpl<>(holder, type, link);
     }
 
-    public static <T extends UniqueData> void delegate(T instance) { //todo: cache this info. can we use the uniquedatametadata?
+    public static <T extends UniqueData> void delegate(T instance) {
+        UniqueDataMetadata metadata = instance.getDataManager().getMetadata(instance.getClass());
         for (FieldInstancePair<@Nullable Reference> pair : ReflectionUtils.getFieldInstancePairs(instance, Reference.class)) {
-            OneToOne oneToOneAnnotation = pair.field().getAnnotation(OneToOne.class);
-            Preconditions.checkNotNull(oneToOneAnnotation, "Field %s in class %s is missing @OneToOne annotation".formatted(pair.field().getName(), instance.getClass().getName()));
-            Class<?> referencedClass = ReflectionUtils.getGenericType(pair.field());
-            Preconditions.checkNotNull(referencedClass, "Field %s in class %s is not parameterized".formatted(pair.field().getName(), instance.getClass().getName()));
-            Map<String, String> link = new HashMap<>();
-            for (String l : StringUtils.parseCommaSeperatedList(oneToOneAnnotation.link())) {
-                String[] split = l.split("=");
-                Preconditions.checkArgument(split.length == 2, "Invalid link format in @OneToOne annotation on field %s in class %s".formatted(pair.field().getName(), instance.getClass().getName()));
-                link.put(ValueUtils.parseValue(split[0].trim()), ValueUtils.parseValue(split[1].trim()));
-            }
+            ReferenceMetadata refMetadata = metadata.referenceMetadata().get(pair.field());
 
             if (pair.instance() instanceof Reference.ProxyReference<?> proxyRef) {
-                createAndDelegate(proxyRef, link);
+                createAndDelegate(proxyRef, refMetadata.getLinks());
             } else {
                 pair.field().setAccessible(true);
                 try {
-                    pair.field().set(instance, create(instance, (Class<? extends UniqueData>) referencedClass, link));
+                    pair.field().set(instance, create(instance, refMetadata.getReferencedClass(), refMetadata.getLinks()));
                 } catch (IllegalAccessException e) {
                     throw new RuntimeException(e);
                 }
             }
         }
+    }
+
+    public static <T extends UniqueData> Map<Field, ReferenceMetadata> extractMetadata(Class<T> clazz) {
+        Map<Field, ReferenceMetadata> metadataMap = new HashMap<>();
+        for (Field field : ReflectionUtils.getFields(clazz, Reference.class)) {
+            OneToOne oneToOneAnnotation = field.getAnnotation(OneToOne.class);
+            Preconditions.checkNotNull(oneToOneAnnotation, "Field %s in class %s is missing @OneToOne annotation".formatted(field.getName(), clazz.getName()));
+            Class<?> referencedClass = ReflectionUtils.getGenericType(field);
+            Preconditions.checkNotNull(referencedClass, "Field %s in class %s is not parameterized".formatted(field.getName(), clazz.getName()));
+            List<ForeignKey.Link> link = new LinkedList<>();
+            for (String l : StringUtils.parseCommaSeperatedList(oneToOneAnnotation.link())) {
+                String[] split = l.split("=");
+                Preconditions.checkArgument(split.length == 2, "Invalid link format in @OneToOne annotation on field %s in class %s".formatted(field.getName(), clazz.getName()));
+                link.add(new ForeignKey.Link(ValueUtils.parseValue(split[1].trim()), ValueUtils.parseValue(split[0].trim())));
+            }
+
+            metadataMap.put(field, new ReferenceMetadata((Class<? extends UniqueData>) referencedClass, link));
+        }
+
+        return metadataMap;
     }
 
     @Override
@@ -78,13 +89,14 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
 
     @Override
     public @Nullable T get() {
+        Preconditions.checkArgument(!holder.isDeleted(), "Cannot get reference on a deleted UniqueData instance");
         ColumnValuePair[] idColumns = new ColumnValuePair[link.size()];
         int i = 0;
         UniqueDataMetadata holderMetadata = holder.getMetadata();
         DataAccessor dataAccessor = holder.getDataManager().getDataAccessor();
-        for (Map.Entry<String, String> entry : link.entrySet()) {
-            String myColumn = entry.getKey();
-            String theirColumn = entry.getValue();
+        for (ForeignKey.Link entry : link) {
+            String myColumn = entry.columnInReferringTable();
+            String theirColumn = entry.columnInReferencedTable();
 
             StringBuilder sqlBuilder = new StringBuilder();
             sqlBuilder.append("SELECT \"").append(myColumn).append("\" FROM \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\" WHERE ");
@@ -112,18 +124,19 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
 
     @Override
     public void set(@Nullable T value) {
+        Preconditions.checkArgument(!holder.isDeleted(), "Cannot set reference on a deleted UniqueData instance");
         UniqueDataMetadata holderMetadata = holder.getMetadata();
         List<Object> values = new ArrayList<>();
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("UPDATE \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\" SET ");
-        for (Map.Entry<String, String> entry : link.entrySet()) {
-            String myColumn = entry.getKey();
+        for (ForeignKey.Link entry : link) {
+            String myColumn = entry.columnInReferringTable();
             if (value == null) {
                 sqlBuilder.append("\"").append(myColumn).append("\" = NULL, ");
                 continue;
             }
 
-            String theirColumn = entry.getValue();
+            String theirColumn = entry.columnInReferencedTable();
             Object theirValue = null;
             for (ColumnValuePair columnValuePair : value.getIdColumns()) {
                 if (columnValuePair.column().equals(theirColumn)) {
@@ -148,7 +161,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
         }
 
         try {
-            holder.getDataManager().getDataAccessor().executeUpdate(sqlBuilder.toString(), values);
+            holder.getDataManager().getDataAccessor().executeUpdate(sqlBuilder.toString(), values, 0);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }

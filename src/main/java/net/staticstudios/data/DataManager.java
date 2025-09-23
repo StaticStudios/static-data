@@ -199,7 +199,9 @@ public class DataManager {
             ));
         }
         Preconditions.checkArgument(!idColumns.isEmpty(), "UniqueData class %s must have at least one @IdColumn annotated PersistentValue field", clazz.getName());
-        UniqueDataMetadata metadata = new UniqueDataMetadata(clazz, ValueUtils.parseValue(dataAnnotation.schema()), ValueUtils.parseValue(dataAnnotation.table()), idColumns);
+        String schema = ValueUtils.parseValue(dataAnnotation.schema());
+        String table = ValueUtils.parseValue(dataAnnotation.table());
+        UniqueDataMetadata metadata = new UniqueDataMetadata(clazz, schema, table, idColumns, PersistentValueImpl.extractMetadata(schema, table, clazz), ReferenceImpl.extractMetadata(clazz));
         uniqueDataMetadataMap.put(clazz, metadata);
 
         for (Field field : ReflectionUtils.getFields(clazz, Relation.class)) {
@@ -394,7 +396,7 @@ public class DataManager {
             throw new RuntimeException(e);
         }
 
-        PersistentValueImpl.delegate(schema, table, instance);
+        PersistentValueImpl.delegate(instance);
         ReferenceImpl.delegate(instance);
 
         uniqueDataInstanceCache.computeIfAbsent(clazz, k -> new MapMaker().weakValues().makeMap())
@@ -569,11 +571,17 @@ public class DataManager {
         }
     }
 
-    public <T> T get(String schema, String table, String column, ColumnValuePairs idColumns, Map<String, String> idColumnLinks, Class<T> dataType) {
+    public <T> T get(String schema, String table, String column, ColumnValuePairs idColumns, List<ForeignKey.Link> idColumnLinks, Class<T> dataType) {
         //todo: caffeine cache for these as well.
         StringBuilder sqlBuilder = new StringBuilder().append("SELECT \"").append(column).append("\" FROM \"").append(schema).append("\".\"").append(table).append("\" WHERE ");
         for (ColumnValuePair columnValuePair : idColumns) {
-            String name = idColumnLinks.getOrDefault(columnValuePair.column(), columnValuePair.column());
+            String name = columnValuePair.column();
+            for (ForeignKey.Link link : idColumnLinks) {
+                if (link.columnInReferringTable().equals(columnValuePair.column())) {
+                    name = link.columnInReferencedTable();
+                    break;
+                }
+            }
             sqlBuilder.append("\"").append(name).append("\" = ? AND ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 5);
@@ -591,12 +599,18 @@ public class DataManager {
     }
 
     @ApiStatus.Internal
-    public void set(String schema, String table, String column, ColumnValuePairs idColumns, Map<String, String> idColumnLinks, Object value) {
+    public void set(String schema, String table, String column, ColumnValuePairs idColumns, List<ForeignKey.Link> idColumnLinks, Object value, int delay) {
         StringBuilder sqlBuilder;
         if (idColumnLinks.isEmpty()) {
             sqlBuilder = new StringBuilder().append("UPDATE \"").append(schema).append("\".\"").append(table).append("\" SET \"").append(column).append("\" = ? WHERE ");
             for (ColumnValuePair columnValuePair : idColumns) {
-                String name = idColumnLinks.getOrDefault(columnValuePair.column(), columnValuePair.column());
+                String name = columnValuePair.column();
+                for (ForeignKey.Link link : idColumnLinks) {
+                    if (link.columnInReferringTable().equals(columnValuePair.column())) {
+                        name = link.columnInReferencedTable();
+                        break;
+                    }
+                }
                 sqlBuilder.append("\"").append(name).append("\" = ? AND ");
             }
             sqlBuilder.setLength(sqlBuilder.length() - 5);
@@ -605,23 +619,47 @@ public class DataManager {
             sqlBuilder.append(", ?".repeat(idColumns.getPairs().length));
             sqlBuilder.append(")) AS source (\"").append(column).append("\"");
             for (ColumnValuePair columnValuePair : idColumns) {
-                String name = idColumnLinks.getOrDefault(columnValuePair.column(), columnValuePair.column());
+                String name = columnValuePair.column();
+                for (ForeignKey.Link link : idColumnLinks) {
+                    if (link.columnInReferringTable().equals(columnValuePair.column())) {
+                        name = link.columnInReferencedTable();
+                        break;
+                    }
+                }
                 sqlBuilder.append(", \"").append(name).append("\"");
             }
             sqlBuilder.append(") ON ");
             for (ColumnValuePair columnValuePair : idColumns) {
-                String name = idColumnLinks.getOrDefault(columnValuePair.column(), columnValuePair.column());
+                String name = columnValuePair.column();
+                for (ForeignKey.Link link : idColumnLinks) {
+                    if (link.columnInReferringTable().equals(columnValuePair.column())) {
+                        name = link.columnInReferencedTable();
+                        break;
+                    }
+                }
                 sqlBuilder.append("target.\"").append(name).append("\" = source.\"").append(name).append("\" AND ");
             }
             sqlBuilder.setLength(sqlBuilder.length() - 5);
             sqlBuilder.append(" WHEN MATCHED THEN UPDATE SET \"").append(column).append("\" = source.\"").append(column).append("\" WHEN NOT MATCHED THEN INSERT (\"").append(column).append("\"");
             for (ColumnValuePair columnValuePair : idColumns) {
-                String name = idColumnLinks.getOrDefault(columnValuePair.column(), columnValuePair.column());
+                String name = columnValuePair.column();
+                for (ForeignKey.Link link : idColumnLinks) {
+                    if (link.columnInReferringTable().equals(columnValuePair.column())) {
+                        name = link.columnInReferencedTable();
+                        break;
+                    }
+                }
                 sqlBuilder.append(", \"").append(name).append("\"");
             }
             sqlBuilder.append(") VALUES (source.\"").append(column).append("\"");
             for (ColumnValuePair columnValuePair : idColumns) {
-                String name = idColumnLinks.getOrDefault(columnValuePair.column(), columnValuePair.column());
+                String name = columnValuePair.column();
+                for (ForeignKey.Link link : idColumnLinks) {
+                    if (link.columnInReferringTable().equals(columnValuePair.column())) {
+                        name = link.columnInReferencedTable();
+                        break;
+                    }
+                }
                 sqlBuilder.append(", source.\"").append(name).append("\"");
             }
             sqlBuilder.append(")");
@@ -633,7 +671,7 @@ public class DataManager {
             values.add(columnValuePair.value());
         }
         try {
-            dataAccessor.executeUpdate(sql, values);
+            dataAccessor.executeUpdate(sql, values, delay);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }

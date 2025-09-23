@@ -1,6 +1,7 @@
 package net.staticstudios.data;
 
 import com.google.common.base.Preconditions;
+import net.staticstudios.data.parse.ForeignKey;
 import net.staticstudios.data.util.*;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
@@ -8,7 +9,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 /**
  * A persistent value represents a single cell in a database table.
@@ -29,7 +29,7 @@ public interface PersistentValue<T> extends Value<T> {
     Class<T> getDataType();
 
     @ApiStatus.Internal
-    Map<String, String> getIdColumnLinks();
+    List<ForeignKey.Link> getIdColumnLinks();
 
     <U extends UniqueData> PersistentValue<T> onUpdate(Class<U> holderClass, ValueUpdateHandler<U, T> updateHandler);
 
@@ -41,7 +41,7 @@ public interface PersistentValue<T> extends Value<T> {
         protected final Class<T> dataType;
         private final List<ValueUpdateHandlerWrapper<?, ?>> updateHandlers = new ArrayList<>();
         private @Nullable PersistentValue<T> delegate;
-        private Map<String, String> idColumnLinks = Collections.emptyMap();
+        private List<ForeignKey.Link> idColumnLinks = Collections.emptyList();
         private long updateIntervalMillis = -1;
 
         public ProxyPersistentValue(UniqueData holder, Class<T> dataType) {
@@ -53,13 +53,7 @@ public interface PersistentValue<T> extends Value<T> {
             Preconditions.checkNotNull(delegate, "Delegate cannot be null");
             Preconditions.checkState(this.delegate == null, "Delegate is already set");
             this.delegate = delegate;
-            PersistentValueMetadata metadata = new PersistentValueMetadata(
-                    holder.getClass(),
-                    columnMetadata.schema(),
-                    columnMetadata.table(),
-                    columnMetadata.name(),
-                    dataType
-            );
+            PersistentValueMetadata metadata = new PersistentValueMetadata(delegate.getHolder().getClass(), columnMetadata);
 
             holder.getDataManager().registerUpdateHandler(metadata, updateHandlers);
         }
@@ -75,7 +69,7 @@ public interface PersistentValue<T> extends Value<T> {
         }
 
         @Override
-        public Map<String, String> getIdColumnLinks() {
+        public List<ForeignKey.Link> getIdColumnLinks() {
             return idColumnLinks;
         }
 //

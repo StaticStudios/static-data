@@ -15,7 +15,7 @@ public interface DataAccessor {
 
     ResultSet executeQuery(@Language("SQL") String sql, List<Object> values) throws SQLException;
 
-    void executeUpdate(@Language("SQL") String sql, List<Object> values) throws SQLException;
+    void executeUpdate(@Language("SQL") String sql, List<Object> values, int delay) throws SQLException;
 
     void insert(List<SQlStatement> sqlStatements, InsertMode insertMode) throws SQLException;
 
