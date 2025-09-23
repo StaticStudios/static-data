@@ -29,7 +29,6 @@ import java.nio.file.Paths;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.Consumer;
 
 /**
  * This data accessor uses a write-behind caching strategy with an in-memory H2 database to optimize read and write operations.
@@ -47,7 +46,7 @@ public class H2DataAccessor implements DataAccessor {
     private final Set<String> knownTables = new HashSet<>();
     private final DataManager dataManager;
     private final PostgresListener postgresListener;
-    private final Map<DelayedDatabaseTask, Consumer<DelayedDatabaseTask>> delayedTasks = new ConcurrentHashMap<>();
+    private final Map<String, Runnable> delayedTasks = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(thread -> {
         Thread t = new Thread(thread);
         t.setName(H2DataAccessor.class.getSimpleName() + "-ScheduledExecutor");
@@ -467,30 +466,26 @@ public class H2DataAccessor implements DataAccessor {
     }
 
     private void runDatabaseTask(String sql, Object[] params, int delay) {
-        Consumer<DelayedDatabaseTask> consumer = task -> taskQueue.submitTask(connection -> {
-            PreparedStatement realPreparedStatement = connection.prepareStatement(task.sql());
-            for (int i = 0; i < task.params().length; i++) {
-                realPreparedStatement.setObject(i + 1, task.params()[i]);
+        Runnable runnable = () -> taskQueue.submitTask(connection -> {
+            PreparedStatement realPreparedStatement = connection.prepareStatement(sql);
+            for (int i = 0; i < params.length; i++) {
+                realPreparedStatement.setObject(i + 1, params[i]);
             }
-            logger.debug("[DB] {}}", task.sql());
+            logger.debug("[DB] {}}", sql);
             realPreparedStatement.executeUpdate();
         });
 
-        DelayedDatabaseTask task = new DelayedDatabaseTask(sql, params);
         if (delay <= 0) {
-            consumer.accept(task);
+            runnable.run();
             return;
         }
-        if (delayedTasks.put(task, consumer) == null) {
+        if (delayedTasks.put(sql, runnable) == null) {
             scheduledExecutorService.schedule(() -> {
-                Consumer<DelayedDatabaseTask> removed = delayedTasks.remove(task);
+                Runnable removed = delayedTasks.remove(sql);
                 if (removed != null) {
-                    removed.accept(task);
+                    removed.run();
                 }
             }, delay, TimeUnit.MILLISECONDS);
         }
     }
 }
-
-
-//todo: maintain a buffer of what to send the the real db, and then collapse similar prepared statements into one so we can batch them. have a configurable interval to flush, but by default this will be 0ms

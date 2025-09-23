@@ -7,7 +7,9 @@ import net.staticstudios.data.mock.user.MockUserFactory;
 import net.staticstudios.data.util.ColumnValuePair;
 import org.junit.jupiter.api.Test;
 
+import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
@@ -295,5 +297,42 @@ public class PersistentValueTest extends DataTest {
         mockUser.name.set("new name2");
         waitForUpdateHandlers();
         assertEquals(2, mockUser.nameUpdates.get());
+    }
+
+    @Test
+    public void testUpdateInterval() throws Exception {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        UUID id = UUID.randomUUID();
+        MockUser mockUser = MockUserFactory.builder(dataManager)
+                .id(id)
+                .name("test user")
+                .favoriteColor("orange")
+                .nameUpdates(0)
+                .insert(InsertMode.SYNC);
+
+        assertNull(mockUser.views.get());
+
+        for (int i = 0; i < 5; i++) {
+            mockUser.views.set(i);
+        }
+
+        assertEquals(4, mockUser.views.get());
+        waitForDataPropagation();
+        Connection connection = getConnection();
+        try (PreparedStatement preparedStatement = connection.prepareStatement("SELECT views FROM users WHERE id = ?")) {
+            preparedStatement.setObject(1, id);
+            ResultSet rs = preparedStatement.executeQuery();
+            assertTrue(rs.next());
+            assertNull(rs.getObject("views"));
+        }
+
+        Thread.sleep(6000);
+        try (PreparedStatement preparedStatement = connection.prepareStatement("SELECT views FROM users WHERE id = ?")) {
+            preparedStatement.setObject(1, id);
+            ResultSet rs = preparedStatement.executeQuery();
+            assertTrue(rs.next());
+            assertEquals(4, rs.getInt("views"));
+        }
     }
 }

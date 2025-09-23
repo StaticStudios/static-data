@@ -7,10 +7,12 @@ import java.util.Objects;
 public class PersistentValueMetadata {
     private final Class<? extends UniqueData> holderClass;
     private final ColumnMetadata columnMetadata;
+    private final int updateInterval;
 
-    public PersistentValueMetadata(Class<? extends UniqueData> holderClass, ColumnMetadata columnMetadata) {
+    public PersistentValueMetadata(Class<? extends UniqueData> holderClass, ColumnMetadata columnMetadata, int updateInterval) {
         this.holderClass = holderClass;
         this.columnMetadata = columnMetadata;
+        this.updateInterval = updateInterval;
     }
 
     public String getSchema() {
@@ -29,9 +31,13 @@ public class PersistentValueMetadata {
         return columnMetadata;
     }
 
+    public int getUpdateInterval() {
+        return updateInterval;
+    }
+
     @Override
     public int hashCode() {
-        return Objects.hash(holderClass, columnMetadata);
+        return Objects.hash(holderClass, columnMetadata, updateInterval);
     }
 
     @Override
@@ -39,6 +45,6 @@ public class PersistentValueMetadata {
         if (this == obj) return true;
         if (obj == null || getClass() != obj.getClass()) return false;
         PersistentValueMetadata that = (PersistentValueMetadata) obj;
-        return Objects.equals(holderClass, that.holderClass) && Objects.equals(columnMetadata, that.columnMetadata);
+        return Objects.equals(holderClass, that.holderClass) && Objects.equals(columnMetadata, that.columnMetadata) && updateInterval == that.updateInterval;
     }
 }

@@ -29,9 +29,11 @@ public class MockUser extends UniqueData {
             .onUpdate(MockUser.class, (user, update) -> {
                 user.nameUpdates.set(user.getNameUpdates() + 1);
             });
+    @UpdateInterval(5000)
+    @Column(name = "views", nullable = true)
+    public PersistentValue<Integer> views;
 
     public int getNameUpdates() {
         return nameUpdates.get();
     }
-
 }

@@ -9,8 +9,8 @@ import java.util.Objects;
 public class ForeignPersistentValueMetadata extends PersistentValueMetadata {
     private final List<ForeignKey.Link> links;
 
-    public ForeignPersistentValueMetadata(Class<? extends UniqueData> holderClass, ColumnMetadata columnMetadata, List<ForeignKey.Link> links) {
-        super(holderClass, columnMetadata);
+    public ForeignPersistentValueMetadata(Class<? extends UniqueData> holderClass, ColumnMetadata columnMetadata, int updateInterval, List<ForeignKey.Link> links) {
+        super(holderClass, columnMetadata, updateInterval);
         this.links = links;
     }
 
