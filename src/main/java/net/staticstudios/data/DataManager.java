@@ -557,7 +557,7 @@ public class DataManager {
             List<Object> values = new ArrayList<>();
             for (SimpleColumnMetadata column : columnsInTable) {
                 Object deserializedValue = insertContext.getEntries().get(column);
-                Object serializedValue = serialize(column.type(), deserializedValue);
+                Object serializedValue = serialize(deserializedValue);
                 values.add(serializedValue);
             }
             sqlStatements.add(new SQlStatement(sql, values));
@@ -589,7 +589,7 @@ public class DataManager {
         try (ResultSet rs = dataAccessor.executeQuery(sql, idColumns.stream().map(ColumnValuePair::value).toList())) {
             Object serializedValue = null;
             if (rs.next()) {
-                serializedValue = rs.getObject(column);
+                serializedValue = rs.getObject(column, getSerializedType(dataType));
             }
             //todo: do some type validation here, either on the serialized or un serialized type. this method will be exposed so we need to be careful
             return deserialize(dataType, serializedValue);
@@ -666,7 +666,7 @@ public class DataManager {
         }
         @Language("SQL") String sql = sqlBuilder.toString();
         List<Object> values = new ArrayList<>(1 + idColumns.getPairs().length);
-        values.add(serialize(value.getClass(), value));
+        values.add(serialize(value));
         for (ColumnValuePair columnValuePair : idColumns) {
             values.add(columnValuePair.value());
         }
@@ -734,18 +734,18 @@ public class DataManager {
         throw new IllegalStateException("No ValueSerializer registered for type " + deserializedType.getName());
     }
 
-    private <T> T deserialize(Class<T> clazz, Object serialized) {
-        if (Primitives.isPrimitive(clazz) || serialized == null) {
+    public <T> T deserialize(Class<T> clazz, Object serialized) {
+        if (serialized == null || Primitives.isPrimitive(clazz)) {
             return (T) serialized;
         }
         return (T) deserialize(getValueSerializer(clazz), serialized);
     }
 
-    private <T> T serialize(Class<T> clazz, Object deserialized) {
-        if (Primitives.isPrimitive(clazz) || deserialized == null) {
+    public <T> T serialize(Object deserialized) {
+        if (deserialized == null || Primitives.isPrimitive(deserialized.getClass())) {
             return (T) deserialized;
         }
-        return (T) serialize(getValueSerializer(clazz), deserialized);
+        return (T) serialize(getValueSerializer(deserialized.getClass()), deserialized);
     }
 
     private <D, S> D deserialize(ValueSerializer<D, S> serializer, Object serialized) {

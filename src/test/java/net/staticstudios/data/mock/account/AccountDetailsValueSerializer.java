@@ -2,12 +2,13 @@ package net.staticstudios.data.mock.account;
 
 import com.google.gson.Gson;
 import net.staticstudios.data.ValueSerializer;
+import org.jetbrains.annotations.NotNull;
 
 public class AccountDetailsValueSerializer implements ValueSerializer<AccountDetails, String> {
     private static final Gson GSON = new Gson();
 
     @Override
-    public AccountDetails deserialize(String serialized) {
+    public AccountDetails deserialize(@NotNull String serialized) {
         if (serialized == null || serialized.isEmpty()) {
             return null;
         }
@@ -15,7 +16,7 @@ public class AccountDetailsValueSerializer implements ValueSerializer<AccountDet
     }
 
     @Override
-    public String serialize(AccountDetails deserialized) {
+    public String serialize(@NotNull AccountDetails deserialized) {
         if (deserialized == null) {
             return null;
         }

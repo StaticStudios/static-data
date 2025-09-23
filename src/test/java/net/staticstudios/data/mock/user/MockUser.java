@@ -6,7 +6,7 @@ import java.util.UUID;
 
 //todo: heres how inheritance should look:
 // if the super class provides a data annotation, ignore it and use the child's annotation. it would be cool tho to allow the super class to use a @data annotation. the former is whats implemented now. if changed, update the processor.
-
+//todo: make default values their own annotation
 @Data(schema = "public", table = "users")
 public class MockUser extends UniqueData {
     //todo: cached values

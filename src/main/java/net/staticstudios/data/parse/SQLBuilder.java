@@ -69,38 +69,53 @@ public class SQLBuilder {
         List<DDLStatement> statements = new ArrayList<>();
         for (SQLSchema schema : schemas) {
             statements.add(DDLStatement.both("CREATE SCHEMA IF NOT EXISTS \"" + schema.getName() + "\";"));
-            StringBuilder sb;
+            StringBuilder h2Sb;
+            StringBuilder pgSb;
             for (SQLTable table : schema.getTables()) {
-                sb = new StringBuilder();
-                sb.append("CREATE TABLE IF NOT EXISTS \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" (\n");
+                h2Sb = new StringBuilder();
+                pgSb = new StringBuilder();
+                h2Sb.append("CREATE TABLE IF NOT EXISTS \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" (\n");
+                pgSb.append("CREATE TABLE IF NOT EXISTS \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" (\n");
                 for (ColumnMetadata idColumn : table.getIdColumns()) {
-                    sb.append(INDENT).append("\"").append(idColumn.name()).append("\" ").append(SQLUtils.getSqlType(idColumn.type())).append(",\n");
+                    h2Sb.append(INDENT).append("\"").append(idColumn.name()).append("\" ").append(SQLUtils.getH2SqlType(idColumn.type())).append(",\n");
+                    pgSb.append(INDENT).append("\"").append(idColumn.name()).append("\" ").append(SQLUtils.getPgSqlType(idColumn.type())).append(" NOT NULL,\n");
                 }
-                sb.append(INDENT).append("PRIMARY KEY (");
+                h2Sb.append(INDENT).append("PRIMARY KEY (");
+                pgSb.append(INDENT).append("PRIMARY KEY (");
                 for (ColumnMetadata idColumn : table.getIdColumns()) {
-                    sb.append("\"").append(idColumn.name()).append("\", ");
+                    h2Sb.append("\"").append(idColumn.name()).append("\", ");
+                    pgSb.append("\"").append(idColumn.name()).append("\", ");
                 }
-                sb.setLength(sb.length() - 2);
-                sb.append(")\n");
-                sb.append(");");
-                statements.add(DDLStatement.both(sb.toString()));
+                h2Sb.setLength(h2Sb.length() - 2);
+                pgSb.setLength(pgSb.length() - 2);
+                h2Sb.append(")\n");
+                pgSb.append(")\n");
+                h2Sb.append(");");
+                pgSb.append(");");
+                statements.add(DDLStatement.of(h2Sb.toString(), pgSb.toString()));
                 if (!table.getColumns().isEmpty()) {
                     for (SQLColumn column : table.getColumns()) {
-                        sb = new StringBuilder();
-                        sb.append("ALTER TABLE \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" ").append("ADD COLUMN IF NOT EXISTS ").append("\"").append(column.getName()).append("\" ").append(SQLUtils.getSqlType(column.getType()));
+                        h2Sb = new StringBuilder();
+                        pgSb = new StringBuilder();
+                        h2Sb.append("ALTER TABLE \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" ").append("ADD COLUMN IF NOT EXISTS ").append("\"").append(column.getName()).append("\" ").append(SQLUtils.getH2SqlType(column.getType()));
+                        pgSb.append("ALTER TABLE \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" ").append("ADD COLUMN IF NOT EXISTS ").append("\"").append(column.getName()).append("\" ").append(SQLUtils.getPgSqlType(column.getType()));
                         if (!column.isNullable()) {
-                            sb.append(" NOT NULL");
+                            h2Sb.append(" NOT NULL");
+                            pgSb.append(" NOT NULL");
                         }
                         if (column.getDefaultValue() != null) {
-                            sb.append(" DEFAULT ").append(column.getDefaultValue());
+                            h2Sb.append(" DEFAULT ").append(column.getDefaultValue());
+                            pgSb.append(" DEFAULT ").append(column.getDefaultValue());
                         }
 
                         if (column.isUnique()) {
-                            sb.append(" UNIQUE");
+                            h2Sb.append(" UNIQUE");
+                            pgSb.append(" UNIQUE");
                         }
 
-                        sb.append(";");
-                        statements.add(DDLStatement.both(sb.toString()));
+                        h2Sb.append(";");
+                        pgSb.append(";");
+                        statements.add(DDLStatement.of(h2Sb.toString(), pgSb.toString()));
                     }
                 }
             }

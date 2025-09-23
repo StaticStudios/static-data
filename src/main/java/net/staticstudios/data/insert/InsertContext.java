@@ -53,9 +53,9 @@ public class InsertContext { //todo: insert strategy, on a per pv level.
             return this;
         }
 
-        Preconditions.checkArgument(sqlColumn.getType().isInstance(value), "Value type mismatch for name " + column + " in table " + table + " schema " + schema + ". Expected: " + sqlColumn.getType().getName() + ", got: " + Objects.requireNonNull(value).getClass().getName());
+        Preconditions.checkArgument(sqlColumn.getType().isAssignableFrom(dataManager.getSerializedType(value.getClass())), "Value type mismatch for name " + column + " in table " + table + " schema " + schema + ". Expected: " + sqlColumn.getType().getName() + ", got: " + Objects.requireNonNull(value).getClass().getName());
 
-        entries.put(columnMetadata, value);
+        entries.put(columnMetadata, dataManager.serialize(value));
         return this;
     }
 

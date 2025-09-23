@@ -1,7 +1,5 @@
-package net.staticstudios.data;
+package net.staticstudios.data.misc;
 
-import net.staticstudios.data.misc.DataTest;
-import net.staticstudios.data.misc.MockEnvironment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 

@@ -1,5 +1,7 @@
 package net.staticstudios.data;
 
+import org.jetbrains.annotations.NotNull;
+
 /**
  * A serializer for non-primitive types.
  * See {@link net.staticstudios.data.primative.Primitives} for primitive types.
@@ -15,7 +17,7 @@ public interface ValueSerializer<D, S> {
      * @param serialized The serialized object
      * @return The deserialized object
      */
-    D deserialize(S serialized);
+    D deserialize(@NotNull S serialized);
 
     /**
      * Serialize the deserialized object
@@ -23,7 +25,7 @@ public interface ValueSerializer<D, S> {
      * @param deserialized The deserialized object
      * @return The serialized object
      */
-    S serialize(D deserialized);
+    S serialize(@NotNull D deserialized);
 
     /**
      * Get the deserialized type

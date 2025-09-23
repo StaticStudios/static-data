@@ -18,7 +18,7 @@ import java.util.List;
 public interface PersistentValue<T> extends Value<T> {
     //todo: use caffeine to further cache pvs, provided we are using the H2 data accessor. allow us to toggle this on and off when setting up the data manager
 
-    //todo: insert strategy, deletion strategy, update interval, update handling
+    //todo: insert strategy, deletion strategy
 
     static <T> PersistentValue<T> of(UniqueData holder, Class<T> dataType) {
         return new ProxyPersistentValue<>(holder, dataType);

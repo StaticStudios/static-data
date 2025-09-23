@@ -12,7 +12,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @SuppressWarnings("unused")
-public class Primitives { //todo: test each of these in h2 and pg.
+public class Primitives {
     private static final DateTimeFormatter TIMESTAMP_FORMATTER = new DateTimeFormatterBuilder()
             .append(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
             .appendPattern("xxx")
@@ -21,81 +21,63 @@ public class Primitives { //todo: test each of these in h2 and pg.
 
     private static Map<Class<?>, Primitive<?>> primitives;
     public static final Primitive<String> STRING = Primitive.builder(String.class)
+            .h2SQLType("TEXT")
+            .pgSQLType("TEXT")
             .encoder(s -> s)
             .decoder(s -> s)
             .build(Primitives::register);
-    public static final Primitive<Character> CHARACTER = Primitive.builder(Character.class)
-            .encoder(c -> Character.toString(c))
-            .decoder(s -> s.charAt(0))
-            .build(Primitives::register);
-    public static final Primitive<Byte> BYTE = Primitive.builder(Byte.class)
-            .encoder(b -> Byte.toString(b))
-            .decoder(Byte::parseByte)
-            .build(Primitives::register);
-    public static final Primitive<Short> SHORT = Primitive.builder(Short.class)
-            .encoder(s -> Short.toString(s))
-            .decoder(Short::parseShort)
-            .build(Primitives::register);
     public static final Primitive<Integer> INTEGER = Primitive.builder(Integer.class)
+            .h2SQLType("INTEGER")
+            .pgSQLType("INTEGER")
             .encoder(i -> Integer.toString(i))
             .decoder(Integer::parseInt)
             .build(Primitives::register);
     public static final Primitive<Long> LONG = Primitive.builder(Long.class)
+            .h2SQLType("BIGINT")
+            .pgSQLType("BIGINT")
             .encoder(l -> Long.toString(l))
             .decoder(Long::parseLong)
             .build(Primitives::register);
     public static final Primitive<Float> FLOAT = Primitive.builder(Float.class)
+            .h2SQLType("REAL")
+            .pgSQLType("REAL")
             .encoder(f -> Float.toString(f))
             .decoder(Float::parseFloat)
             .build(Primitives::register);
     public static final Primitive<Double> DOUBLE = Primitive.builder(Double.class)
+            .h2SQLType("DOUBLE PRECISION")
+            .pgSQLType("DOUBLE PRECISION")
             .encoder(d -> Double.toString(d))
             .decoder(Double::parseDouble)
             .build(Primitives::register);
     public static final Primitive<Boolean> BOOLEAN = Primitive.builder(Boolean.class)
+            .h2SQLType("BOOLEAN")
+            .pgSQLType("BOOLEAN")
             .encoder(b -> Boolean.toString(b))
             .decoder(Boolean::parseBoolean)
             .build(Primitives::register);
     public static final Primitive<java.util.UUID> UUID = Primitive.builder(java.util.UUID.class)
-            .encoder(uuid -> uuid == null ? null : uuid.toString())
-            .decoder(s -> s == null ? null : java.util.UUID.fromString(s))
+            .h2SQLType("UUID")
+            .pgSQLType("UUID")
+            .encoder(java.util.UUID::toString)
+            .decoder(java.util.UUID::fromString)
             .build(Primitives::register);
     public static final Primitive<Timestamp> TIMESTAMP = Primitive.builder(Timestamp.class)
-            .encoder(timestamp -> {
-                if (timestamp == null) {
-                    return null;
-                }
-
-                return TIMESTAMP_FORMATTER.format(timestamp.toInstant());
-            })
-            .decoder(s -> {
-                if (s == null) {
-                    return null;
-                }
-
-                OffsetDateTime parsedTimestamp = OffsetDateTime.parse(s, TIMESTAMP_FORMATTER);
-                return Timestamp.from(parsedTimestamp.toInstant());
-            })
+            .h2SQLType("TIMESTAMP WITH TIME ZONE")
+            .pgSQLType("TIMESTAMPTZ")
+            .encoder(timestamp -> TIMESTAMP_FORMATTER.format(timestamp.toInstant()))
+            .decoder(s -> Timestamp.from(OffsetDateTime.parse(s, TIMESTAMP_FORMATTER).toInstant()))
             .build(Primitives::register);
     public static final Primitive<byte[]> BYTE_ARRAY = Primitive.builder(byte[].class)
-            .encoder(b -> {
-                if (b == null) {
-                    return null;
-                }
-
-                return PostgresUtils.toHex(b);
-            })
-            .decoder(s -> {
-                if (s == null) {
-                    return null;
-                }
-
-                return PostgresUtils.toBytes(s);
-            })
+            .h2SQLType("BINARY LARGE OBJECT")
+            .pgSQLType("BYTEA")
+            .encoder(PostgresUtils::toHex)
+            .decoder(PostgresUtils::toBytes)
             .build(Primitives::register);
 
-    public static Primitive<?> getPrimitive(Class<?> type) {
-        return primitives.get(type);
+    @SuppressWarnings("unchecked")
+    public static <T> Primitive<T> getPrimitive(Class<T> type) {
+        return (Primitive<T>) primitives.get(type);
     }
 
     public static Object decodePrimitive(Class<?> type, String value) {
@@ -108,16 +90,19 @@ public class Primitives { //todo: test each of these in h2 and pg.
         return primitives.containsKey(type);
     }
 
-    @SuppressWarnings("unchecked")
     public static <T> T decode(Class<T> type, String value) {
-        return (T) getPrimitive(type).decode(value);
+        return getPrimitive(type).decode(value);
     }
 
     public static String encode(Object value) {
         if (value == null) {
             return null;
         }
-        return getPrimitive(value.getClass()).unsafeEncode(value);
+        return encode(value, value.getClass());
+    }
+
+    private static <T> String encode(Object value, Class<T> type) {
+        return getPrimitive(type).encode(type.cast(value));
     }
 
     private static void register(Primitive<?> primitive) {
