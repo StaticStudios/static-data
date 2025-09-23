@@ -8,6 +8,7 @@ import javax.lang.model.element.Modifier;
 import javax.lang.model.element.PackageElement;
 import javax.lang.model.element.TypeElement;
 import java.io.IOException;
+import java.sql.Timestamp;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -97,12 +98,13 @@ public class QueryFactory {
                     makeNotNullClause(builderType, persistentValueMetadata);
                 }
 
-                if (TypeName.FLOAT.box().equals(persistentValueMetadata.genericType()) //todo: support timestampts and dates
+                if (TypeName.FLOAT.box().equals(persistentValueMetadata.genericType())
                         || TypeName.DOUBLE.box().equals(persistentValueMetadata.genericType())
                         || TypeName.LONG.box().equals(persistentValueMetadata.genericType())
                         || TypeName.SHORT.box().equals(persistentValueMetadata.genericType())
                         || TypeName.BYTE.box().equals(persistentValueMetadata.genericType())
                         || TypeName.INT.box().equals(persistentValueMetadata.genericType())
+                        || TypeName.get(Timestamp.class).equals(persistentValueMetadata.genericType())
                 ) {
                     makeLessThanClause(builderType, persistentValueMetadata);
                     makeLessThanOrEqualToClause(builderType, persistentValueMetadata);
