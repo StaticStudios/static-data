@@ -43,7 +43,7 @@ public class SQLDeleteStrategyTrigger implements SQLTrigger {
 
 
             String action = "DELETE FROM \"" + targetSchema + "\".\"" + targetTable + "\" WHERE " +
-                    String.join(" AND ", links.stream().map(link -> String.format("%s = OLD.%s", link.columnInReferencedTable(), link.columnInReferringTable())).toList()) + ";";
+                    String.join(" AND ", links.stream().map(link -> String.format("\"%s\" = OLD.\"%s\"", link.columnInReferencedTable(), link.columnInReferringTable())).toList()) + ";";
 
             return String.format(createTriggerFunction,
                     parentSchema, parentTable, targetSchema, targetTable,
