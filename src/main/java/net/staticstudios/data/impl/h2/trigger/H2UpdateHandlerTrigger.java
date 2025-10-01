@@ -1,4 +1,4 @@
-package net.staticstudios.data.impl.h2;
+package net.staticstudios.data.impl.h2.trigger;
 
 import net.staticstudios.data.DataManager;
 import org.h2.api.Trigger;
@@ -12,9 +12,9 @@ import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class H2Trigger implements Trigger {
+public class H2UpdateHandlerTrigger implements Trigger {
     private static final Map<UUID, DataManager> dataManagerMap = new ConcurrentHashMap<>();
-    private final Logger logger = LoggerFactory.getLogger(H2Trigger.class);
+    private final Logger logger = LoggerFactory.getLogger(H2UpdateHandlerTrigger.class);
     private final List<String> columnNames = new ArrayList<>();
     private DataManager dataManager;
     private String schema;
@@ -90,6 +90,6 @@ public class H2Trigger implements Trigger {
     }
 
     private void handleDelete(Object[] oldRow) {
-        dataManager.delete(columnNames, schema, table, oldRow);
+        dataManager.handleDelete(columnNames, schema, table, oldRow);
     }
 }

@@ -12,56 +12,38 @@ import java.util.*;
 public class PersistentValueImpl<T> implements PersistentValue<T> {
     private final UniqueData holder;
     private final Class<T> dataType;
-    private final String schema;
-    private final String table;
-    private final String column;
-    private final int updateInterval;
-    private final List<ForeignKey.Link> idColumnLinks;
+    private final PersistentValueMetadata metadata;
 
-    private PersistentValueImpl(UniqueData holder, Class<T> dataType, String schema, String table, String column, int updateInterval, List<ForeignKey.Link> idColumnLinks) {
+    private PersistentValueImpl(UniqueData holder, Class<T> dataType, PersistentValueMetadata metadata) {
         this.holder = holder;
         this.dataType = dataType;
-        this.schema = schema;
-        this.table = table;
-        this.column = column;
-        this.updateInterval = updateInterval;
-        this.idColumnLinks = idColumnLinks;
+        this.metadata = metadata;
     }
 
     public static <T> void createAndDelegate(ProxyPersistentValue<T> proxy, PersistentValueMetadata metadata) {
-        ColumnMetadata columnMetadata = metadata.getColumnMetadata();
         PersistentValueImpl<T> delegate = new PersistentValueImpl<>(
                 proxy.getHolder(),
                 proxy.getDataType(),
-                columnMetadata.schema(),
-                columnMetadata.table(),
-                columnMetadata.name(),
-                metadata.getUpdateInterval(),
-                Collections.emptyList()
+                metadata
         );
 
         proxy.setDelegate(metadata, delegate);
     }
 
-    public static <T> PersistentValueImpl<T> create(UniqueData holder, Class<T> dataType, String schema, String table, String column, int updateInterval, List<ForeignKey.Link> idColumnLinks) {
-        return new PersistentValueImpl<>(holder, dataType, schema, table, column, updateInterval, idColumnLinks);
+    public static <T> PersistentValueImpl<T> create(UniqueData holder, Class<T> dataType, PersistentValueMetadata metadata) {
+        return new PersistentValueImpl<>(holder, dataType, metadata);
     }
 
     public static <T extends UniqueData> void delegate(T instance) {
         UniqueDataMetadata metadata = instance.getDataManager().getMetadata(instance.getClass());
         for (FieldInstancePair<@Nullable PersistentValue> pair : ReflectionUtils.getFieldInstancePairs(instance, PersistentValue.class)) {
             PersistentValueMetadata pvMetadata = metadata.persistentValueMetadata().get(pair.field());
-            ColumnMetadata columnMetadata = pvMetadata.getColumnMetadata();
             if (pair.instance() instanceof PersistentValue.ProxyPersistentValue<?> proxyPv) {
                 PersistentValueImpl.createAndDelegate(proxyPv, pvMetadata);
             } else {
                 pair.field().setAccessible(true);
                 try {
-                    List<ForeignKey.Link> idColumnLinks = Collections.emptyList();
-                    if (pvMetadata instanceof ForeignPersistentValueMetadata foreignPvMetadata) {
-                        idColumnLinks = foreignPvMetadata.getLinks();
-                    }
-                    pair.field().set(instance, PersistentValueImpl.create(instance, ReflectionUtils.getGenericType(pair.field()), columnMetadata.schema(), columnMetadata.table(), columnMetadata.name(), pvMetadata.getUpdateInterval(), idColumnLinks));
+                    pair.field().set(instance, PersistentValueImpl.create(instance, ReflectionUtils.getGenericType(pair.field()), pvMetadata));
                 } catch (IllegalAccessException e) {
                     throw new RuntimeException(e);
                 }
@@ -72,63 +54,66 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
     public static <T extends UniqueData> Map<Field, PersistentValueMetadata> extractMetadata(String schema, String table, Class<T> clazz) {
         Map<Field, PersistentValueMetadata> metadataMap = new HashMap<>();
         for (Field field : ReflectionUtils.getFields(clazz, PersistentValue.class)) {
-            IdColumn idColumn = field.getAnnotation(IdColumn.class);
-            Column columnAnnotation = field.getAnnotation(Column.class);
-            ForeignColumn foreignColumn = field.getAnnotation(ForeignColumn.class);
-            UpdateInterval updateIntervalAnnotation = field.getAnnotation(UpdateInterval.class);
-            int updateInterval = updateIntervalAnnotation != null ? updateIntervalAnnotation.value() : 0;
-            if (idColumn != null) {
-                Preconditions.checkArgument(columnAnnotation == null, "PersistentValue field %s cannot be annotated with both @IdColumn and @Column", field.getName());
-                Preconditions.checkArgument(foreignColumn == null, "PersistentValue field %s cannot be annotated with both @IdColumn and @ForeignColumn", field.getName());
-                ColumnMetadata columnMetadata = new ColumnMetadata(
-                        schema,
-                        table,
-                        ValueUtils.parseValue(idColumn.name()),
-                        ReflectionUtils.getGenericType(field),
-                        false,
-                        false,
-                        ""
-                );
-                metadataMap.put(field, new PersistentValueMetadata(clazz, columnMetadata, updateInterval));
-                continue;
-            }
-            if (columnAnnotation != null) {
-                ColumnMetadata columnMetadata = new ColumnMetadata(
-                        columnAnnotation.schema().isEmpty() ? schema : ValueUtils.parseValue(columnAnnotation.schema()),
-                        columnAnnotation.table().isEmpty() ? table : ValueUtils.parseValue(columnAnnotation.table()),
-                        ValueUtils.parseValue(columnAnnotation.name()),
-                        ReflectionUtils.getGenericType(field),
-                        columnAnnotation.nullable(),
-                        columnAnnotation.index(),
-                        columnAnnotation.defaultValue()
-                );
-                metadataMap.put(field, new PersistentValueMetadata(clazz, columnMetadata, updateInterval));
-                continue;
-            }
-            if (foreignColumn != null) {
-                ColumnMetadata columnMetadata = new ColumnMetadata(
-                        foreignColumn.schema().isEmpty() ? schema : ValueUtils.parseValue(foreignColumn.schema()),
-                        foreignColumn.table().isEmpty() ? table : ValueUtils.parseValue(foreignColumn.table()),
-                        ValueUtils.parseValue(foreignColumn.name()),
-                        ReflectionUtils.getGenericType(field),
-                        foreignColumn.nullable(),
-                        foreignColumn.index(),
-                        foreignColumn.defaultValue()
-                );
-                List<ForeignKey.Link> idColumnLinks = new LinkedList<>();
-                List<String> links = StringUtils.parseCommaSeperatedList(foreignColumn.link());
-                for (String link : links) {
-                    String[] parts = link.split("=");
-                    Preconditions.checkArgument(parts.length == 2, "ForeignColumn link must be in the format localColumn=foreignColumn, got: %s", link);
-                    idColumnLinks.add(new ForeignKey.Link(ValueUtils.parseValue(parts[1]), ValueUtils.parseValue(parts[0])));
-                }
-                metadataMap.put(field, new ForeignPersistentValueMetadata(clazz, columnMetadata, updateInterval, idColumnLinks));
-                continue;
-            }
-
-            throw new IllegalStateException("PersistentValue field %s is missing @Column annotation".formatted(field.getName()));
+            metadataMap.put(field, extractMetadata(schema, table, clazz, field));
         }
         return metadataMap;
+    }
+
+    public static <T extends UniqueData> PersistentValueMetadata extractMetadata(String schema, String table, Class<T> clazz, Field field) {
+        IdColumn idColumn = field.getAnnotation(IdColumn.class);
+        Column columnAnnotation = field.getAnnotation(Column.class);
+        ForeignColumn foreignColumn = field.getAnnotation(ForeignColumn.class);
+        UpdateInterval updateIntervalAnnotation = field.getAnnotation(UpdateInterval.class);
+        DefaultValue defaultValueAnnotation = field.getAnnotation(DefaultValue.class);
+        String defaultValue = defaultValueAnnotation != null ? defaultValueAnnotation.value() : "";
+        int updateInterval = updateIntervalAnnotation != null ? updateIntervalAnnotation.value() : 0;
+        if (idColumn != null) {
+            Preconditions.checkArgument(columnAnnotation == null, "PersistentValue field %s cannot be annotated with both @IdColumn and @Column", field.getName());
+            Preconditions.checkArgument(foreignColumn == null, "PersistentValue field %s cannot be annotated with both @IdColumn and @ForeignColumn", field.getName());
+            ColumnMetadata columnMetadata = new ColumnMetadata(
+                    schema,
+                    table,
+                    ValueUtils.parseValue(idColumn.name()),
+                    ReflectionUtils.getGenericType(field),
+                    false,
+                    false,
+                    ""
+            );
+            return new PersistentValueMetadata(clazz, columnMetadata, updateInterval);
+        }
+        if (columnAnnotation != null) {
+            ColumnMetadata columnMetadata = new ColumnMetadata(
+                    columnAnnotation.schema().isEmpty() ? schema : ValueUtils.parseValue(columnAnnotation.schema()),
+                    columnAnnotation.table().isEmpty() ? table : ValueUtils.parseValue(columnAnnotation.table()),
+                    ValueUtils.parseValue(columnAnnotation.name()),
+                    ReflectionUtils.getGenericType(field),
+                    columnAnnotation.nullable(),
+                    columnAnnotation.index(),
+                    defaultValue
+            );
+            return new PersistentValueMetadata(clazz, columnMetadata, updateInterval);
+        }
+        if (foreignColumn != null) {
+            ColumnMetadata columnMetadata = new ColumnMetadata(
+                    foreignColumn.schema().isEmpty() ? schema : ValueUtils.parseValue(foreignColumn.schema()),
+                    foreignColumn.table().isEmpty() ? table : ValueUtils.parseValue(foreignColumn.table()),
+                    ValueUtils.parseValue(foreignColumn.name()),
+                    ReflectionUtils.getGenericType(field),
+                    foreignColumn.nullable(),
+                    foreignColumn.index(),
+                    defaultValue
+            );
+            List<ForeignKey.Link> idColumnLinks = new LinkedList<>();
+            List<String> links = StringUtils.parseCommaSeperatedList(foreignColumn.link());
+            for (String link : links) {
+                String[] parts = link.split("=");
+                Preconditions.checkArgument(parts.length == 2, "ForeignColumn link must be in the format localColumn=foreignColumn, got: %s", link);
+                idColumnLinks.add(new ForeignKey.Link(ValueUtils.parseValue(parts[1]), ValueUtils.parseValue(parts[0])));
+            }
+            return new ForeignPersistentValueMetadata(clazz, columnMetadata, updateInterval, idColumnLinks);
+        }
+
+        throw new IllegalStateException("PersistentValue field %s is missing @Column annotation".formatted(field.getName()));
     }
 
     @Override
@@ -149,12 +134,19 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
     @Override
     public T get() {
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot get value from a deleted UniqueData instance");
-        return holder.getDataManager().get(schema, table, column, holder.getIdColumns(), idColumnLinks, dataType);
+        return holder.getDataManager().get(metadata.getSchema(), metadata.getTable(), metadata.getColumn(), holder.getIdColumns(), getIdColumnLinks(), dataType);
     }
 
     @Override
     public void set(T value) {
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot set value on a deleted UniqueData instance");
-        holder.getDataManager().set(schema, table, column, holder.getIdColumns(), idColumnLinks, value, updateInterval);
+        holder.getDataManager().set(metadata.getSchema(), metadata.getTable(), metadata.getColumn(), holder.getIdColumns(), getIdColumnLinks(), value, metadata.getUpdateInterval());
+    }
+
+    private List<ForeignKey.Link> getIdColumnLinks() {
+        if (metadata instanceof ForeignPersistentValueMetadata foreignMetadata) {
+            return foreignMetadata.getLinks();
+        }
+        return Collections.emptyList();
     }
 }

@@ -16,8 +16,4 @@ public @interface OneToOne {
      * @return The link format
      */
     String link();
-
-    DeleteStrategy deleteStrategy() default DeleteStrategy.NO_ACTION;
-
-    UpdateStrategy updateStrategy() default UpdateStrategy.CASCADE;
 }

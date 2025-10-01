@@ -1,9 +1,14 @@
 package net.staticstudios.data;
 
+import com.google.common.base.Preconditions;
 import net.staticstudios.data.util.ColumnValuePair;
 import net.staticstudios.data.util.ColumnValuePairs;
 import net.staticstudios.data.util.UniqueDataMetadata;
 import org.jetbrains.annotations.ApiStatus;
+
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
 
 public abstract class UniqueData {
     private ColumnValuePairs idColumns;
@@ -38,6 +43,25 @@ public abstract class UniqueData {
 
     public final UniqueDataMetadata getMetadata() {
         return dataManager.getMetadata(this.getClass());
+    }
+
+    public synchronized void delete() {
+        Preconditions.checkState(!isDeleted, "This object has already been deleted!");
+        UniqueDataMetadata metadata = getMetadata();
+
+        StringBuilder sql = new StringBuilder("DELETE FROM \"" + metadata.schema() + "\".\"" + metadata.table() + "\" WHERE ");
+        List<Object> values = new ArrayList<>();
+        for (ColumnValuePair idColumn : idColumns) {
+            sql.append("\"").append(idColumn.column()).append("\" = ? AND ");
+            values.add(idColumn.value());
+        }
+        sql.setLength(sql.length() - 5);
+
+        try {
+            dataManager.getDataAccessor().executeUpdate(sql.toString(), values, 0);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override

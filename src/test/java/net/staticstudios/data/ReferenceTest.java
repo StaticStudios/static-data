@@ -8,6 +8,10 @@ import net.staticstudios.data.mock.user.MockUserSettings;
 import net.staticstudios.data.mock.user.MockUserSettingsFactory;
 import org.junit.jupiter.api.Test;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -112,4 +116,56 @@ public class ReferenceTest extends DataTest {
         assertSame(settings2, user.settings.get());
         assertEquals(settings2.id.get(), user.settingsId.get());
     }
+
+    @Test
+    public void testDeleteStrategyCascade() throws SQLException {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        Connection h2Connection = getH2Connection(dataManager);
+        Connection pgConnection = getConnection();
+        UUID id = UUID.randomUUID();
+        MockUserSettings settings = MockUserSettingsFactory.builder(dataManager)
+                .id(id)
+                .insert(InsertMode.SYNC);
+
+        MockUser user = MockUserFactory.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("test user")
+                .settingsId(settings.id.get())
+                .insert(InsertMode.SYNC);
+        assertSame(settings, user.settings.get());
+
+        try (PreparedStatement preparedStatement = h2Connection.prepareStatement("SELECT \"user_id\" FROM \"public\".\"user_settings\" WHERE \"user_id\" = ?")) {
+            preparedStatement.setObject(1, id);
+            ResultSet rs = preparedStatement.executeQuery();
+            assertTrue(rs.next());
+        }
+
+        waitForDataPropagation();
+
+        try (PreparedStatement preparedStatement = pgConnection.prepareStatement("SELECT user_id FROM public.user_settings WHERE user_id = ?")) {
+            preparedStatement.setObject(1, id);
+            ResultSet rs = preparedStatement.executeQuery();
+            assertTrue(rs.next());
+        }
+
+        user.delete();
+        assertTrue(user.isDeleted());
+        assertTrue(settings.isDeleted());
+
+        try (PreparedStatement preparedStatement = h2Connection.prepareStatement("SELECT \"user_id\" FROM \"public\".\"user_settings\" WHERE \"user_id\" = ?")) {
+            preparedStatement.setObject(1, id);
+            ResultSet rs = preparedStatement.executeQuery();
+            assertFalse(rs.next());
+        }
+
+        waitForDataPropagation();
+
+        try (PreparedStatement preparedStatement = pgConnection.prepareStatement("SELECT user_id FROM public.user_settings WHERE user_id = ?")) {
+            preparedStatement.setObject(1, id);
+            ResultSet rs = preparedStatement.executeQuery();
+            assertFalse(rs.next());
+        }
+    }
+
 }

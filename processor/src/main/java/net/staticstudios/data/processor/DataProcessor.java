@@ -2,6 +2,7 @@ package net.staticstudios.data.processor;
 
 import com.palantir.javapoet.*;
 import net.staticstudios.data.Data;
+import net.staticstudios.data.InsertStrategy;
 
 import javax.annotation.processing.AbstractProcessor;
 import javax.annotation.processing.RoundEnvironment;
@@ -91,18 +92,24 @@ public class DataProcessor extends AbstractProcessor { //todo: this seems to be 
 
                 if (persistentValueMetadata instanceof ForeignPersistentValueMetadata foreignPersistentValueMetadata) {
                     insertCtxMethod.beginControlFlow("if (this.$N != null)", persistentValueMetadata.fieldName());
+                    insertCtxMethod.addStatement("ctx.set($N, $N, $N, this.$N, $T.$L)",
+                            statics.schemaFieldName(),
+                            statics.tableFieldName(),
+                            statics.columnFieldName(),
+                            persistentValueMetadata.fieldName(),
+                            InsertStrategy.class,
+                            foreignPersistentValueMetadata.insertStrategy());
+                } else {
+                    insertCtxMethod.addStatement("ctx.set($N, $N, $N, this.$N, null)",
+                            statics.schemaFieldName(),
+                            statics.tableFieldName(),
+                            statics.columnFieldName(),
+                            persistentValueMetadata.fieldName());
                 }
-
-                insertCtxMethod.addStatement("ctx.set($N, $N, $N, this.$N)",
-                        statics.schemaFieldName(),
-                        statics.tableFieldName(),
-                        statics.columnFieldName(),
-                        persistentValueMetadata.fieldName());
-
 
                 if (persistentValueMetadata instanceof ForeignPersistentValueMetadata foreignPersistentValueMetadata) {
                     for (ForeignLink link : MetadataUtils.makeFPVStatics(builderType, foreignPersistentValueMetadata, metadataList, dataAnnotation, statics)) {
-                        insertCtxMethod.addStatement("ctx.set($N, $N, $N, this.$N)",
+                        insertCtxMethod.addStatement("ctx.set($N, $N, $N, this.$N, null)",
                                 statics.schemaFieldName(),
                                 statics.tableFieldName(),
                                 link.foreignColumnFieldName(),

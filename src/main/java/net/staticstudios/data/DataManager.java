@@ -219,7 +219,7 @@ public class DataManager {
     }
 
     @ApiStatus.Internal
-    public void delete(List<String> columnNames, String schema, String table, Object[] values) {
+    public void handleDelete(List<String> columnNames, String schema, String table, Object[] values) {
         uniqueDataMetadataMap.values().forEach(uniqueDataMetadata -> {
             if (!uniqueDataMetadata.schema().equals(schema) || !uniqueDataMetadata.table().equals(table)) {
                 return;
@@ -448,20 +448,20 @@ public class DataManager {
 
         // handle foreign keys. for each foreign key, if we have a value for the local column, we need to set the value for the foreign column. this consists of linking ids mostly.
         for (SQLTable table : tables) {
-            for (ForeignKey fKey : table.getForeignKeysThatReferenceThisTable()) {
-                SQLSchema otherSchema = Objects.requireNonNull(sqlBuilder.getSchema(fKey.getSchema()));
-                SQLTable otherTable = Objects.requireNonNull(otherSchema.getTable(fKey.getTable()));
+            for (ForeignKey fKey : table.getForeignKeys()) {
+                SQLSchema referencedSchema = Objects.requireNonNull(sqlBuilder.getSchema(fKey.getReferencedSchema()));
+                SQLTable referencedTable = Objects.requireNonNull(referencedSchema.getTable(fKey.getReferencedTable()));
                 for (ForeignKey.Link link : fKey.getLinkingColumns()) {
-                    String myColumnName = link.columnInReferencedTable();
-                    String otherColumnName = link.columnInReferringTable();
-                    SQLColumn otherColumn = Objects.requireNonNull(otherTable.getColumn(otherColumnName));
+                    String myColumnName = link.columnInReferringTable();
+                    String otherColumnName = link.columnInReferencedTable();
+                    SQLColumn otherColumn = Objects.requireNonNull(referencedTable.getColumn(otherColumnName));
 
                     // if its nullable and we don't have a value, skip it.
                     if (otherColumn.isNullable()) {
                         continue;
                     }
 
-                    insertContext.set(fKey.getSchema(), fKey.getTable(), otherColumn.getName(), insertContext.getEntries().get(new SimpleColumnMetadata(table.getSchema().getName(), table.getName(), myColumnName, otherColumn.getType())));
+                    insertContext.set(fKey.getReferencedSchema(), fKey.getReferencedTable(), otherColumn.getName(), insertContext.getEntries().get(new SimpleColumnMetadata(fKey.getReferringSchema(), fKey.getReferringTable(), myColumnName, otherColumn.getType())), InsertStrategy.PREFER_EXISTING);
                 }
             }
         }
@@ -472,15 +472,13 @@ public class DataManager {
             tables.add(table);
         });
 
-        //sort tables based on foreign key dependencies. tables who are depended on should come last
-
         // Build dependency graph: table -> set of tables it depends on
         Map<String, Set<SQLTable>> dependencyGraph = new HashMap<>();
         for (SQLTable table : tables) {
             Set<SQLTable> dependsOn = new HashSet<>();
-            for (ForeignKey fKey : table.getForeignKeysThatReferenceThisTable()) {
-                SQLSchema otherSchema = Objects.requireNonNull(sqlBuilder.getSchema(fKey.getSchema()));
-                SQLTable otherTable = Objects.requireNonNull(otherSchema.getTable(fKey.getTable()));
+            for (ForeignKey fKey : table.getForeignKeys()) {
+                SQLSchema referencedSchema = Objects.requireNonNull(sqlBuilder.getSchema(fKey.getReferencedSchema()));
+                SQLTable referencedTable = Objects.requireNonNull(referencedSchema.getTable(fKey.getReferencedTable()));
 
                 boolean addDependency = true;
                 // if one of the linking columns is not present in the insert context, we can't add the dependency
@@ -488,9 +486,9 @@ public class DataManager {
                     Object value = insertContext.getEntries().entrySet().stream()
                             .filter(entry -> {
                                 SimpleColumnMetadata key = entry.getKey();
-                                return key.schema().equals(fKey.getSchema()) &&
-                                        key.table().equals(fKey.getTable()) &&
-                                        key.name().equals(link.columnInReferringTable());
+                                return key.schema().equals(fKey.getReferencedSchema()) &&
+                                        key.table().equals(fKey.getReferencedTable()) &&
+                                        key.name().equals(link.columnInReferencedTable());
                             })
                             .findFirst()
                             .orElse(null);
@@ -502,7 +500,7 @@ public class DataManager {
                 }
 
                 if (addDependency) {
-                    dependsOn.add(otherTable);
+                    dependsOn.add(referencedTable);
                 }
             }
             if (!dependsOn.isEmpty()) {
@@ -525,7 +523,6 @@ public class DataManager {
         for (SQLTable table : tables) {
             topoSort(table, dependencyGraph, visited, orderedTables);
         }
-        Collections.reverse(orderedTables);
 
         List<SQlStatement> sqlStatements = new ArrayList<>();
 
@@ -542,25 +539,89 @@ public class DataManager {
             List<SimpleColumnMetadata> columnsInTable = columnsToInsert.get(tableName);
 
 
-            StringBuilder sqlBuilder = new StringBuilder("INSERT INTO \"");
-            sqlBuilder.append(schemaName).append("\".\"").append(tableName).append("\" (");
+            StringBuilder h2SqlBuilder = new StringBuilder("MERGE INTO \"");
+            h2SqlBuilder.append(schemaName).append("\".\"").append(tableName).append("\" AS target USING (VALUES (");
+            Map<SimpleColumnMetadata, InsertStrategy> conflicts = new HashMap<>();
+            h2SqlBuilder.append("?, ".repeat(columnsInTable.size()));
+            h2SqlBuilder.setLength(h2SqlBuilder.length() - 2);
+            h2SqlBuilder.append(")) AS source (");
             for (SimpleColumnMetadata column : columnsInTable) {
-                sqlBuilder.append("\"").append(column.name()).append("\", ");
+                h2SqlBuilder.append("\"").append(column.name()).append("\", ");
+                InsertStrategy strategy = insertContext.getInsertStrategies().get(column);
+                if (strategy != null) {
+                    conflicts.put(column, strategy);
+                }
             }
-            sqlBuilder.setLength(sqlBuilder.length() - 2);
-            sqlBuilder.append(") VALUES (");
-            sqlBuilder.append("?, ".repeat(columnsInTable.size()));
-            sqlBuilder.setLength(sqlBuilder.length() - 2);
-            sqlBuilder.append(")");
+            h2SqlBuilder.setLength(h2SqlBuilder.length() - 2);
+            h2SqlBuilder.append(") ON ");
+            for (ColumnMetadata idColumn : table.getIdColumns()) {
+                h2SqlBuilder.append("target.\"").append(idColumn.name()).append("\" = source.\"").append(idColumn.name()).append("\" AND ");
+            }
+            h2SqlBuilder.setLength(h2SqlBuilder.length() - 5);
+            h2SqlBuilder.append(" WHEN NOT MATCHED THEN INSERT (");
+            for (SimpleColumnMetadata column : columnsInTable) {
+                h2SqlBuilder.append("\"").append(column.name()).append("\", ");
+            }
+            h2SqlBuilder.setLength(h2SqlBuilder.length() - 2);
+            h2SqlBuilder.append(") VALUES (");
+            for (SimpleColumnMetadata column : columnsInTable) {
+                h2SqlBuilder.append("source.\"").append(column.name()).append("\", ");
+            }
+            h2SqlBuilder.setLength(h2SqlBuilder.length() - 2);
+            h2SqlBuilder.append(")");
 
-            String sql = sqlBuilder.toString();
+            List<SimpleColumnMetadata> overwriteExisting = new ArrayList<>();
+            for (Map.Entry<SimpleColumnMetadata, InsertStrategy> entry : conflicts.entrySet()) {
+                if (entry.getValue() == InsertStrategy.OVERWRITE_EXISTING) {
+                    overwriteExisting.add(entry.getKey());
+                }
+            }
+            if (!overwriteExisting.isEmpty()) {
+                h2SqlBuilder.append(" WHEN MATCHED THEN UPDATE SET ");
+                for (SimpleColumnMetadata column : overwriteExisting) {
+                    h2SqlBuilder.append("\"").append(column.name()).append("\" = source.\"").append(column.name()).append("\", ");
+                }
+                h2SqlBuilder.setLength(h2SqlBuilder.length() - 2);
+            }
+
+            StringBuilder pgSqlBuilder = new StringBuilder("INSERT INTO \"");
+            pgSqlBuilder.append(schemaName).append("\".\"").append(tableName).append("\" (");
+            for (SimpleColumnMetadata column : columnsInTable) {
+                pgSqlBuilder.append("\"").append(column.name()).append("\", ");
+            }
+            pgSqlBuilder.setLength(pgSqlBuilder.length() - 2);
+            pgSqlBuilder.append(") VALUES (");
+            pgSqlBuilder.append("?, ".repeat(columnsInTable.size()));
+            pgSqlBuilder.setLength(pgSqlBuilder.length() - 2);
+            pgSqlBuilder.append(")");
+
+            if (!conflicts.isEmpty()) {
+                pgSqlBuilder.append(" ON CONFLICT (");
+                for (ColumnMetadata idColumn : table.getIdColumns()) {
+                    pgSqlBuilder.append("\"").append(idColumn.name()).append("\", ");
+                }
+                pgSqlBuilder.setLength(pgSqlBuilder.length() - 2);
+                pgSqlBuilder.append(") DO ");
+                if (!overwriteExisting.isEmpty()) {
+                    pgSqlBuilder.append("UPDATE SET ");
+                    for (SimpleColumnMetadata column : overwriteExisting) {
+                        pgSqlBuilder.append("\"").append(column.name()).append("\" = EXCLUDED.\"").append(column.name()).append("\", ");
+                    }
+                    pgSqlBuilder.setLength(pgSqlBuilder.length() - 2);
+                } else {
+                    pgSqlBuilder.append("NOTHING");
+                }
+            }
+
+            String h2Sql = h2SqlBuilder.toString();
+            String pgSql = pgSqlBuilder.toString();
             List<Object> values = new ArrayList<>();
             for (SimpleColumnMetadata column : columnsInTable) {
                 Object deserializedValue = insertContext.getEntries().get(column);
                 Object serializedValue = serialize(deserializedValue);
                 values.add(serializedValue);
             }
-            sqlStatements.add(new SQlStatement(sql, values));
+            sqlStatements.add(new SQlStatement(h2Sql, pgSql, values));
         }
 
         try {
@@ -605,12 +666,6 @@ public class DataManager {
             sqlBuilder = new StringBuilder().append("UPDATE \"").append(schema).append("\".\"").append(table).append("\" SET \"").append(column).append("\" = ? WHERE ");
             for (ColumnValuePair columnValuePair : idColumns) {
                 String name = columnValuePair.column();
-                for (ForeignKey.Link link : idColumnLinks) {
-                    if (link.columnInReferringTable().equals(columnValuePair.column())) {
-                        name = link.columnInReferencedTable();
-                        break;
-                    }
-                }
                 sqlBuilder.append("\"").append(name).append("\" = ? AND ");
             }
             sqlBuilder.setLength(sqlBuilder.length() - 5);

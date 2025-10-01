@@ -14,8 +14,10 @@ public class MockPost extends UniqueData {
 
     @Column(name = "text_content", index = true)
     public PersistentValue<String> textContent;
-    @Column(name = "likes", defaultValue = "0")
+    @DefaultValue("0")
+    @Column(name = "likes")
     public PersistentValue<Integer> likes;
-    @ForeignColumn(name = "interactions", table = "${POST_TABLE}_interactions", link = "${POST_ID_COLUMN}=post_id", defaultValue = "0")
+    @DefaultValue("0")
+    @ForeignColumn(name = "interactions", table = "${POST_TABLE}_interactions", link = "${POST_ID_COLUMN}=post_id")
     public PersistentValue<Integer> interactions;
 }

@@ -93,12 +93,14 @@ public class SQLParseTest extends DataTest {
                 ALTER TABLE ONLY social_media.posts
                     ADD CONSTRAINT posts_pkey PRIMARY KEY (post_id);
                 CREATE INDEX idx_social_media_posts_text_content ON social_media.posts USING btree (text_content);
-                ALTER TABLE ONLY social_media.posts_interactions
-                    ADD CONSTRAINT fk_social_media_posts_interactions_post_id_to_posts_post_id FOREIGN KEY (post_id) REFERENCES social_media.posts(post_id) ON UPDATE CASCADE ON DELETE CASCADE;
                 ALTER TABLE ONLY social_media.posts
-                    ADD CONSTRAINT fk_social_media_posts_post_id_to_posts_metadata_metadata_id FOREIGN KEY (post_id) REFERENCES social_media.posts_metadata(metadata_id) ON UPDATE CASCADE;
+                    ADD CONSTRAINT fk_social_media_posts_post_id_to_social_media_posts_interaction FOREIGN KEY (post_id) REFERENCES social_media.posts_interactions(post_id) ON UPDATE CASCADE ON DELETE CASCADE;
+                ALTER TABLE ONLY social_media.posts
+                    ADD CONSTRAINT fk_social_media_posts_post_id_to_social_media_posts_metadata_me FOREIGN KEY (post_id) REFERENCES social_media.posts_metadata(metadata_id) ON UPDATE CASCADE ON DELETE SET NULL;
                 """;
 
         assertEquals(expected.trim(), cleanedDump.toString().trim());
     }
+
+    //todo: when a delete strategy is set to no action where it was previously set to cascade, the old trigger should be dropped. Add a test for this.
 }

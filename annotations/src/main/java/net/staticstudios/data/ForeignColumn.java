@@ -18,11 +18,5 @@ public @interface ForeignColumn {
 
     boolean index() default false;
 
-    String defaultValue() default "";
-
     String link();
-
-    InsertStrategy insertStrategy() default InsertStrategy.OVERWRITE_EXISTING;
-
-    DeleteStrategy deleteStrategy() default DeleteStrategy.NO_ACTION;
 }

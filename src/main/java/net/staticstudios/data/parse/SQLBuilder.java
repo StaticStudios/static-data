@@ -134,17 +134,17 @@ public class SQLBuilder {
         }
 
         // define fkeys after table creation, to ensure all tables exist before adding fkeys
-        for (SQLSchema schema : schemas) {
+        for (SQLSchema schema : schemas) { //todo: what if an fkey's insert/delete strategy has changed?
             for (SQLTable table : schema.getTables()) {
-                for (ForeignKey foreignKey : table.getForeignKeysThatReferenceThisTable()) {
+                for (ForeignKey foreignKey : table.getForeignKeys()) {
                     if (foreignKey == null) {
                         continue;
                     }
-                    String fKeyName = "fk_" + foreignKey.getSchema() + "_" + foreignKey.getTable() + "_"
+                    String fKeyName = "fk_" + foreignKey.getReferringSchema() + "_" + foreignKey.getReferringTable() + "_"
                             + String.join("_", foreignKey.getLinkingColumns().stream().map(ForeignKey.Link::columnInReferringTable).toList())
-                            + "_to_" + table.getName() + "_" + String.join("_", foreignKey.getLinkingColumns().stream().map(ForeignKey.Link::columnInReferencedTable).toList());
+                            + "_to_" + foreignKey.getReferencedSchema() + "_" + foreignKey.getReferencedTable() + "_" + String.join("_", foreignKey.getLinkingColumns().stream().map(ForeignKey.Link::columnInReferencedTable).toList());
                     StringBuilder sb = new StringBuilder();
-                    sb.append("ALTER TABLE \"").append(foreignKey.getSchema()).append("\".\"").append(foreignKey.getTable()).append("\" ");
+                    sb.append("ALTER TABLE \"").append(foreignKey.getReferringSchema()).append("\".\"").append(foreignKey.getReferringTable()).append("\" ");
                     sb.append("ADD CONSTRAINT IF NOT EXISTS ").append(fKeyName).append(" ");
                     sb.append("FOREIGN KEY (");
                     for (ForeignKey.Link link : foreignKey.getLinkingColumns()) {
@@ -152,7 +152,7 @@ public class SQLBuilder {
                     }
                     sb.setLength(sb.length() - 2);
                     sb.append(") ");
-                    sb.append("REFERENCES \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" (");
+                    sb.append("REFERENCES \"").append(foreignKey.getReferencedSchema()).append("\".\"").append(foreignKey.getReferencedTable()).append("\" (");
                     for (ForeignKey.Link link : foreignKey.getLinkingColumns()) {
                         sb.append("\"").append(link.columnInReferencedTable()).append("\", ");
                     }
@@ -163,9 +163,9 @@ public class SQLBuilder {
 
                     sb = new StringBuilder();
                     sb.append("DO $$ BEGIN ");
-                    sb.append("IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = '").append(fKeyName).append("' AND table_name = '").append(foreignKey.getTable()).append("' AND constraint_schema = '").append(foreignKey.getSchema()).append("' AND constraint_type = 'FOREIGN KEY') THEN ");
+                    sb.append("IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = '").append(fKeyName).append("' AND table_name = '").append(foreignKey.getReferringTable()).append("' AND constraint_schema = '").append(foreignKey.getReferringSchema()).append("' AND constraint_type = 'FOREIGN KEY') THEN ");
 
-                    sb.append("ALTER TABLE \"").append(foreignKey.getSchema()).append("\".\"").append(foreignKey.getTable()).append("\" ");
+                    sb.append("ALTER TABLE \"").append(foreignKey.getReferringSchema()).append("\".\"").append(foreignKey.getReferringTable()).append("\" ");
                     sb.append("ADD CONSTRAINT ").append(fKeyName).append(" ");
                     sb.append("FOREIGN KEY (");
                     for (ForeignKey.Link link : foreignKey.getLinkingColumns()) {
@@ -173,7 +173,7 @@ public class SQLBuilder {
                     }
                     sb.setLength(sb.length() - 2);
                     sb.append(") ");
-                    sb.append("REFERENCES \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" (");
+                    sb.append("REFERENCES \"").append(foreignKey.getReferencedSchema()).append("\".\"").append(foreignKey.getReferencedTable()).append("\" (");
                     for (ForeignKey.Link link : foreignKey.getLinkingColumns()) {
                         sb.append("\"").append(link.columnInReferencedTable()).append("\", ");
                     }
@@ -182,6 +182,13 @@ public class SQLBuilder {
                     sb.append(" END IF; END $$;");
                     String pg = sb.toString();
                     statements.add(DDLStatement.of(h2, pg));
+                }
+            }
+        }
+        for (SQLSchema schema : schemas) {
+            for (SQLTable table : schema.getTables()) {
+                for (SQLTrigger trigger : table.getTriggers()) {
+                    statements.add(DDLStatement.of(trigger.getH2SQL(), trigger.getPgSQL()));
                 }
             }
         }
@@ -250,6 +257,7 @@ public class SQLBuilder {
         IdColumn idColumn = field.getAnnotation(IdColumn.class);
         Column columnAnnotation = field.getAnnotation(Column.class);
         ForeignColumn foreignColumn = field.getAnnotation(ForeignColumn.class);
+        DefaultValue defaultValueAnnotation = field.getAnnotation(DefaultValue.class);
 
         int annotationsCount = 0;
         if (idColumn != null) annotationsCount++;
@@ -263,7 +271,7 @@ public class SQLBuilder {
         boolean nullable;
         boolean indexed;
         boolean unique;
-        String defaultValue;
+        String defaultValue = defaultValueAnnotation != null ? ValueUtils.parseValue(defaultValueAnnotation.value()) : "";
         if (idColumn != null) {
             schemaName = ValueUtils.parseValue(dataAnnotation.schema());
             tableName = ValueUtils.parseValue(dataAnnotation.table());
@@ -279,7 +287,6 @@ public class SQLBuilder {
             nullable = columnAnnotation.nullable();
             indexed = columnAnnotation.index();
             unique = columnAnnotation.unique();
-            defaultValue = columnAnnotation.defaultValue();
         } else if (foreignColumn != null) {
             schemaName = ValueUtils.parseValue(foreignColumn.schema());
             tableName = ValueUtils.parseValue(foreignColumn.table());
@@ -287,7 +294,6 @@ public class SQLBuilder {
             nullable = foreignColumn.nullable();
             indexed = foreignColumn.index();
             unique = false;
-            defaultValue = foreignColumn.defaultValue();
         } else {
             return;
         }
@@ -363,22 +369,28 @@ public class SQLBuilder {
                 dataSqlSchema.addTable(dataSqlTable);
             }
 
-            String otherSchema = ValueUtils.parseValue(foreignColumn.schema());
-            if (otherSchema.isEmpty()) {
-                otherSchema = schemaName;
+            String referencedSchema = ValueUtils.parseValue(foreignColumn.schema());
+            if (referencedSchema.isEmpty()) {
+                referencedSchema = schemaName;
             }
-            String otherTable = ValueUtils.parseValue(foreignColumn.table());
-            if (otherTable.isEmpty()) {
-                otherTable = tableName;
+            String referencedTable = ValueUtils.parseValue(foreignColumn.table());
+            if (referencedTable.isEmpty()) {
+                referencedTable = tableName;
             }
 
-            ForeignKey foreignKey = new ForeignKey(otherSchema, otherTable, OnDelete.CASCADE, OnUpdate.CASCADE);
+            Preconditions.checkArgument(!(referencedSchema.equals(dataSchema) && referencedTable.equals(dataTable)), "ForeignColumn field %s in class %s cannot reference its own table", field.getName(), clazz.getName());
+
+            ForeignKey foreignKey = new ForeignKey(dataSchema, dataTable, referencedSchema, referencedTable, OnDelete.CASCADE, OnUpdate.CASCADE);
             try {
                 parseLinks(foreignKey, foreignColumn.link());
             } catch (IllegalArgumentException e) {
                 throw new IllegalArgumentException("Error parsing @ForeignColumn link on field " + field.getName() + " in class " + clazz.getName() + ": " + e.getMessage(), e);
             }
-            dataSqlTable.addForeignKeyThatReferencesThisTable(foreignKey);
+            dataSqlTable.addForeignKey(foreignKey);
+
+            Delete delete = field.getAnnotation(Delete.class);
+            DeleteStrategy deleteStrategy = delete != null ? delete.value() : DeleteStrategy.NO_ACTION;
+            dataSqlTable.addTrigger(new SQLDeleteStrategyTrigger(dataSchema, dataTable, referencedSchema, referencedTable, deleteStrategy, foreignKey.getLinkingColumns()));
         }
 
         Class<?> type = dataManager.getSerializedType(ReflectionUtils.getGenericType(field));
@@ -421,26 +433,20 @@ public class SQLBuilder {
         SQLSchema referencedSchema = Objects.requireNonNull(schemas.get(referencedMetadata.schema()));
         SQLTable referencedTable = Objects.requireNonNull(referencedSchema.getTable(referencedMetadata.table()));
 
-        OnDelete onDelete = switch (oneToOne.deleteStrategy()) {
-            case CASCADE -> OnDelete.CASCADE;
-            case NO_ACTION -> OnDelete.NO_ACTION;
-            default -> throw new IllegalStateException("Unexpected value: " + oneToOne.deleteStrategy());
-        };
-
-        OnUpdate onUpdate = switch (oneToOne.updateStrategy()) {
-            case CASCADE -> OnUpdate.CASCADE;
-            case NO_ACTION -> OnUpdate.NO_ACTION;
-        };
-
-        ForeignKey foreignKey = new ForeignKey(schema.getName(), table.getName(), onDelete, onUpdate);
+        ForeignKey foreignKey = new ForeignKey(schema.getName(), table.getName(), referencedSchema.getName(), referencedTable.getName(), OnDelete.SET_NULL, OnUpdate.CASCADE);
         try {
-            for (ForeignKey.Link link : parseLinks(oneToOne.link())) { //reverse, since the fkey is on our table
-                foreignKey.addLink(new ForeignKey.Link(link.columnInReferringTable(), link.columnInReferencedTable()));
+            for (ForeignKey.Link link : parseLinks(oneToOne.link())) {
+                foreignKey.addLink(link);
             }
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Error parsing @OneToOne link on field " + field.getName() + " in class " + clazz.getName() + ": " + e.getMessage(), e);
         } //todo: all columns in the link must be unique in our table, and must be id columns in the referenced table. this will be enforced by H2 but check here for better errors
-        referencedTable.addForeignKeyThatReferencesThisTable(foreignKey);
+        table.addForeignKey(foreignKey);
+
+
+        Delete delete = field.getAnnotation(Delete.class);
+        DeleteStrategy deleteStrategy = delete != null ? delete.value() : DeleteStrategy.NO_ACTION;
+        table.addTrigger(new SQLDeleteStrategyTrigger(dataSchema, dataTable, referencedSchema.getName(), referencedTable.getName(), deleteStrategy, foreignKey.getLinkingColumns()));
     }
 
     private void parseLinks(ForeignKey foreignKey, String links) {
@@ -455,7 +461,7 @@ public class SQLBuilder {
         for (String link : StringUtils.parseCommaSeperatedList(links)) {
             String[] parts = link.split("=");
             Preconditions.checkArgument(parts.length == 2, "Invalid link format! Expected format: localColumn=foreignColumn, got: " + link);
-            mappings.add(new ForeignKey.Link(ValueUtils.parseValue(parts[0].trim()), ValueUtils.parseValue(parts[1].trim())));
+            mappings.add(new ForeignKey.Link(ValueUtils.parseValue(parts[1].trim()), ValueUtils.parseValue(parts[0].trim())));
         }
         return mappings;
     }

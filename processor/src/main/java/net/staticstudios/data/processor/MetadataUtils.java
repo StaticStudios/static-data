@@ -4,10 +4,7 @@ import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.FieldSpec;
 import com.palantir.javapoet.TypeName;
 import com.palantir.javapoet.TypeSpec;
-import net.staticstudios.data.Column;
-import net.staticstudios.data.Data;
-import net.staticstudios.data.ForeignColumn;
-import net.staticstudios.data.IdColumn;
+import net.staticstudios.data.*;
 import net.staticstudios.data.utils.StringUtils;
 
 import javax.lang.model.element.Modifier;
@@ -71,6 +68,7 @@ public class MetadataUtils {
         IdColumn idColumn = field.getAnnotation(IdColumn.class);
         Column column = field.getAnnotation(Column.class);
         ForeignColumn foreignColumn = field.getAnnotation(ForeignColumn.class);
+        Insert insert = field.getAnnotation(Insert.class);
 
         if (idColumn != null) {
             tableName = dataAnnotation.table();
@@ -107,6 +105,9 @@ public class MetadataUtils {
                 }
                 links.put(parts[0].trim(), parts[1].trim());
             }
+
+            InsertStrategy insertStrategy = insert != null ? insert.value() : InsertStrategy.PREFER_EXISTING;
+
             return new ForeignPersistentValueMetadata(
                     schemaName,
                     tableName,
@@ -114,7 +115,8 @@ public class MetadataUtils {
                     field.getSimpleName().toString(),
                     typeName,
                     nullable,
-                    links
+                    links,
+                    insertStrategy
             );
         }
         throw new IllegalStateException("Field " + field.getSimpleName() + " is not annotated with @IdColumn, @Column, or @ForeignColumn");

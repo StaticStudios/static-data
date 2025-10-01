@@ -11,14 +11,16 @@ public class SQLTable {
     private final String name;
     private final List<ColumnMetadata> idColumns;
     private final Map<String, SQLColumn> columns;
-    private final Set<ForeignKey> foreignKeysThatReferenceThisTable;
+    private final Set<ForeignKey> foreignKeys;
+    private final Set<SQLTrigger> triggers;
 
     public SQLTable(SQLSchema schema, String name, List<ColumnMetadata> idColumns) {
         this.schema = schema;
         this.name = name;
         this.idColumns = idColumns;
         this.columns = new HashMap<>();
-        this.foreignKeysThatReferenceThisTable = new LinkedHashSet<>();
+        this.foreignKeys = new HashSet<>();
+        this.triggers = new HashSet<>();
     }
 
     public SQLSchema getSchema() {
@@ -37,19 +39,29 @@ public class SQLTable {
         return columns.get(columnName);
     }
 
-    public Set<ForeignKey> getForeignKeysThatReferenceThisTable() {
-        return Collections.unmodifiableSet(foreignKeysThatReferenceThisTable);
-    }
-
-    public void addForeignKeyThatReferencesThisTable(ForeignKey foreignKey) {
-        ForeignKey existingKey = foreignKeysThatReferenceThisTable.stream()
-                .filter(fk -> fk.getSchema().equals(foreignKey.getSchema()) && fk.getTable().equals(foreignKey.getTable()))
+    public void addForeignKey(ForeignKey foreignKey) {
+        Preconditions.checkNotNull(foreignKey, "Foreign key cannot be null");
+        ForeignKey existingKey = foreignKeys.stream()
+                .filter(fk -> fk.getReferencedSchema().equals(foreignKey.getReferencedSchema()) && fk.getReferencedTable().equals(foreignKey.getReferencedTable()) && fk.getReferringSchema().equals(foreignKey.getReferringSchema()) && fk.getReferringTable().equals(foreignKey.getReferringTable()))
                 .findFirst()
                 .orElse(null);
         if (existingKey != null && !Objects.equals(existingKey, foreignKey)) {
-            throw new IllegalArgumentException("Foreign key from " + foreignKey.getSchema() + "." + foreignKey.getTable() + " already exists and is different from the one being added! Existing: " + existingKey + ", New: " + foreignKey);
+            throw new IllegalArgumentException("Foreign key to " + foreignKey.getReferencedSchema() + "." + foreignKey.getReferencedTable() + " already exists and is different from the one being added! Existing: " + existingKey + ", New: " + foreignKey);
         }
-        foreignKeysThatReferenceThisTable.add(foreignKey);
+        foreignKeys.add(foreignKey);
+    }
+
+    public Set<ForeignKey> getForeignKeys() {
+        return Collections.unmodifiableSet(foreignKeys);
+    }
+
+    public void addTrigger(SQLTrigger trigger) {
+        Preconditions.checkNotNull(trigger, "Trigger cannot be null");
+        triggers.add(trigger);
+    }
+
+    public Set<SQLTrigger> getTriggers() {
+        return Collections.unmodifiableSet(triggers);
     }
 
     public List<ColumnMetadata> getIdColumns() {

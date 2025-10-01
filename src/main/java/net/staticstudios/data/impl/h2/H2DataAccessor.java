@@ -5,6 +5,7 @@ import com.impossibl.postgres.api.jdbc.PGConnection;
 import net.staticstudios.data.DataAccessor;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.InsertMode;
+import net.staticstudios.data.impl.h2.trigger.H2UpdateHandlerTrigger;
 import net.staticstudios.data.impl.pg.PostgresListener;
 import net.staticstudios.data.parse.DDLStatement;
 import net.staticstudios.data.parse.SQLColumn;
@@ -208,6 +209,8 @@ public class H2DataAccessor implements DataAccessor {
     }
 
     public synchronized void sync(List<SchemaTable> schemaTables) throws SQLException {
+        //todo: i would ideally like to support periodic resyncing of data. even if this means we pause everything until then. not exactly sure how this would look tho.
+
         //todo: when we resync we should clear the task queue and steal the connection
         //todo: if possible, id like to pause everything else until we are done syncing
         dataManager.submitBlockingTask(realDbConnection -> {
@@ -322,12 +325,12 @@ public class H2DataAccessor implements DataAccessor {
             connection.setAutoCommit(false);
 
             for (SQlStatement sqlStatement : sqlStatements) {
-                try (PreparedStatement preparedStatement = connection.prepareStatement(sqlStatement.getSql())) {
+                try (PreparedStatement preparedStatement = connection.prepareStatement(sqlStatement.getH2Sql())) {
                     int i = 1;
                     for (Object value : sqlStatement.getValues()) {
                         preparedStatement.setObject(i++, value);
                     }
-                    logger.debug("[H2] {}", sqlStatement.getSql());
+                    logger.debug("[H2] {}", sqlStatement.getH2Sql());
                     preparedStatement.executeUpdate();
                 }
             }
@@ -337,12 +340,13 @@ public class H2DataAccessor implements DataAccessor {
                 realConnection.setAutoCommit(false);
                 try {
                     for (SQlStatement statement : sqlStatements) {
-                        try (PreparedStatement preparedStatement = realConnection.prepareStatement(statement.getSql())) {
+                        try (PreparedStatement preparedStatement = realConnection.prepareStatement(statement.getPgSql())) {
                             List<Object> values = statement.getValues();
                             for (int i = 0; i < values.size(); i++) {
-                                preparedStatement.setObject(i + 1, values.get(i));
+                                Object value = values.get(i);
+                                preparedStatement.setObject(i + 1, value);
                             }
-                            logger.debug("[DB] {}", statement.getSql());
+                            logger.debug("[DB] {}", statement.getPgSql());
                             preparedStatement.executeUpdate();
                         }
                     }
@@ -400,8 +404,12 @@ public class H2DataAccessor implements DataAccessor {
     @Override
     public void runDDL(DDLStatement ddl) {
         taskQueue.submitTask(connection -> {
-            logger.debug("[DB] {}", ddl.postgresqlStatement());
-            connection.createStatement().execute(ddl.postgresqlStatement());
+            if (!ddl.postgresqlStatement().isEmpty()) {
+
+                logger.debug("[DB] {}", ddl.postgresqlStatement());
+                connection.createStatement().execute(ddl.postgresqlStatement());
+            }
+            if (ddl.h2Statement().isEmpty()) return;
             try (Statement statement = getConnection().createStatement()) {
                 logger.trace("[H2] {}", ddl.h2Statement());
                 statement.execute(ddl.h2Statement());
@@ -433,9 +441,9 @@ public class H2DataAccessor implements DataAccessor {
                     @Language("SQL") String sql = "CREATE TRIGGER IF NOT EXISTS \"trg_%s_%s\" AFTER INSERT, UPDATE, DELETE ON \"%s\".\"%s\" FOR EACH ROW CALL '%s'";
 
                     try (Statement createTrigger = connection.createStatement()) {
-                        String formatted = sql.formatted(table, randomId.toString().replace('-', '_'), schema, table, H2Trigger.class.getName());
+                        String formatted = sql.formatted(table, randomId.toString().replace('-', '_'), schema, table, H2UpdateHandlerTrigger.class.getName());
                         logger.trace("[H2] {}", formatted);
-                        H2Trigger.registerDataManager(randomId, dataManager);
+                        H2UpdateHandlerTrigger.registerDataManager(randomId, dataManager);
                         createTrigger.execute(formatted);
                     }
 

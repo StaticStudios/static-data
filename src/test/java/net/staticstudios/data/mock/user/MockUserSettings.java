@@ -8,6 +8,7 @@ import java.util.UUID;
 public class MockUserSettings extends UniqueData {
     @IdColumn(name = "user_id")
     public PersistentValue<UUID> id;
-    @Column(name = "font_size", defaultValue = "10")
+    @DefaultValue("10")
+    @Column(name = "font_size")
     public PersistentValue<Integer> fontSize;
 }

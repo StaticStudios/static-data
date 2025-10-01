@@ -6,7 +6,6 @@ import java.util.UUID;
 
 //todo: heres how inheritance should look:
 // if the super class provides a data annotation, ignore it and use the child's annotation. it would be cool tho to allow the super class to use a @data annotation. the former is whats implemented now. if changed, update the processor.
-//todo: make default values their own annotation
 @Data(schema = "public", table = "users")
 public class MockUser extends UniqueData {
     //todo: cached values
@@ -14,21 +13,35 @@ public class MockUser extends UniqueData {
     //todo: note - maybe PC's add and remove handlers can be implemented using update handlers
     @IdColumn(name = "id")
     public PersistentValue<UUID> id = PersistentValue.of(this, UUID.class);
+
     @Column(name = "settings_id", nullable = true, unique = true)
     public PersistentValue<UUID> settingsId = PersistentValue.of(this, UUID.class);
+
     @Column(name = "age", nullable = true)
     public PersistentValue<Integer> age;
+
+    @Insert(InsertStrategy.PREFER_EXISTING)
+    @Delete(DeleteStrategy.CASCADE)
     @ForeignColumn(name = "fav_color", table = "user_preferences", nullable = true, link = "id=user_id")
     public PersistentValue<String> favoriteColor;
-    @OneToOne(link = "settings_id=user_id", deleteStrategy = DeleteStrategy.CASCADE)
+
+    @Delete(DeleteStrategy.CASCADE)
+    @OneToOne(link = "settings_id=user_id")
     public Reference<MockUserSettings> settings;
-    @ForeignColumn(name = "name_updates", table = "user_metadata", link = "id=user_id", defaultValue = "0")
+
+    @Insert(InsertStrategy.OVERWRITE_EXISTING)
+    @Delete(DeleteStrategy.NO_ACTION)
+    @DefaultValue("0")
+    @ForeignColumn(name = "name_updates", table = "user_metadata", link = "id=user_id")
     public PersistentValue<Integer> nameUpdates;
-    @Column(name = "name", index = true, defaultValue = "Unknown")
+
+    @DefaultValue("Unknown")
+    @Column(name = "name", index = true)
     public PersistentValue<String> name = PersistentValue.of(this, String.class)
             .onUpdate(MockUser.class, (user, update) -> {
                 user.nameUpdates.set(user.getNameUpdates() + 1);
             });
+
     @UpdateInterval(5000)
     @Column(name = "views", nullable = true)
     public PersistentValue<Integer> views;

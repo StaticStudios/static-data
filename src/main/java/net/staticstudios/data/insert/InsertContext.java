@@ -3,6 +3,7 @@ package net.staticstudios.data.insert;
 import com.google.common.base.Preconditions;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.InsertMode;
+import net.staticstudios.data.InsertStrategy;
 import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.parse.SQLColumn;
 import net.staticstudios.data.parse.SQLSchema;
@@ -17,23 +18,17 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class InsertContext { //todo: insert strategy, on a per pv level.
+public class InsertContext {
     private final AtomicBoolean inserted = new AtomicBoolean(false);
     private final DataManager dataManager;
     private final Map<SimpleColumnMetadata, Object> entries = new HashMap<>();
+    private final Map<SimpleColumnMetadata, InsertStrategy> insertStrategies = new HashMap<>();
 
     public InsertContext(DataManager dataManager) {
         this.dataManager = dataManager;
     }
 
-    public <T extends UniqueData> InsertContext set(Class<T> holderClass, String column, Object value) {
-        UniqueDataMetadata metadata = dataManager.getMetadata(holderClass);
-        Preconditions.checkNotNull(metadata, "Metadata not found for class: " + holderClass.getName());
-        set(metadata.schema(), metadata.table(), column, value);
-        return this;
-    }
-
-    public InsertContext set(String schema, String table, String column, @Nullable Object value) {
+    public InsertContext set(String schema, String table, String column, @Nullable Object value, @Nullable InsertStrategy insertStrategy) {
         Preconditions.checkState(!inserted.get(), "Cannot modify InsertContext after it has been inserted");
         SQLSchema sqlSchema = dataManager.getSQLBuilder().getSchema(schema);
         Preconditions.checkNotNull(sqlSchema, "Schema not found: " + schema);
@@ -48,9 +43,15 @@ public class InsertContext { //todo: insert strategy, on a per pv level.
                 column,
                 sqlColumn.getType()
         );
+
         if (value == null) {
             entries.remove(columnMetadata);
+            insertStrategies.remove(columnMetadata);
             return this;
+        }
+
+        if (insertStrategy != null) {
+            insertStrategies.put(columnMetadata, insertStrategy);
         }
 
         Preconditions.checkArgument(sqlColumn.getType().isAssignableFrom(dataManager.getSerializedType(value.getClass())), "Value type mismatch for name " + column + " in table " + table + " schema " + schema + ". Expected: " + sqlColumn.getType().getName() + ", got: " + Objects.requireNonNull(value).getClass().getName());
@@ -61,6 +62,10 @@ public class InsertContext { //todo: insert strategy, on a per pv level.
 
     public Map<SimpleColumnMetadata, Object> getEntries() {
         return entries;
+    }
+
+    public Map<SimpleColumnMetadata, InsertStrategy> getInsertStrategies() {
+        return insertStrategies;
     }
 
     public void markInserted() {

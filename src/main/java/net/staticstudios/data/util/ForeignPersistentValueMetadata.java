@@ -18,6 +18,7 @@ public class ForeignPersistentValueMetadata extends PersistentValueMetadata {
         return links;
     }
 
+
     @Override
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
@@ -35,6 +36,7 @@ public class ForeignPersistentValueMetadata extends PersistentValueMetadata {
     public String toString() {
         return "ForeignPersistentValueMetadata[" +
                 "columnMetadata=" + getColumnMetadata() + ", " +
-                "links=" + links + ']';
+                "links=" + links +
+                "]";
     }
 }

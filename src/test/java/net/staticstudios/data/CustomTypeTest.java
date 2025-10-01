@@ -409,5 +409,5 @@ public class CustomTypeTest extends DataTest {
         }
     }
 
-    //todo: test postgres listen/notify with custom types
+    //todo: test postgres listen/notify with custom types. specifically ensure the encode and decode functions are correct
 }
