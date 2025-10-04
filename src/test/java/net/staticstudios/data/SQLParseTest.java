@@ -102,5 +102,5 @@ public class SQLParseTest extends DataTest {
         assertEquals(expected.trim(), cleanedDump.toString().trim());
     }
 
-    //todo: when a delete strategy is set to no action where it was previously set to cascade, the old trigger should be dropped. Add a test for this.
+    //todo: when a delete strategy is set to no action where it was previously set to cascade, the old trigger should be dropped. Add a test for this. moreover, what happens when we change the name of something? will the old trigger stay or what? handle this
 }

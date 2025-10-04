@@ -2,6 +2,7 @@ package net.staticstudios.data;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.MapMaker;
+import net.staticstudios.data.impl.data.PersistentOneToManyCollectionImpl;
 import net.staticstudios.data.impl.data.PersistentValueImpl;
 import net.staticstudios.data.impl.data.ReferenceImpl;
 import net.staticstudios.data.impl.h2.H2DataAccessor;
@@ -201,13 +202,18 @@ public class DataManager {
         Preconditions.checkArgument(!idColumns.isEmpty(), "UniqueData class %s must have at least one @IdColumn annotated PersistentValue field", clazz.getName());
         String schema = ValueUtils.parseValue(dataAnnotation.schema());
         String table = ValueUtils.parseValue(dataAnnotation.table());
-        UniqueDataMetadata metadata = new UniqueDataMetadata(clazz, schema, table, idColumns, PersistentValueImpl.extractMetadata(schema, table, clazz), ReferenceImpl.extractMetadata(clazz));
+        Map<Field, PersistentCollectionMetadata> persistentCollectionMetadataMap = new HashMap<>();
+        persistentCollectionMetadataMap.putAll(PersistentOneToManyCollectionImpl.extractMetadata(clazz)); //todo: add other collection types
+        UniqueDataMetadata metadata = new UniqueDataMetadata(clazz, schema, table, idColumns, PersistentValueImpl.extractMetadata(schema, table, clazz), ReferenceImpl.extractMetadata(clazz), persistentCollectionMetadataMap);
         uniqueDataMetadataMap.put(clazz, metadata);
 
         for (Field field : ReflectionUtils.getFields(clazz, Relation.class)) {
-            Class<? extends UniqueData> dependencyClass = Objects.requireNonNull(ReflectionUtils.getGenericType(field)).asSubclass(UniqueData.class);
-            if (!uniqueDataMetadataMap.containsKey(dependencyClass)) {
-                extractMetadata(dependencyClass);
+            Class<?> genericType = ReflectionUtils.getGenericType(field);
+            if (genericType != null && UniqueData.class.isAssignableFrom(genericType)) {
+                Class<? extends UniqueData> dependencyClass = genericType.asSubclass(UniqueData.class);
+                if (!uniqueDataMetadataMap.containsKey(dependencyClass)) {
+                    extractMetadata(dependencyClass);
+                }
             }
         }
     }
@@ -398,6 +404,8 @@ public class DataManager {
 
         PersistentValueImpl.delegate(instance);
         ReferenceImpl.delegate(instance);
+        PersistentOneToManyCollectionImpl.delegate(instance);
+        //todo: other collection types
 
         uniqueDataInstanceCache.computeIfAbsent(clazz, k -> new MapMaker().weakValues().makeMap())
                 .put(idColumns, instance);

@@ -46,6 +46,15 @@ public class MockUser extends UniqueData {
     @Column(name = "views", nullable = true)
     public PersistentValue<Integer> views;
 
+    //todo: on delete we need to have an option to set null. No action will handle this actually.
+    @Delete(DeleteStrategy.NO_ACTION)
+    @OneToMany(link = "id=user_id")
+    public PersistentCollection<MockUserSession> sessions;
+
+    //todo: support ManyToMany
+
+    //todo: support OneToMany Collections where the data type is not a uniquedata. in this case additional info about what table and schema to use will be required, since we will have to create this table.
+
     public int getNameUpdates() {
         return nameUpdates.get();
     }

@@ -9,5 +9,6 @@ import java.util.Map;
 public record UniqueDataMetadata(Class<? extends UniqueData> clazz, String schema, String table,
                                  List<ColumnMetadata> idColumns,
                                  Map<Field, PersistentValueMetadata> persistentValueMetadata,
-                                 Map<Field, ReferenceMetadata> referenceMetadata) {
+                                 Map<Field, ReferenceMetadata> referenceMetadata,
+                                 Map<Field, PersistentCollectionMetadata> persistentCollectionMetadata) {
 }

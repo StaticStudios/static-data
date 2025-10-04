@@ -17,13 +17,13 @@ public class ForeignKey {
     private final OnDelete onDelete;
     private final OnUpdate onUpdate;
 
-    public ForeignKey(String referringSchema, String referringTable, String referencedSchema, String referencedTable, OnDelete onDelete, OnUpdate onUpdate) {
+    public ForeignKey(String referringSchema, String referringTable, String referencedSchema, String referencedTable, OnDelete onDelete) {
         this.referringSchema = referringSchema;
         this.referringTable = referringTable;
         this.referencedSchema = referencedSchema;
         this.referencedTable = referencedTable;
         this.onDelete = onDelete;
-        this.onUpdate = onUpdate;
+        this.onUpdate = OnUpdate.CASCADE;
     }
 
     public void addLink(Link link) {
@@ -74,6 +74,19 @@ public class ForeignKey {
     @Override
     public int hashCode() {
         return Objects.hash(links, referencedSchema, referencedTable, onDelete, onUpdate, referringSchema, referringTable);
+    }
+
+    @Override
+    public String toString() {
+        return "ForeignKey{" +
+                "links=" + links +
+                ", referencedSchema='" + referencedSchema + '\'' +
+                ", referencedTable='" + referencedTable + '\'' +
+                ", referringSchema='" + referringSchema + '\'' +
+                ", referringTable='" + referringTable + '\'' +
+                ", onDelete=" + onDelete +
+                ", onUpdate=" + onUpdate +
+                '}';
     }
 
     public record Link(String columnInReferencedTable, String columnInReferringTable) {

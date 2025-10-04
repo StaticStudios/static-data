@@ -6,6 +6,7 @@ import net.staticstudios.data.OneToOne;
 import net.staticstudios.data.Reference;
 import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.parse.ForeignKey;
+import net.staticstudios.data.parse.SQLBuilder;
 import net.staticstudios.data.util.*;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.Nullable;
@@ -13,7 +14,10 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.reflect.Field;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
     private final UniqueData holder;
@@ -64,14 +68,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
             Preconditions.checkNotNull(oneToOneAnnotation, "Field %s in class %s is missing @OneToOne annotation".formatted(field.getName(), clazz.getName()));
             Class<?> referencedClass = ReflectionUtils.getGenericType(field);
             Preconditions.checkNotNull(referencedClass, "Field %s in class %s is not parameterized".formatted(field.getName(), clazz.getName()));
-            List<ForeignKey.Link> link = new LinkedList<>();
-            for (String l : StringUtils.parseCommaSeperatedList(oneToOneAnnotation.link())) {
-                String[] split = l.split("=");
-                Preconditions.checkArgument(split.length == 2, "Invalid link format in @OneToOne annotation on field %s in class %s".formatted(field.getName(), clazz.getName()));
-                link.add(new ForeignKey.Link(ValueUtils.parseValue(split[1].trim()), ValueUtils.parseValue(split[0].trim())));
-            }
-
-            metadataMap.put(field, new ReferenceMetadata((Class<? extends UniqueData>) referencedClass, link));
+            metadataMap.put(field, new ReferenceMetadata((Class<? extends UniqueData>) referencedClass, SQLBuilder.parseLinks(oneToOneAnnotation.link())));
         }
 
         return metadataMap;
@@ -94,29 +91,36 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
         int i = 0;
         UniqueDataMetadata holderMetadata = holder.getMetadata();
         DataAccessor dataAccessor = holder.getDataManager().getDataAccessor();
+        StringBuilder sqlBuilder = new StringBuilder();
+        sqlBuilder.append("SELECT ");
         for (ForeignKey.Link entry : link) {
             String myColumn = entry.columnInReferringTable();
-            String theirColumn = entry.columnInReferencedTable();
+            sqlBuilder.append("\"").append(myColumn).append("\", ");
+        }
+        sqlBuilder.setLength(sqlBuilder.length() - 2);
+        sqlBuilder.append(" FROM \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\" WHERE ");
 
-            StringBuilder sqlBuilder = new StringBuilder();
-            sqlBuilder.append("SELECT \"").append(myColumn).append("\" FROM \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\" WHERE ");
-            for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
-                sqlBuilder.append("\"").append(columnValuePair.column()).append("\" = ? AND ");
+        for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
+            sqlBuilder.append("\"").append(columnValuePair.column()).append("\" = ? AND ");
+        }
+        sqlBuilder.setLength(sqlBuilder.length() - 5);
+
+        @Language("SQL") String sql = sqlBuilder.toString();
+        try (ResultSet rs = dataAccessor.executeQuery(sql, holder.getIdColumns().stream().map(ColumnValuePair::value).toList())) {
+            if (!rs.next()) {
+                return null;
             }
-            sqlBuilder.setLength(sqlBuilder.length() - 5);
-            @Language("SQL") String sql = sqlBuilder.toString();
-            try (ResultSet rs = dataAccessor.executeQuery(sql, holder.getIdColumns().stream().map(ColumnValuePair::value).toList())) {
-                if (rs.next()) {
-                    if (rs.getObject(myColumn) == null) {
-                        return null;
-                    }
-                    idColumns[i++] = new ColumnValuePair(theirColumn, rs.getObject(myColumn));
-                } else {
+
+            for (ForeignKey.Link entry : link) {
+                String myColumn = entry.columnInReferringTable();
+                String theirColumn = entry.columnInReferencedTable();
+                if (rs.getObject(myColumn) == null) {
                     return null;
                 }
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
+                idColumns[i++] = new ColumnValuePair(theirColumn, rs.getObject(myColumn));
             }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
         }
 
         return holder.getDataManager().getInstance(type, idColumns);

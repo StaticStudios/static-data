@@ -1,9 +1,16 @@
 package net.staticstudios.data;
 
 import com.google.common.base.Preconditions;
+import net.staticstudios.data.util.Relation;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.reflect.AccessFlag;
+
 public interface Reference<T extends UniqueData> extends Relation<T> {
+
+    static <T extends UniqueData> Reference<T> of(UniqueData holder, Class<T> referenceType) {
+        return new ProxyReference<>(holder, referenceType);
+    }
 
     UniqueData getHolder();
 
@@ -19,6 +26,7 @@ public interface Reference<T extends UniqueData> extends Relation<T> {
         private @Nullable Reference<T> delegate;
 
         public ProxyReference(UniqueData holder, Class<T> referenceType) {
+            Preconditions.checkArgument(!holder.getClass().accessFlags().contains(AccessFlag.ABSTRACT), "Holder cannot be an abstract class! Please create this reference with the real class via Reference.of(...)");
             this.holder = holder;
             this.referenceType = referenceType;
         }

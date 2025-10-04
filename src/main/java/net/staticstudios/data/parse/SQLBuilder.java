@@ -22,18 +22,51 @@ public class SQLBuilder {
         this.parsedSchemas = new HashMap<>();
     }
 
+    public static void parseLinks(ForeignKey foreignKey, String links) {
+        for (ForeignKey.Link link : parseLinks(links)) {
+            foreignKey.addLink(link);
+        }
+    }
+
+    public static void parseLinksReversed(ForeignKey foreignKey, String links) {
+        for (ForeignKey.Link link : parseLinksReversed(links)) {
+            foreignKey.addLink(link);
+        }
+    }
+
+    public static List<ForeignKey.Link> parseLinksReversed(String links) {
+        List<ForeignKey.Link> mappings = new ArrayList<>();
+        for (String link : StringUtils.parseCommaSeperatedList(links)) {
+            String[] parts = link.split("=");
+            Preconditions.checkArgument(parts.length == 2, "Invalid link format! Expected format: localColumn=foreignColumn, got: " + link);
+            mappings.add(new ForeignKey.Link(ValueUtils.parseValue(parts[0].trim()), ValueUtils.parseValue(parts[1].trim())));
+        }
+        return mappings;
+    }
+
+    public static List<ForeignKey.Link> parseLinks(String links) {
+        List<ForeignKey.Link> mappings = new ArrayList<>();
+        for (String link : StringUtils.parseCommaSeperatedList(links)) {
+            String[] parts = link.split("=");
+            Preconditions.checkArgument(parts.length == 2, "Invalid link format! Expected format: localColumn=foreignColumn, got: " + link);
+            mappings.add(new ForeignKey.Link(ValueUtils.parseValue(parts[1].trim()), ValueUtils.parseValue(parts[0].trim())));
+        }
+        return mappings;
+    }
+
     public List<DDLStatement> parse(Class<? extends UniqueData> clazz) {
         Preconditions.checkNotNull(clazz, "Class cannot be null");
 
         Set<Class<? extends UniqueData>> visited = walk(clazz);
         Map<String, SQLSchema> schemas = new HashMap<>();
+
+        // shouldn't matter the order of the new classes since we parse relations only after creating tables. so dependencies will always exist
         for (Class<? extends UniqueData> visitedClass : visited) {
             parseIndividualColumns(visitedClass, schemas);
         }
         for (Class<? extends UniqueData> visitedClass : visited) {
             parseIndividualRelations(visitedClass, schemas);
         }
-
 
         for (SQLSchema newSchema : schemas.values()) {
             if (!this.parsedSchemas.containsKey(newSchema.getName())) {
@@ -134,7 +167,7 @@ public class SQLBuilder {
         }
 
         // define fkeys after table creation, to ensure all tables exist before adding fkeys
-        for (SQLSchema schema : schemas) { //todo: what if an fkey's insert/delete strategy has changed?
+        for (SQLSchema schema : schemas) { //todo: what if an fkey's on delete/ on cascade strategy has changed?
             for (SQLTable table : schema.getTables()) {
                 for (ForeignKey foreignKey : table.getForeignKeys()) {
                     if (foreignKey == null) {
@@ -212,10 +245,12 @@ public class SQLBuilder {
         visited.add(clazz);
 
         for (Field field : ReflectionUtils.getFields(clazz, Relation.class)) {
-            if (Relation.class.isAssignableFrom(field.getType())) {
-                Class<? extends UniqueData> related = Objects.requireNonNull(ReflectionUtils.getGenericType(field)).asSubclass(UniqueData.class);
-                walk(related, visited);
+            Class<?> genericType = ReflectionUtils.getGenericType(field);
+            if (genericType == null || !UniqueData.class.isAssignableFrom(genericType)) {
+                continue;
             }
+            Class<? extends UniqueData> related = genericType.asSubclass(UniqueData.class);
+            walk(related, visited);
         }
     }
 
@@ -246,6 +281,7 @@ public class SQLBuilder {
 
         for (Field field : ReflectionUtils.getFields(clazz)) {
             parseReference(clazz, schemas, dataAnnotation, metadata, field);
+            parsePersistentCollection(clazz, schemas, dataAnnotation, metadata, field);
         }
     }
 
@@ -380,7 +416,7 @@ public class SQLBuilder {
 
             Preconditions.checkArgument(!(referencedSchema.equals(dataSchema) && referencedTable.equals(dataTable)), "ForeignColumn field %s in class %s cannot reference its own table", field.getName(), clazz.getName());
 
-            ForeignKey foreignKey = new ForeignKey(dataSchema, dataTable, referencedSchema, referencedTable, OnDelete.CASCADE, OnUpdate.CASCADE);
+            ForeignKey foreignKey = new ForeignKey(dataSchema, dataTable, referencedSchema, referencedTable, OnDelete.CASCADE);
             try {
                 parseLinks(foreignKey, foreignColumn.link());
             } catch (IllegalArgumentException e) {
@@ -414,9 +450,7 @@ public class SQLBuilder {
         UniqueDataMetadata referencedMetadata = dataManager.getMetadata(genericType.asSubclass(UniqueData.class));
         Preconditions.checkNotNull(referencedMetadata, "No metadata found for referenced class " + genericType.getName());
         OneToOne oneToOne = field.getAnnotation(OneToOne.class);
-        if (oneToOne == null) {
-            return;
-        }
+        Preconditions.checkNotNull(oneToOne, "Reference field " + field.getName() + " in class " + clazz.getName() + " is not annotated with @OneToOne");
 
         String dataSchema = ValueUtils.parseValue(dataAnnotation.schema());
         String dataTable = ValueUtils.parseValue(dataAnnotation.table());
@@ -427,42 +461,88 @@ public class SQLBuilder {
         if (table == null) {
             table = new SQLTable(schema, dataTable, metadata.idColumns());
             schema.addTable(table);
-
         }
 
         SQLSchema referencedSchema = Objects.requireNonNull(schemas.get(referencedMetadata.schema()));
         SQLTable referencedTable = Objects.requireNonNull(referencedSchema.getTable(referencedMetadata.table()));
 
-        ForeignKey foreignKey = new ForeignKey(schema.getName(), table.getName(), referencedSchema.getName(), referencedTable.getName(), OnDelete.SET_NULL, OnUpdate.CASCADE);
+        ForeignKey foreignKey = new ForeignKey(schema.getName(), table.getName(), referencedSchema.getName(), referencedTable.getName(), OnDelete.SET_NULL);
         try {
-            for (ForeignKey.Link link : parseLinks(oneToOne.link())) {
-                foreignKey.addLink(link);
-            }
+            parseLinks(foreignKey, oneToOne.link());
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Error parsing @OneToOne link on field " + field.getName() + " in class " + clazz.getName() + ": " + e.getMessage(), e);
         } //todo: all columns in the link must be unique in our table, and must be id columns in the referenced table. this will be enforced by H2 but check here for better errors
         table.addForeignKey(foreignKey);
-
 
         Delete delete = field.getAnnotation(Delete.class);
         DeleteStrategy deleteStrategy = delete != null ? delete.value() : DeleteStrategy.NO_ACTION;
         table.addTrigger(new SQLDeleteStrategyTrigger(dataSchema, dataTable, referencedSchema.getName(), referencedTable.getName(), deleteStrategy, foreignKey.getLinkingColumns()));
     }
 
-    private void parseLinks(ForeignKey foreignKey, String links) {
-        List<ForeignKey.Link> parsedLinks = parseLinks(links);
-        for (ForeignKey.Link link : parsedLinks) {
-            foreignKey.addLink(link);
+    private void parsePersistentCollection(Class<? extends UniqueData> clazz, Map<String, SQLSchema> schemas, Data dataAnnotation, UniqueDataMetadata metadata, Field field) {
+        if (!field.getType().equals(PersistentCollection.class)) {
+            return;
+        }
+        Class<?> genericType = ReflectionUtils.getGenericType(field);
+        Preconditions.checkNotNull(genericType, "Field " + field.getName() + " in class " + clazz.getName() + " is not parameterized!");
+        OneToMany oneToMany = field.getAnnotation(OneToMany.class);
+        ManyToMany manyToMany = field.getAnnotation(ManyToMany.class);
+        int annotationsCount = 0;
+        if (oneToMany != null) annotationsCount++;
+        if (manyToMany != null) annotationsCount++;
+        Preconditions.checkArgument(annotationsCount == 1, "Field " + field.getName() + " in class " + clazz.getName() + " must be annotated with either @OneToMany or @ManyToMany");
+
+        if (oneToMany != null) {
+            if (UniqueData.class.isAssignableFrom(genericType)) {
+                parseOneToManyPersistentCollection(oneToMany, genericType.asSubclass(UniqueData.class), clazz, schemas, dataAnnotation, metadata, field);
+            } else {
+                parseOneToManyValuePersistentCollection(oneToMany, genericType, clazz, schemas, dataAnnotation, metadata, field);
+            }
+        }
+        if (manyToMany != null) {
+            Preconditions.checkArgument(UniqueData.class.isAssignableFrom(genericType), "Field " + field.getName() + " in class " + clazz.getName() + " is not parameterized with a UniqueData type! Generic type: " + genericType);
+            parseManyToManyPersistentCollection(manyToMany, genericType.asSubclass(UniqueData.class), clazz, schemas, dataAnnotation, metadata, field);
         }
     }
 
-    private List<ForeignKey.Link> parseLinks(String links) {
-        List<ForeignKey.Link> mappings = new ArrayList<>();
-        for (String link : StringUtils.parseCommaSeperatedList(links)) {
-            String[] parts = link.split("=");
-            Preconditions.checkArgument(parts.length == 2, "Invalid link format! Expected format: localColumn=foreignColumn, got: " + link);
-            mappings.add(new ForeignKey.Link(ValueUtils.parseValue(parts[1].trim()), ValueUtils.parseValue(parts[0].trim())));
+    private void parseOneToManyValuePersistentCollection(OneToMany oneToMany, Class<?> genericType, Class<? extends UniqueData> clazz, Map<String, SQLSchema> schemas, Data dataAnnotation, UniqueDataMetadata metadata, Field field) {
+        //todo: this
+    }
+
+    private void parseOneToManyPersistentCollection(OneToMany oneToMany, Class<? extends UniqueData> genericType, Class<? extends UniqueData> clazz, Map<String, SQLSchema> schemas, Data dataAnnotation, UniqueDataMetadata metadata, Field field) {
+        UniqueDataMetadata referencedMetadata = dataManager.getMetadata(genericType);
+        Preconditions.checkNotNull(referencedMetadata, "No metadata found for referenced class " + genericType.getName());
+
+        String dataSchema = ValueUtils.parseValue(dataAnnotation.schema());
+        String dataTable = ValueUtils.parseValue(dataAnnotation.table());
+
+        SQLSchema schema = schemas.computeIfAbsent(dataSchema, SQLSchema::new);
+        SQLTable table = schema.getTable(dataTable);
+
+        if (table == null) {
+            table = new SQLTable(schema, dataTable, metadata.idColumns());
+            schema.addTable(table);
         }
-        return mappings;
+
+        SQLSchema referencedSchema = Objects.requireNonNull(schemas.get(referencedMetadata.schema()));
+        SQLTable referencedTable = Objects.requireNonNull(referencedSchema.getTable(referencedMetadata.table()));
+
+        Delete delete = field.getAnnotation(Delete.class);
+        DeleteStrategy deleteStrategy = delete != null ? delete.value() : DeleteStrategy.NO_ACTION;
+        OnDelete onDelete = deleteStrategy == DeleteStrategy.CASCADE ? OnDelete.CASCADE : OnDelete.SET_NULL;
+
+        // unlike a Reference, this foreign key goes on the referenced table, not our table.
+        // Since the foreign key is on the other table, let the foreign key handle the deletion strategy instead of a trigger.
+        ForeignKey foreignKey = new ForeignKey(referencedSchema.getName(), referencedTable.getName(), schema.getName(), table.getName(), onDelete);
+        try {
+            parseLinksReversed(foreignKey, oneToMany.link());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Error parsing @OneToMany link on field " + field.getName() + " in class " + clazz.getName() + ": " + e.getMessage(), e);
+        } //todo: all columns in the link must be unique in our table, and must be id columns in the referenced table. this will be enforced by H2 but check here for better errors
+        referencedTable.addForeignKey(foreignKey);
+    }
+
+    private void parseManyToManyPersistentCollection(ManyToMany oneToMany, Class<? extends UniqueData> genericType, Class<? extends UniqueData> clazz, Map<String, SQLSchema> schemas, Data dataAnnotation, UniqueDataMetadata metadata, Field field) {
+        //todo: this
     }
 }
