@@ -621,6 +621,7 @@ public class SQLBuilder {
         OnDelete onDelete = OnDelete.CASCADE;
         //todo: deletion strategy in this case is different than in the one to many case.
         // it should always cascade on the join table, but depending on the delete strategy, we may or may not delete the referenced data.
+        // impl with a trigger?
 
         ForeignKey foreignKeyJoinToDataTable = new ForeignKey(joinSchema.getName(), joinTable.getName(), schema.getName(), table.getName(), onDelete);
         ForeignKey foreignKeyJoinToReferenceTable = new ForeignKey(joinSchema.getName(), joinTable.getName(), referencedSchema.getName(), referencedTable.getName(), onDelete);

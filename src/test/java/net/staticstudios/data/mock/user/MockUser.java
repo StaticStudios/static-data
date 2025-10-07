@@ -9,7 +9,7 @@ import java.util.UUID;
 @Data(schema = "public", table = "users")
 public class MockUser extends UniqueData {
     //todo: cached values
-    //todo: @OneToMany, @ManyToMany, @ManyToOne
+    //todo: @OneToMany, @ManyToMany, @ManyToOne (many to one should be used for references, not collections i think)
     //todo: note - maybe PC's add and remove handlers can be implemented using update handlers
     @IdColumn(name = "id")
     public PersistentValue<UUID> id = PersistentValue.of(this, UUID.class);
