@@ -102,7 +102,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
             return false;
         }
         T data = type.cast(o);
-        List<ColumnValuePair[]> ids = getIds();
+        Set<ColumnValuePair[]> ids = getIds();
         ColumnValuePair[] thatIdColumns = data.getIdColumns().getPairs();
         for (ColumnValuePair[] idColumns : ids) {
             if (Arrays.equals(idColumns, thatIdColumns)) {
@@ -120,7 +120,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
 
     @Override
     public @NotNull Object @NotNull [] toArray() {
-        List<ColumnValuePair[]> ids = getIds();
+        Set<ColumnValuePair[]> ids = getIds();
         Object[] array = new Object[ids.size()];
         int i = 0;
         for (ColumnValuePair[] idColumns : ids) {
@@ -133,7 +133,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
     @SuppressWarnings("unchecked")
     @Override
     public @NotNull <T1> T1 @NotNull [] toArray(@NotNull T1 @NotNull [] a) {
-        List<ColumnValuePair[]> ids = getIds();
+        Set<ColumnValuePair[]> ids = getIds();
         if (a.length < ids.size()) {
             a = (T1[]) Array.newInstance(a.getClass().getComponentType(), ids.size());
         }
@@ -163,7 +163,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
                 return false;
             }
         }
-        List<ColumnValuePair[]> ids = getIds();
+        Set<ColumnValuePair[]> ids = getIds();
         for (Object o : c) {
             T data = type.cast(o);
             ColumnValuePair[] thatIdColumns = data.getIdColumns().getPairs();
@@ -236,7 +236,36 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
 
     @Override
     public boolean retainAll(@NotNull Collection<?> c) {
-        //todo: this
+        Set<ColumnValuePair[]> currentIds = getIds();
+        Set<ColumnValuePair[]> idsToRetain = new HashSet<>();
+        for (Object o : c) {
+            if (!type.isInstance(o)) {
+                continue;
+            }
+            T data = type.cast(o);
+            ColumnValuePair[] thatIdColumns = data.getIdColumns().getPairs();
+            idsToRetain.add(thatIdColumns);
+        }
+
+        List<ColumnValuePair[]> idsToRemove = new ArrayList<>();
+        for (ColumnValuePair[] idColumns : currentIds) {
+            boolean found = false;
+            for (ColumnValuePair[] retainIdColumns : idsToRetain) {
+                if (Arrays.equals(idColumns, retainIdColumns)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                idsToRemove.add(idColumns);
+            }
+        }
+
+        if (!idsToRemove.isEmpty()) {
+            removeAll(idsToRemove);
+            return true;
+        }
+
         return false;
     }
 
@@ -336,9 +365,9 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         return myValues;
     }
 
-    private List<ColumnValuePair[]> getIds() {
+    private Set<ColumnValuePair[]> getIds() {
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot get entries on a deleted UniqueData instance");
-        List<ColumnValuePair[]> ids = new ArrayList<>();
+        Set<ColumnValuePair[]> ids = new HashSet<>();
         UniqueDataMetadata holderMetadata = holder.getMetadata();
         UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
         DataAccessor dataAccessor = holder.getDataManager().getDataAccessor();
@@ -390,14 +419,16 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
 
     @Override
     public boolean equals(Object obj) {
-        //todo: this
-        return super.equals(obj);
+        if (this == obj) return true;
+        if (!(obj instanceof PersistentOneToManyCollectionImpl<?> that)) return false;
+        return Objects.equals(holder, that.holder) &&
+                Objects.equals(type, that.type) &&
+                Objects.equals(getIds(), that.getIds());
     }
 
     @Override
     public int hashCode() {
-        //todo: this
-        return super.hashCode();
+        return Objects.hash(holder, type, getIds());
     }
 
     @Override
@@ -418,8 +449,8 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         private final List<ColumnValuePair[]> ids;
         private int index = 0;
 
-        public IteratorImpl(List<ColumnValuePair[]> ids) {
-            this.ids = ids;
+        public IteratorImpl(Set<ColumnValuePair[]> ids) {
+            this.ids = new ArrayList<>(ids);
         }
 
         @Override
@@ -440,6 +471,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         public void remove() {
             Preconditions.checkState(index > 0, "next() has not been called yet");
             removeAll(Collections.singletonList(ids.get(index - 1)));
+            ids.remove(--index);
         }
     }
 }

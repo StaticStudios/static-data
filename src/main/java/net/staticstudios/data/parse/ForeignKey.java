@@ -58,6 +58,13 @@ public class ForeignKey {
         return onUpdate;
     }
 
+    public String getName() {
+        return "fk_" + referringSchema + "_" + referringTable + "_"
+                + String.join("_", links.stream().map(ForeignKey.Link::columnInReferringTable).toList())
+                + "_to_" + referencedSchema + "_" + referencedTable + "_"
+                + String.join("_", links.stream().map(ForeignKey.Link::columnInReferencedTable).toList());
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

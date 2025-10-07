@@ -11,6 +11,10 @@ import org.slf4j.LoggerFactory;
 import java.lang.reflect.Field;
 import java.util.*;
 
+/**
+ * This class is responsible for parsing annotations and/or fields in all classes which extend {@link UniqueData}.
+ * This class then converts that information into SQL metadata, which is later used to generate DDL statements for both Postgres and H2.
+ */
 public class SQLBuilder {
     public static final String INDENT = "  ";
     private static final Logger logger = LoggerFactory.getLogger(SQLBuilder.class);
@@ -173,9 +177,7 @@ public class SQLBuilder {
                     if (foreignKey == null) {
                         continue;
                     }
-                    String fKeyName = "fk_" + foreignKey.getReferringSchema() + "_" + foreignKey.getReferringTable() + "_"
-                            + String.join("_", foreignKey.getLinkingColumns().stream().map(ForeignKey.Link::columnInReferringTable).toList())
-                            + "_to_" + foreignKey.getReferencedSchema() + "_" + foreignKey.getReferencedTable() + "_" + String.join("_", foreignKey.getLinkingColumns().stream().map(ForeignKey.Link::columnInReferencedTable).toList());
+                    String fKeyName = foreignKey.getName();
                     StringBuilder sb = new StringBuilder();
                     sb.append("ALTER TABLE \"").append(foreignKey.getReferringSchema()).append("\".\"").append(foreignKey.getReferringTable()).append("\" ");
                     sb.append("ADD CONSTRAINT IF NOT EXISTS ").append(fKeyName).append(" ");
@@ -543,6 +545,88 @@ public class SQLBuilder {
     }
 
     private void parseManyToManyPersistentCollection(ManyToMany oneToMany, Class<? extends UniqueData> genericType, Class<? extends UniqueData> clazz, Map<String, SQLSchema> schemas, Data dataAnnotation, UniqueDataMetadata metadata, Field field) {
-        //todo: this
+        UniqueDataMetadata referencedMetadata = dataManager.getMetadata(genericType);
+        Preconditions.checkNotNull(referencedMetadata, "No metadata found for referenced class " + genericType.getName());
+
+        String dataSchema = ValueUtils.parseValue(dataAnnotation.schema());
+        String dataTable = ValueUtils.parseValue(dataAnnotation.table());
+
+        SQLSchema schema = schemas.computeIfAbsent(dataSchema, SQLSchema::new);
+        SQLTable table = schema.getTable(dataTable);
+
+        if (table == null) {
+            table = new SQLTable(schema, dataTable, metadata.idColumns());
+            schema.addTable(table);
+        }
+
+        SQLSchema referencedSchema = Objects.requireNonNull(schemas.get(referencedMetadata.schema()));
+        SQLTable referencedTable = Objects.requireNonNull(referencedSchema.getTable(referencedMetadata.table()));
+
+        String joinTableSchemaName = ValueUtils.parseValue(oneToMany.joinTableSchema());
+        String joinTableName = ValueUtils.parseValue(oneToMany.joinTable());
+
+        if (joinTableSchemaName.isEmpty()) {
+            joinTableSchemaName = dataSchema;
+        }
+        if (joinTableName.isEmpty()) {
+            joinTableName = dataTable + "_" + referencedMetadata.table();
+        }
+
+        List<ForeignKey.Link> joinTableToDataTableLinks = new ArrayList<>();
+        List<ForeignKey.Link> joinTableToReferencedTableLinks = new ArrayList<>();
+
+        String dataTableColumnPrefix = dataTable;
+        String referencedTableColumnPrefix = referencedTable.getName();
+        if (referencedTableColumnPrefix.equals(dataTableColumnPrefix)) {
+            referencedTableColumnPrefix = referencedTableColumnPrefix + "_ref";
+        }
+        try {
+            for (ForeignKey.Link link : parseLinks(oneToMany.link())) {
+                String columnInDataTable = link.columnInReferringTable();
+                String dataColumnInJoinTable = dataTableColumnPrefix + "_" + columnInDataTable;
+                String columnInReferencedTable = link.columnInReferencedTable();
+                String referencedColumnInJoinTable = referencedTableColumnPrefix + "_" + columnInReferencedTable;
+
+                joinTableToDataTableLinks.add(new ForeignKey.Link(columnInDataTable, dataColumnInJoinTable));
+                joinTableToReferencedTableLinks.add(new ForeignKey.Link(columnInReferencedTable, referencedColumnInJoinTable));
+            }
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Error parsing @ManyToMany link on field " + field.getName() + " in class " + clazz.getName() + ": " + e.getMessage(), e);
+        }
+
+        SQLSchema joinSchema = schemas.computeIfAbsent(joinTableSchemaName, SQLSchema::new);
+        SQLTable joinTable = joinSchema.getTable(joinTableName);
+        if (joinTable == null) {
+            List<ColumnMetadata> joinTableIdColumns = new ArrayList<>();
+            for (ForeignKey.Link dataLink : joinTableToDataTableLinks) {
+                ColumnMetadata columnMetadata = metadata.idColumns().stream()
+                        .filter(c -> c.name().equals(dataLink.columnInReferencedTable()))
+                        .findFirst()
+                        .orElseThrow(() -> new IllegalArgumentException("Column not found in data table! " + dataLink.columnInReferringTable()));
+                joinTableIdColumns.add(new ColumnMetadata(joinTableSchemaName, joinTableName, dataTableColumnPrefix + "_" + columnMetadata.name(), columnMetadata.type(), false, false, ""));
+            }
+            for (ForeignKey.Link referencedLink : joinTableToReferencedTableLinks) {
+                ColumnMetadata columnMetadata = referencedMetadata.idColumns().stream()
+                        .filter(c -> c.name().equals(referencedLink.columnInReferencedTable()))
+                        .findFirst()
+                        .orElseThrow(() -> new IllegalArgumentException("Column not found in referenced table! " + referencedLink.columnInReferringTable()));
+                joinTableIdColumns.add(new ColumnMetadata(joinTableSchemaName, joinTableName, referencedTableColumnPrefix + "_" + columnMetadata.name(), columnMetadata.type(), false, false, ""));
+            }
+            joinTable = new SQLTable(joinSchema, joinTableName, joinTableIdColumns);
+            joinSchema.addTable(joinTable);
+        }
+
+        Delete delete = field.getAnnotation(Delete.class);
+        DeleteStrategy deleteStrategy = delete != null ? delete.value() : DeleteStrategy.NO_ACTION;
+        OnDelete onDelete = OnDelete.CASCADE;
+        //todo: deletion strategy in this case is different than in the one to many case.
+        // it should always cascade on the join table, but depending on the delete strategy, we may or may not delete the referenced data.
+
+        ForeignKey foreignKeyJoinToDataTable = new ForeignKey(joinSchema.getName(), joinTable.getName(), schema.getName(), table.getName(), onDelete);
+        ForeignKey foreignKeyJoinToReferenceTable = new ForeignKey(joinSchema.getName(), joinTable.getName(), referencedSchema.getName(), referencedTable.getName(), onDelete);
+        joinTableToDataTableLinks.forEach(foreignKeyJoinToDataTable::addLink);
+        joinTableToReferencedTableLinks.forEach(foreignKeyJoinToReferenceTable::addLink);
+        joinTable.addForeignKey(foreignKeyJoinToDataTable);
+        joinTable.addForeignKey(foreignKeyJoinToReferenceTable);
     }
 }

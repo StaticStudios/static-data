@@ -42,7 +42,12 @@ public class SQLTable {
     public void addForeignKey(ForeignKey foreignKey) {
         Preconditions.checkNotNull(foreignKey, "Foreign key cannot be null");
         ForeignKey existingKey = foreignKeys.stream()
-                .filter(fk -> fk.getReferencedSchema().equals(foreignKey.getReferencedSchema()) && fk.getReferencedTable().equals(foreignKey.getReferencedTable()) && fk.getReferringSchema().equals(foreignKey.getReferringSchema()) && fk.getReferringTable().equals(foreignKey.getReferringTable()))
+                .filter(fk -> fk.getReferencedSchema().equals(foreignKey.getReferencedSchema()) &&
+                        fk.getReferencedTable().equals(foreignKey.getReferencedTable()) &&
+                        fk.getReferringSchema().equals(foreignKey.getReferringSchema()) &&
+                        fk.getReferringTable().equals(foreignKey.getReferringTable()) &&
+                        fk.getName().equals(foreignKey.getName())
+                )
                 .findFirst()
                 .orElse(null);
         if (existingKey != null && !Objects.equals(existingKey, foreignKey)) {

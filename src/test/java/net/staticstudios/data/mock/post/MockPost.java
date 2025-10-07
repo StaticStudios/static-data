@@ -20,4 +20,7 @@ public class MockPost extends UniqueData {
     @DefaultValue("0")
     @ForeignColumn(name = "interactions", table = "${POST_TABLE}_interactions", link = "${POST_ID_COLUMN}=post_id")
     public PersistentValue<Integer> interactions;
+
+    @ManyToMany(link = "${POST_ID_COLUMN}=${POST_ID_COLUMN}", joinTable = "${POST_TABLE}_related")
+    public PersistentCollection<MockPost> relatedPosts;
 }

@@ -35,6 +35,8 @@ public abstract class AbstractQueryBuilder<Q extends AbstractQueryBuilder<Q, C, 
         this.dataManager = dataManager;
         this.type = type;
     }
+    //todo: there needs to be a way to support WHERE ( x or Y) ...
+    // right now you can only do WHERE x AND (y OR z) ... the first clause cannot be a parenthesis clause
 
     public Q and() {
         state = State.AND;
