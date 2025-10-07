@@ -33,6 +33,10 @@ public class SQLParseTest extends DataTest {
         };
     }
 
+    private static String normalize(String str) {
+        return str.replace("\r\n", "\n").trim();
+    }
+
     @Test
     public void testParse() throws Exception {
         DataManager dm = getMockEnvironments().getFirst().dataManager();
@@ -109,7 +113,7 @@ public class SQLParseTest extends DataTest {
                     ADD CONSTRAINT fk_posts_ref_post_id_to_post_id FOREIGN KEY (posts_ref_post_id) REFERENCES social_media.posts(post_id) ON UPDATE CASCADE ON DELETE CASCADE;
                 """;
 
-        assertEquals(expected.trim(), cleanedDump.toString().trim());
+        assertEquals(normalize(expected), normalize(cleanedDump.toString()));
     }
 
     //todo: when a delete strategy is set to no action where it was previously set to cascade, the old trigger should be dropped. Add a test for this. moreover, what happens when we change the name of something? will the old trigger stay or what? handle this
