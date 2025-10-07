@@ -59,9 +59,11 @@ public class ForeignKey {
     }
 
     public String getName() {
-        return "fk_" + referringSchema + "_" + referringTable + "_"
+        return "fk_"
+//                + referringSchema + "_" + referringTable + "_"
                 + String.join("_", links.stream().map(ForeignKey.Link::columnInReferringTable).toList())
-                + "_to_" + referencedSchema + "_" + referencedTable + "_"
+                + "_to_"
+//                + referencedSchema + "_" + referencedTable + "_"
                 + String.join("_", links.stream().map(ForeignKey.Link::columnInReferencedTable).toList());
     }
 

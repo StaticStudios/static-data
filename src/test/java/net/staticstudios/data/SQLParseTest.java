@@ -100,16 +100,14 @@ public class SQLParseTest extends DataTest {
                     ADD CONSTRAINT posts_related_pkey PRIMARY KEY (posts_post_id, posts_ref_post_id);
                 CREATE INDEX idx_social_media_posts_text_content ON social_media.posts USING btree (text_content);
                 ALTER TABLE ONLY social_media.posts
-                    ADD CONSTRAINT fk_social_media_posts_post_id_to_social_media_posts_interaction FOREIGN KEY (post_id) REFERENCES social_media.posts_interactions(post_id) ON UPDATE CASCADE ON DELETE CASCADE;
+                    ADD CONSTRAINT fk_post_id_to_metadata_id FOREIGN KEY (post_id) REFERENCES social_media.posts_metadata(metadata_id) ON UPDATE CASCADE ON DELETE SET NULL;
                 ALTER TABLE ONLY social_media.posts
-                    ADD CONSTRAINT fk_social_media_posts_post_id_to_social_media_posts_metadata_me FOREIGN KEY (post_id) REFERENCES social_media.posts_metadata(metadata_id) ON UPDATE CASCADE ON DELETE SET NULL;
+                    ADD CONSTRAINT fk_post_id_to_post_id FOREIGN KEY (post_id) REFERENCES social_media.posts_interactions(post_id) ON UPDATE CASCADE ON DELETE CASCADE;
                 ALTER TABLE ONLY social_media.posts_related
-                    ADD CONSTRAINT fk_social_media_posts_related_posts_post_id_to_social_media_pos FOREIGN KEY (posts_post_id) REFERENCES social_media.posts(post_id) ON UPDATE CASCADE ON DELETE CASCADE;
+                    ADD CONSTRAINT fk_posts_post_id_to_post_id FOREIGN KEY (posts_post_id) REFERENCES social_media.posts(post_id) ON UPDATE CASCADE ON DELETE CASCADE;
                 ALTER TABLE ONLY social_media.posts_related
-                    ADD CONSTRAINT fk_social_media_posts_related_posts_ref_post_id_to_social_media FOREIGN KEY (posts_ref_post_id) REFERENCES social_media.posts(post_id) ON UPDATE CASCADE ON DELETE CASCADE;
+                    ADD CONSTRAINT fk_posts_ref_post_id_to_post_id FOREIGN KEY (posts_ref_post_id) REFERENCES social_media.posts(post_id) ON UPDATE CASCADE ON DELETE CASCADE;
                 """;
-
-        //todo: fk names are too long and are getting cut off, shorten them
 
         assertEquals(expected.trim(), cleanedDump.toString().trim());
     }
