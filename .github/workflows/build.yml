@@ -29,14 +29,10 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Build (skip tests)
-        run: ./gradlew build -x test \
-          -PStaticStudiosUsername=github \
-          -PStaticStudiosPassword=${{ secrets.REPOSITORY_SECRET }}
+        run: ./gradlew build -x test -PStaticStudiosUsername=github -PStaticStudiosPassword=${{ secrets.REPOSITORY_SECRET }}
 
       - name: Run Tests
-        run: ./gradlew test --info --stacktrace \
-          -PStaticStudiosUsername=github \
-          -PStaticStudiosPassword=${{ secrets.REPOSITORY_SECRET }} | tee gradle-test.log
+        run: ./gradlew test --info --stacktrace -PStaticStudiosUsername=github -PStaticStudiosPassword=${{ secrets.REPOSITORY_SECRET }} | tee gradle-test.log
         continue-on-error: true
 
       - name: Upload test logs and reports
