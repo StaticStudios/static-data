@@ -44,3 +44,7 @@ jobs:
             gradle-test.log
             build/reports/tests/test/
             build/test-results/test/
+
+      - name: Fail if tests failed
+        if: steps.test.outcome != 'success'
+        run: exit 1
