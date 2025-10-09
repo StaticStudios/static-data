@@ -337,4 +337,5 @@ public class PersistentOneToManyCollectionTest extends DataTest {
 
     //todo: test other collection types
     //todo: add/remove handlers
+    //todo: for many-to-many, id like to support following and followers, using the same join table.
 }
