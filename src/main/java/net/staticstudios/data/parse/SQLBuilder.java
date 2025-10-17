@@ -2,6 +2,7 @@ package net.staticstudios.data.parse;
 
 import com.google.common.base.Preconditions;
 import net.staticstudios.data.*;
+import net.staticstudios.data.impl.data.PersistentManyToManyCollectionImpl;
 import net.staticstudios.data.util.*;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.Nullable;
@@ -544,7 +545,7 @@ public class SQLBuilder {
         referencedTable.addForeignKey(foreignKey);
     }
 
-    private void parseManyToManyPersistentCollection(ManyToMany oneToMany, Class<? extends UniqueData> genericType, Class<? extends UniqueData> clazz, Map<String, SQLSchema> schemas, Data dataAnnotation, UniqueDataMetadata metadata, Field field) {
+    private void parseManyToManyPersistentCollection(ManyToMany manyToMany, Class<? extends UniqueData> genericType, Class<? extends UniqueData> clazz, Map<String, SQLSchema> schemas, Data dataAnnotation, UniqueDataMetadata metadata, Field field) {
         UniqueDataMetadata referencedMetadata = dataManager.getMetadata(genericType);
         Preconditions.checkNotNull(referencedMetadata, "No metadata found for referenced class " + genericType.getName());
 
@@ -562,37 +563,21 @@ public class SQLBuilder {
         SQLSchema referencedSchema = Objects.requireNonNull(schemas.get(referencedMetadata.schema()));
         SQLTable referencedTable = Objects.requireNonNull(referencedSchema.getTable(referencedMetadata.table()));
 
-        String joinTableSchemaName = ValueUtils.parseValue(oneToMany.joinTableSchema());
-        String joinTableName = ValueUtils.parseValue(oneToMany.joinTable());
+        String joinTableSchemaName = PersistentManyToManyCollectionImpl.getJoinTableSchema(ValueUtils.parseValue(manyToMany.joinTableSchema()), dataSchema);
+        String joinTableName = PersistentManyToManyCollectionImpl.getJoinTableName(ValueUtils.parseValue(manyToMany.joinTable()), dataTable, referencedMetadata.table());
 
-        if (joinTableSchemaName.isEmpty()) {
-            joinTableSchemaName = dataSchema;
-        }
-        if (joinTableName.isEmpty()) {
-            joinTableName = dataTable + "_" + referencedMetadata.table();
-        }
+        List<ForeignKey.Link> joinTableToDataTableLinks;
+        List<ForeignKey.Link> joinTableToReferencedTableLinks;
 
-        List<ForeignKey.Link> joinTableToDataTableLinks = new ArrayList<>();
-        List<ForeignKey.Link> joinTableToReferencedTableLinks = new ArrayList<>();
-
-        String dataTableColumnPrefix = dataTable;
-        String referencedTableColumnPrefix = referencedTable.getName();
-        if (referencedTableColumnPrefix.equals(dataTableColumnPrefix)) {
-            referencedTableColumnPrefix = referencedTableColumnPrefix + "_ref";
-        }
         try {
-            for (ForeignKey.Link link : parseLinks(oneToMany.link())) {
-                String columnInDataTable = link.columnInReferringTable();
-                String dataColumnInJoinTable = dataTableColumnPrefix + "_" + columnInDataTable;
-                String columnInReferencedTable = link.columnInReferencedTable();
-                String referencedColumnInJoinTable = referencedTableColumnPrefix + "_" + columnInReferencedTable;
-
-                joinTableToDataTableLinks.add(new ForeignKey.Link(columnInDataTable, dataColumnInJoinTable));
-                joinTableToReferencedTableLinks.add(new ForeignKey.Link(columnInReferencedTable, referencedColumnInJoinTable));
-            }
+            joinTableToDataTableLinks = PersistentManyToManyCollectionImpl.getJoinTableToDataTableLinks(dataTable, manyToMany.link());
+            joinTableToReferencedTableLinks = PersistentManyToManyCollectionImpl.getJoinTableToReferencedTableLinks(dataTable, referencedTable.getName(), manyToMany.link());
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Error parsing @ManyToMany link on field " + field.getName() + " in class " + clazz.getName() + ": " + e.getMessage(), e);
         }
+
+        String referencedTableColumnPrefix = PersistentManyToManyCollectionImpl.getReferencedTableColumnPrefix(dataTable, referencedTable.getName());
+        String dataTableColumnPrefix = PersistentManyToManyCollectionImpl.getDataTableColumnPrefix(dataTable);
 
         SQLSchema joinSchema = schemas.computeIfAbsent(joinTableSchemaName, SQLSchema::new);
         SQLTable joinTable = joinSchema.getTable(joinTableName);

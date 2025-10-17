@@ -1,10 +1,7 @@
 package net.staticstudios.data.impl.data;
 
 import com.google.common.base.Preconditions;
-import net.staticstudios.data.DataAccessor;
-import net.staticstudios.data.OneToMany;
-import net.staticstudios.data.PersistentCollection;
-import net.staticstudios.data.UniqueData;
+import net.staticstudios.data.*;
 import net.staticstudios.data.parse.ForeignKey;
 import net.staticstudios.data.parse.SQLBuilder;
 import net.staticstudios.data.util.*;
@@ -79,11 +76,6 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
     @Override
     public UniqueData getHolder() {
         return holder;
-    }
-
-    @Override
-    public Class<T> getReferenceType() {
-        return type;
     }
 
     @Override
@@ -184,38 +176,48 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
     @Override
     public boolean addAll(@NotNull Collection<? extends T> c) {
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot set entries on a deleted UniqueData instance");
-        UniqueDataMetadata holderMetadata = holder.getMetadata();
-        UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
-
-        StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append("UPDATE \"").append(typeMetadata.schema()).append("\".\"").append(typeMetadata.table()).append("\" SET ");
-        for (ForeignKey.Link entry : link) {
-            String theirColumn = entry.columnInReferencedTable();
-            sqlBuilder.append("\"").append(theirColumn).append("\" = ?, ");
+        if (c.isEmpty()) {
+            return false;
         }
-        sqlBuilder.setLength(sqlBuilder.length() - 2);
-        sqlBuilder.append(" WHERE ");
-        for (ColumnMetadata theirIdColumn : typeMetadata.idColumns()) {
-            sqlBuilder.append("\"").append(theirIdColumn.name()).append("\" = ? AND ");
-        }
-        sqlBuilder.setLength(sqlBuilder.length() - 5);
-        @Language("SQL") String updateSql = sqlBuilder.toString();
         DataAccessor dataAccessor = holder.getDataManager().getDataAccessor();
-        List<Object> myValues = getMyLinkingValues(holderMetadata, dataAccessor);
 
-        for (T entry : c) {
-            List<Object> values = new ArrayList<>(myValues);
-            for (ColumnValuePair idColumn : entry.getIdColumns()) {
-                values.add(idColumn.value());
-            }
+        SQLTransaction.Statement selectDataIdsStatement = buildSelectDataIdsStatement();
+        SQLTransaction.Statement updateStatement = buildUpdateStatement();
+
+
+        List<Object> holderLinkingValues = new ArrayList<>(link.size());
+        List<Object> holderIdValues = holder.getIdColumns().stream().map(ColumnValuePair::value).toList();
+
+        SQLTransaction transaction = new SQLTransaction();
+        transaction.query(selectDataIdsStatement, () -> holderIdValues, rs -> {
             try {
-                dataAccessor.executeUpdate(updateSql, values, 0);
+                Preconditions.checkState(rs.next(), "Could not find holder row in database");
+                for (ForeignKey.Link entry : link) {
+                    String dataColumn = entry.columnInReferringTable();
+                    Object value = rs.getObject(dataColumn);
+                    holderLinkingValues.add(value);
+                }
             } catch (SQLException e) {
                 throw new RuntimeException(e);
             }
+        });
+
+        for (T entry : c) {
+            transaction.update(updateStatement, () -> {
+                List<Object> values = new ArrayList<>(holderLinkingValues);
+                for (ColumnValuePair idColumn : entry.getIdColumns()) {
+                    values.add(idColumn.value());
+                }
+                return values;
+            });
+        }
+        try {
+            dataAccessor.executeTransaction(transaction, 0);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
         }
 
-        return !c.isEmpty();
+        return true;
     }
 
     @Override
@@ -229,7 +231,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
             ColumnValuePair[] thatIdColumns = data.getIdColumns().getPairs();
             ids.add(thatIdColumns);
         }
-        removeAll(ids);
+        removeIds(ids);
 
         return !ids.isEmpty();
     }
@@ -262,7 +264,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         }
 
         if (!idsToRemove.isEmpty()) {
-            removeAll(idsToRemove);
+            removeIds(idsToRemove);
             return true;
         }
 
@@ -271,77 +273,94 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
 
     @Override
     public void clear() {
-        Preconditions.checkArgument(!holder.isDeleted(), "Cannot set entries on a deleted UniqueData instance");
-        UniqueDataMetadata holderMetadata = holder.getMetadata();
-        UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
-
-        StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append("UPDATE \"").append(typeMetadata.schema()).append("\".\"").append(typeMetadata.table()).append("\" SET ");
-        for (ForeignKey.Link entry : link) {
-            String theirColumn = entry.columnInReferencedTable();
-            sqlBuilder.append("\"").append(theirColumn).append("\" = NULL, ");
-        }
-        sqlBuilder.setLength(sqlBuilder.length() - 2);
-        sqlBuilder.append(" WHERE ");
-        for (ForeignKey.Link entry : link) {
-            String theirColumn = entry.columnInReferencedTable();
-            sqlBuilder.append("\"").append(theirColumn).append("\" = ? AND ");
-        }
-        sqlBuilder.setLength(sqlBuilder.length() - 5);
-        @Language("SQL") String updateSql = sqlBuilder.toString();
+        Preconditions.checkArgument(!holder.isDeleted(), "Cannot clear entries on a deleted UniqueData instance");
         DataAccessor dataAccessor = holder.getDataManager().getDataAccessor();
-        List<Object> values = getMyLinkingValues(holderMetadata, dataAccessor);
+
+        SQLTransaction.Statement selectDataIdsStatement = buildSelectDataIdsStatement();
+        SQLTransaction.Statement clearStatement = buildClearStatement();
+
+
+        List<Object> holderLinkingValues = new ArrayList<>(link.size());
+        List<Object> holderIdValues = holder.getIdColumns().stream().map(ColumnValuePair::value).toList();
+
+        SQLTransaction transaction = new SQLTransaction();
+        transaction.query(selectDataIdsStatement, () -> holderIdValues, rs -> {
+            try {
+                Preconditions.checkState(rs.next(), "Could not find holder row in database");
+                for (ForeignKey.Link entry : link) {
+                    String dataColumn = entry.columnInReferringTable();
+                    Object value = rs.getObject(dataColumn);
+                    holderLinkingValues.add(value);
+                }
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        transaction.update(clearStatement, () -> holderLinkingValues);
         try {
-            dataAccessor.executeUpdate(updateSql, values, 0);
+            dataAccessor.executeTransaction(transaction, 0);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
     }
 
-    private void removeAll(List<ColumnValuePair[]> ids) {
+    private void removeIds(List<ColumnValuePair[]> ids) {
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot set entries on a deleted UniqueData instance");
-        UniqueDataMetadata holderMetadata = holder.getMetadata();
-        UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
+        if (ids.isEmpty()) {
+            return;
+        }
 
-        StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append("UPDATE \"").append(typeMetadata.schema()).append("\".\"").append(typeMetadata.table()).append("\" SET ");
-        for (ForeignKey.Link entry : link) {
-            String theirColumn = entry.columnInReferencedTable();
-            sqlBuilder.append("\"").append(theirColumn).append("\" = NULL, ");
-        }
-        sqlBuilder.setLength(sqlBuilder.length() - 2);
-        sqlBuilder.append(" WHERE ");
-        for (ForeignKey.Link entry : link) {
-            String theirColumn = entry.columnInReferencedTable();
-            sqlBuilder.append("\"").append(theirColumn).append("\" = ? AND ");
-        }
-        for (ColumnMetadata theirIdColumn : typeMetadata.idColumns()) {
-            sqlBuilder.append("\"").append(theirIdColumn.name()).append("\" = ? AND ");
-        }
-        sqlBuilder.setLength(sqlBuilder.length() - 5);
-        @Language("SQL") String updateSql = sqlBuilder.toString();
         DataAccessor dataAccessor = holder.getDataManager().getDataAccessor();
-        List<Object> myValues = getMyLinkingValues(holderMetadata, dataAccessor);
 
-        for (ColumnValuePair[] idColumns : ids) {
-            List<Object> values = new ArrayList<>(myValues);
-            for (ColumnValuePair idColumn : idColumns) {
-                values.add(idColumn.value());
-            }
+        SQLTransaction.Statement selectDataIdsStatement = buildSelectDataIdsStatement();
+        SQLTransaction.Statement updateStatement = buildUpdateStatement();
+
+
+        List<Object> holderLinkingValues = new ArrayList<>(link.size());
+        List<Object> holderIdValues = holder.getIdColumns().stream().map(ColumnValuePair::value).toList();
+
+        SQLTransaction transaction = new SQLTransaction();
+        transaction.query(selectDataIdsStatement, () -> holderIdValues, rs -> {
             try {
-                dataAccessor.executeUpdate(updateSql, values, 0);
+                Preconditions.checkState(rs.next(), "Could not find holder row in database");
+                for (ForeignKey.Link entry : link) {
+                    String dataColumn = entry.columnInReferringTable();
+                    Object value = rs.getObject(dataColumn);
+                    holderLinkingValues.add(value);
+                }
             } catch (SQLException e) {
                 throw new RuntimeException(e);
             }
+        });
+
+        for (ColumnValuePair[] idColumns : ids) {
+            transaction.update(updateStatement, () -> {
+                List<Object> values = new ArrayList<>();
+                for (Object holderLinkingValue : holderLinkingValues) {
+                    values.add(null);
+                }
+                for (ColumnValuePair idColumn : idColumns) {
+                    values.add(idColumn.value());
+                }
+                return values;
+            });
+        }
+        try {
+            dataAccessor.executeTransaction(transaction, 0);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
         }
     }
 
-    private List<Object> getMyLinkingValues(UniqueDataMetadata holderMetadata, DataAccessor dataAccessor) {
+    private SQLTransaction.Statement buildSelectDataIdsStatement() {
+        UniqueDataMetadata holderMetadata = holder.getMetadata();
+
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("SELECT ");
         for (ForeignKey.Link entry : link) {
-            String myColumn = entry.columnInReferringTable();
-            sqlBuilder.append("\"").append(myColumn).append("\", ");
+            String dataColumn = entry.columnInReferringTable();
+            sqlBuilder.append("\"").append(dataColumn).append("\", ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 2);
         sqlBuilder.append(" FROM \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\" WHERE ");
@@ -349,23 +368,51 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
             sqlBuilder.append("\"").append(columnValuePair.column()).append("\" = ? AND ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 5);
-        @Language("SQL") String selectSql = sqlBuilder.toString();
+        @Language("SQL") String sql = sqlBuilder.toString();
+        return SQLTransaction.Statement.of(sql, sql);
+    }
 
-        List<Object> myValues = new ArrayList<>(link.size());
-        try (ResultSet rs = dataAccessor.executeQuery(selectSql, holder.getIdColumns().stream().map(ColumnValuePair::value).toList())) {
-            Preconditions.checkState(rs.next(), "Could not find holder row in database");
-            for (ForeignKey.Link entry : link) {
-                String myColumn = entry.columnInReferringTable();
-                myValues.add(rs.getObject(myColumn));
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
+    private SQLTransaction.Statement buildUpdateStatement() {
+        UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
+
+        StringBuilder sqlBuilder = new StringBuilder();
+        sqlBuilder.append("UPDATE \"").append(typeMetadata.schema()).append("\".\"").append(typeMetadata.table()).append("\" SET ");
+        for (ForeignKey.Link entry : link) {
+            String theirColumn = entry.columnInReferencedTable();
+            sqlBuilder.append("\"").append(theirColumn).append("\" = ?, ");
         }
+        sqlBuilder.setLength(sqlBuilder.length() - 2);
+        sqlBuilder.append(" WHERE ");
+        for (ColumnMetadata theirIdColumn : typeMetadata.idColumns()) {
+            sqlBuilder.append("\"").append(theirIdColumn.name()).append("\" = ? AND ");
+        }
+        sqlBuilder.setLength(sqlBuilder.length() - 5);
+        @Language("SQL") String sql = sqlBuilder.toString();
+        return SQLTransaction.Statement.of(sql, sql);
+    }
 
-        return myValues;
+    private SQLTransaction.Statement buildClearStatement() {
+        UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
+
+        StringBuilder sqlBuilder = new StringBuilder();
+        sqlBuilder.append("UPDATE \"").append(typeMetadata.schema()).append("\".\"").append(typeMetadata.table()).append("\" SET ");
+        for (ForeignKey.Link entry : link) {
+            String theirColumn = entry.columnInReferencedTable();
+            sqlBuilder.append("\"").append(theirColumn).append("\" = NULL, ");
+        }
+        sqlBuilder.setLength(sqlBuilder.length() - 2);
+        sqlBuilder.append(" WHERE ");
+        for (ForeignKey.Link entry : link) {
+            String theirColumn = entry.columnInReferencedTable();
+            sqlBuilder.append("\"").append(theirColumn).append("\" = ? AND ");
+        }
+        sqlBuilder.setLength(sqlBuilder.length() - 5);
+        @Language("SQL") String sql = sqlBuilder.toString();
+        return SQLTransaction.Statement.of(sql, sql);
     }
 
     private Set<ColumnValuePair[]> getIds() {
+        // note: we need the join since we support linking on non-id columns
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot get entries on a deleted UniqueData instance");
         Set<ColumnValuePair[]> ids = new HashSet<>();
         UniqueDataMetadata holderMetadata = holder.getMetadata();
@@ -377,25 +424,25 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
             sqlBuilder.append("\"").append(columnMetadata.name()).append("\", ");
         }
         for (ColumnMetadata columnMetadata : holderMetadata.idColumns()) {
-            sqlBuilder.append("source.\"").append(columnMetadata.name()).append("\", ");
+            sqlBuilder.append("_source.\"").append(columnMetadata.name()).append("\", ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 2);
         sqlBuilder.append(" FROM \"").append(typeMetadata.schema()).append("\".\"").append(typeMetadata.table()).append("\" ");
-        sqlBuilder.append("INNER JOIN \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\" AS source ON ");
+        sqlBuilder.append("INNER JOIN \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\" AS _source ON ");
         for (ForeignKey.Link entry : link) {
             String myColumn = entry.columnInReferringTable();
             String theirColumn = entry.columnInReferencedTable();
-            sqlBuilder.append("\"").append(typeMetadata.schema()).append("\".\"").append(typeMetadata.table()).append("\".\"").append(theirColumn).append("\" = source.\"").append(myColumn).append("\" AND ");
+            sqlBuilder.append("\"").append(typeMetadata.schema()).append("\".\"").append(typeMetadata.table()).append("\".\"").append(theirColumn).append("\" = _source.\"").append(myColumn).append("\" AND ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 5);
         sqlBuilder.append(" WHERE ");
 
         for (ForeignKey.Link entry : link) {
             String theirColumn = entry.columnInReferencedTable();
-            sqlBuilder.append("\"").append(theirColumn).append("\" = source.\"").append(entry.columnInReferringTable()).append("\" AND ");
+            sqlBuilder.append("\"").append(theirColumn).append("\" = _source.\"").append(entry.columnInReferringTable()).append("\" AND ");
         }
         for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
-            sqlBuilder.append("source.\"").append(columnValuePair.column()).append("\" = ? AND ");
+            sqlBuilder.append("_source.\"").append(columnValuePair.column()).append("\" = ? AND ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 5);
 
@@ -421,14 +468,15 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
     public boolean equals(Object obj) {
         if (this == obj) return true;
         if (!(obj instanceof PersistentOneToManyCollectionImpl<?> that)) return false;
-        return Objects.equals(holder, that.holder) &&
-                Objects.equals(type, that.type) &&
-                Objects.equals(getIds(), that.getIds());
+        //due to the nature of how one-to-many collections work, this will == that only if the holder is the same. no need to compare contents.
+        return Objects.equals(type, that.type) && Objects.equals(holder, that.holder);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(holder, type, getIds());
+        //due to the nature of how one-to-many collections work, this will == that only if the holder is the same. no need to compare contents.
+        //for this reason, we can use just the type and holder for the hashcode.
+        return Objects.hash(type, holder);
     }
 
     @Override
@@ -470,7 +518,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         @Override
         public void remove() {
             Preconditions.checkState(index > 0, "next() has not been called yet");
-            removeAll(Collections.singletonList(ids.get(index - 1)));
+            removeIds(Collections.singletonList(ids.get(index - 1)));
             ids.remove(--index);
         }
     }

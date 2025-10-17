@@ -19,8 +19,6 @@ public interface PersistentCollection<T> extends Collection<T>, Relation<T> {
 
     UniqueData getHolder();
 
-    Class<T> getReferenceType();
-
     class ProxyPersistentCollection<T> implements PersistentCollection<T> {
         private final UniqueData holder;
         private final Class<T> referenceType;
@@ -37,7 +35,6 @@ public interface PersistentCollection<T> extends Collection<T>, Relation<T> {
             return holder;
         }
 
-        @Override
         public Class<T> getReferenceType() {
             return referenceType;
         }

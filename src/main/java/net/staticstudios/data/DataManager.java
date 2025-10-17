@@ -2,6 +2,7 @@ package net.staticstudios.data;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.MapMaker;
+import net.staticstudios.data.impl.data.PersistentManyToManyCollectionImpl;
 import net.staticstudios.data.impl.data.PersistentOneToManyCollectionImpl;
 import net.staticstudios.data.impl.data.PersistentValueImpl;
 import net.staticstudios.data.impl.data.ReferenceImpl;
@@ -204,6 +205,7 @@ public class DataManager {
         String table = ValueUtils.parseValue(dataAnnotation.table());
         Map<Field, PersistentCollectionMetadata> persistentCollectionMetadataMap = new HashMap<>();
         persistentCollectionMetadataMap.putAll(PersistentOneToManyCollectionImpl.extractMetadata(clazz)); //todo: add other collection types
+        persistentCollectionMetadataMap.putAll(PersistentManyToManyCollectionImpl.extractMetadata(clazz));
         UniqueDataMetadata metadata = new UniqueDataMetadata(clazz, schema, table, idColumns, PersistentValueImpl.extractMetadata(schema, table, clazz), ReferenceImpl.extractMetadata(clazz), persistentCollectionMetadataMap);
         uniqueDataMetadataMap.put(clazz, metadata);
 
@@ -405,6 +407,7 @@ public class DataManager {
         PersistentValueImpl.delegate(instance);
         ReferenceImpl.delegate(instance);
         PersistentOneToManyCollectionImpl.delegate(instance);
+        PersistentManyToManyCollectionImpl.delegate(instance);
         //todo: other collection types
 
         uniqueDataInstanceCache.computeIfAbsent(clazz, k -> new MapMaker().weakValues().makeMap())

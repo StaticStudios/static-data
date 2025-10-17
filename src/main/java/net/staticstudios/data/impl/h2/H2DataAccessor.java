@@ -5,6 +5,7 @@ import com.impossibl.postgres.api.jdbc.PGConnection;
 import net.staticstudios.data.DataAccessor;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.InsertMode;
+import net.staticstudios.data.SQLTransaction;
 import net.staticstudios.data.impl.h2.trigger.H2UpdateHandlerTrigger;
 import net.staticstudios.data.impl.pg.PostgresListener;
 import net.staticstudios.data.parse.DDLStatement;
@@ -30,6 +31,7 @@ import java.nio.file.Paths;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.Consumer;
 
 /**
  * This data accessor uses a write-behind caching strategy with an in-memory H2 database to optimize read and write operations.
@@ -47,7 +49,7 @@ public class H2DataAccessor implements DataAccessor {
     private final Set<String> knownTables = new HashSet<>();
     private final DataManager dataManager;
     private final PostgresListener postgresListener;
-    private final Map<String, Runnable> delayedTasks = new ConcurrentHashMap<>();
+    private final Map<List<Pair<String, String>>, Runnable> delayedTasks = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(thread -> {
         Thread t = new Thread(thread);
         t.setName(H2DataAccessor.class.getSimpleName() + "-ScheduledExecutor");
@@ -57,7 +59,7 @@ public class H2DataAccessor implements DataAccessor {
     public H2DataAccessor(DataManager dataManager, PostgresListener postgresListener, TaskQueue taskQueue) {
         this.taskQueue = taskQueue;
         this.postgresListener = postgresListener;
-        this.jdbcUrl = "jdbc:h2:mem:static-data-cache;DB_CLOSE_DELAY=-1;LOCK_MODE=0;CACHE_SIZE=65536";
+        this.jdbcUrl = "jdbc:h2:mem:static-data-cache;DB_CLOSE_DELAY=-1;LOCK_MODE=3;CACHE_SIZE=65536;QUERY_CACHE_SIZE=1024;CACHE_TYPE=SOFT_LRU";
         this.dataManager = dataManager;
 
         postgresListener.addHandler(notification -> {
@@ -387,18 +389,41 @@ public class H2DataAccessor implements DataAccessor {
     }
 
     @Override
-    public void executeUpdate(@Language("SQL") String sql, List<Object> values, int delay) throws SQLException {
-        PreparedStatement cachePreparedStatement = prepareStatement(sql);
-        for (int i = 0; i < values.size(); i++) {
-            cachePreparedStatement.setObject(i + 1, values.get(i));
-        }
-        logger.debug("[H2] {}", sql);
-        cachePreparedStatement.executeUpdate();
-        if (!getConnection().getAutoCommit()) {
-            getConnection().commit();
+    public void executeTransaction(SQLTransaction transaction, int delay) throws SQLException {
+        Connection connection = getConnection();
+        boolean autoCommit = connection.getAutoCommit();
+        try {
+            connection.setAutoCommit(false);
+            for (SQLTransaction.Operation operation : transaction.getOperations()) {
+                SQLTransaction.Statement sqlStatement = operation.getStatement();
+                String h2Sql = sqlStatement.getH2Sql();
+                PreparedStatement cachePreparedStatement = prepareStatement(h2Sql);
+                int i = 0;
+                List<Object> values = operation.getValuesSupplier().get();
+                for (Object value : values) {
+                    cachePreparedStatement.setObject(++i, value);
+                }
+                logger.debug("[H2] {}", h2Sql);
+                Consumer<ResultSet> resultHandler = operation.getResultHandler();
+                if (resultHandler == null) {
+                    cachePreparedStatement.executeUpdate();
+                } else {
+                    try (ResultSet rs = cachePreparedStatement.executeQuery()) {
+                        resultHandler.accept(rs);
+                    }
+                }
+            }
+            connection.commit();
+        } catch (SQLException e) {
+            connection.rollback();
+            throw e;
+        } finally {
+            if (autoCommit) {
+                connection.setAutoCommit(true);
+            }
         }
 
-        runDatabaseTask(sql, values.toArray(), delay);
+        runDatabaseTask(transaction, delay);
     }
 
     @Override
@@ -473,23 +498,51 @@ public class H2DataAccessor implements DataAccessor {
         return columns;
     }
 
-    private void runDatabaseTask(String sql, Object[] params, int delay) {
+    private void runDatabaseTask(SQLTransaction transaction, int delay) {
+        List<Pair<String, String>> key = new ArrayList<>(transaction.getOperations().size());
+        for (SQLTransaction.Operation operation : transaction.getOperations()) {
+            SQLTransaction.Statement sqlStatement = operation.getStatement();
+            key.add(Pair.of(sqlStatement.getH2Sql(), sqlStatement.getPgSql()));
+        }
+
         Runnable runnable = () -> taskQueue.submitTask(connection -> {
-            PreparedStatement realPreparedStatement = connection.prepareStatement(sql);
-            for (int i = 0; i < params.length; i++) {
-                realPreparedStatement.setObject(i + 1, params[i]);
+            boolean autoCommit = connection.getAutoCommit();
+            try {
+                connection.setAutoCommit(false);
+                for (SQLTransaction.Operation operation : transaction.getOperations()) {
+                    if (operation.getResultHandler() != null) {
+                        // we don't support queries on the real db
+                        continue;
+                    }
+                    SQLTransaction.Statement statement = operation.getStatement();
+                    PreparedStatement realPreparedStatement = connection.prepareStatement(statement.getPgSql());
+                    int i = 0;
+                    List<Object> values = operation.getValuesSupplier().get();
+                    for (Object value : values) {
+                        realPreparedStatement.setObject(++i, value);
+                    }
+                    logger.debug("[DB] {}", statement.getPgSql());
+                    realPreparedStatement.executeUpdate();
+                }
+                connection.commit();
+            } catch (SQLException e) {
+                connection.rollback();
+                //todo: ideally this should trigger an error which causes us to resync the h2 db
+                logger.error("Error updating the real db", e);
+            } finally {
+                if (autoCommit) {
+                    connection.setAutoCommit(true);
+                }
             }
-            logger.debug("[DB] {}}", sql);
-            realPreparedStatement.executeUpdate();
         });
 
         if (delay <= 0) {
             runnable.run();
             return;
         }
-        if (delayedTasks.put(sql, runnable) == null) {
+        if (delayedTasks.put(key, runnable) == null) {
             scheduledExecutorService.schedule(() -> {
-                Runnable removed = delayedTasks.remove(sql);
+                Runnable removed = delayedTasks.remove(key);
                 if (removed != null) {
                     removed.run();
                 }

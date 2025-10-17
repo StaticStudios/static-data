@@ -9,13 +9,14 @@ import java.sql.SQLException;
 import java.util.List;
 
 public interface DataAccessor {
-//    PreparedStatement prepareStatement(@Language("SQL") String sql) throws SQLException;
-
-//    <T> PersistentValue<T> createPersistentValue(PrimaryKey primaryKey, Class<T> dataType, String schema, String table, String dataColumn);
 
     ResultSet executeQuery(@Language("SQL") String sql, List<Object> values) throws SQLException;
 
-    void executeUpdate(@Language("SQL") String sql, List<Object> values, int delay) throws SQLException;
+    default void executeUpdate(@Language("SQL") String sql, List<Object> values, int delay) throws SQLException {
+        executeTransaction(new SQLTransaction().update(SQLTransaction.Statement.of(sql, sql), values), delay);
+    }
+
+    void executeTransaction(SQLTransaction transaction, int delay) throws SQLException;
 
     void insert(List<SQlStatement> sqlStatements, InsertMode insertMode) throws SQLException;
 
