@@ -1,0 +1,15 @@
+<idea-plugin>
+    <id>net.staticstudios.data.ide.intellij</id>
+    <name>static-data</name>
+    <vendor>Static Studios</vendor>
+    <version>1.0.0</version>
+    <description>
+        Provides support for static-data. static-data generates builders and other utilities at compile-time in order to
+        provide a better developer experience, with strict type safety. This plugin makes IntelliJ aware of these
+        generated classes and/or methods.
+    </description>
+    <idea-version since-build="233"/>
+    <extensions defaultExtensionNs="com.intellij">
+        <lang.psiAugmentProvider implementation="net.staticstudios.data.ide.intellij.DataPsiAugmentProvider"/>
+    </extensions>
+</idea-plugin>

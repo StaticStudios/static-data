@@ -273,7 +273,7 @@ public class QueryFactory {
         MethodSpec.Builder builder = MethodSpec.methodBuilder(methodName)
                 .addModifiers(Modifier.PUBLIC)
                 .returns(returnType)
-                .addParameter(ClassName.get("net.staticstudios.data.query", "Order"), "order");
+                .addParameter(ClassName.get("net.staticstudios.data", "Order"), "order");
 
         handleForeignPersistentValue(builder, persistentValueMetadata);
 

@@ -1,4 +1,5 @@
 package net.staticstudios.data;
+//todo: the annotations package can be removed and everything can be put back into core once the processor is gone
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

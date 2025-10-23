@@ -1,0 +1,77 @@
+package net.staticstudios.data.ide.intellij.query;
+
+import com.intellij.psi.PsiField;
+import com.intellij.psi.PsiType;
+import net.staticstudios.data.ide.intellij.Utils;
+import net.staticstudios.data.ide.intellij.query.clause.*;
+
+import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.List;
+
+public class QueryBuilderUtils {
+    private static final List<QueryClause> pvClauses;
+    private static final List<QueryClause> referenceClauses;
+
+    static {
+        pvClauses = new ArrayList<>();
+        pvClauses.add(new IsClause());
+        pvClauses.add(new IsNotClause());
+
+        pvClauses.add(new IsNullClause());
+        pvClauses.add(new IsNotNullClause());
+
+        pvClauses.add(new IsLikeClause());
+        pvClauses.add(new IsNotLikeClause());
+
+        pvClauses.add(new IsGreaterThanClause());
+        pvClauses.add(new IsLessThanClause());
+        pvClauses.add(new IsGreaterThanOrEqualToClause());
+        pvClauses.add(new IsLessThanOrEqualToClause());
+        pvClauses.add(new IsBetweenClause());
+        pvClauses.add(new IsNotBetweenClause());
+
+        referenceClauses = new ArrayList<>();
+        referenceClauses.add(new IsClause());
+        referenceClauses.add(new IsNotClause());
+        referenceClauses.add(new IsNullClause());
+        referenceClauses.add(new IsNotNullClause());
+    }
+
+    public static List<QueryClause> getClausesForType(PsiField psiField, boolean nullable) {
+        if (Utils.isValidPersistentValue(psiField)) {
+            List<QueryClause> applicableClauses = new ArrayList<>();
+            for (QueryClause clause : pvClauses) {
+                if (clause.matches(psiField, nullable)) {
+                    applicableClauses.add(clause);
+                }
+            }
+            return applicableClauses;
+        }
+        if (Utils.isValidReference(psiField)) {
+            List<QueryClause> applicableClauses = new ArrayList<>();
+            for (QueryClause clause : referenceClauses) {
+                if (clause.matches(psiField, nullable)) {
+                    applicableClauses.add(clause);
+                }
+            }
+            return applicableClauses;
+        }
+        return List.of();
+    }
+
+    public static boolean isNumeric(PsiType psiType) {
+        String typeName = psiType.getCanonicalText();
+        return typeName.equals(Integer.class.getName()) ||
+                typeName.equals(Long.class.getName()) ||
+                typeName.equals(Float.class.getName()) ||
+                typeName.equals(Double.class.getName()) ||
+                typeName.equals(Short.class.getName()) ||
+                typeName.equals(Timestamp.class.getName()) ||
+                typeName.equals("int") ||
+                typeName.equals("long") ||
+                typeName.equals("float") ||
+                typeName.equals("short") ||
+                typeName.equals("double");
+    }
+}

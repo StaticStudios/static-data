@@ -1,0 +1,155 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'com.gradleup.shadow' version '8.3.3'
+}
+
+group = 'net.staticstudios'
+version = '3.0.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+    maven {
+        name = "StaticStudios"
+        url = 'https://repo.staticstudios.net/snapshots/'
+    }
+}
+
+dependencies {
+    implementation 'com.impossibl.pgjdbc-ng:pgjdbc-ng:0.8.9'
+    implementation 'com.zaxxer:HikariCP:5.1.0'
+    implementation 'redis.clients:jedis:5.1.2'
+    implementation 'net.staticstudios:static-utils:1.0.6-SNAPSHOT'
+    implementation 'com.h2database:h2:2.3.232'
+    implementation 'org.jetbrains:annotations:24.0.1'
+    api project(":annotations")
+    implementation project(":annotations")
+    annotationProcessor project(":processor")
+    compileOnly project(":processor")
+
+
+    testAnnotationProcessor project(":processor")
+    testCompileOnly project(":processor")
+
+//    testImplementation(platform('org.junit:junit-bom:5.10.3'))
+//    testImplementation('org.junit.jupiter:junit-jupiter')
+//    testImplementation('org.junit-pioneer:junit-pioneer:2.3.0');
+//    testRuntimeOnly('org.junit.platform:junit-platform-launcher')
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+
+    testImplementation("org.testcontainers:postgresql:1.19.8")
+    testImplementation("com.redis:testcontainers-redis:2.2.2")
+    testImplementation("org.slf4j:slf4j-log4j12:2.0.16")
+//    compileOnly project(':javac-plugin') //TODO: java-c
+//    annotationProcessor project(':javac-plugin')
+//    testCompileOnly project(':javac-plugin')
+//    testAnnotationProcessor project(':javac-plugin')
+}
+
+//tasks.named('compileJava').configure {
+//    options.fork = true
+//    options.forkOptions.jvmArgs += [
+//            '--add-opens', 'jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED',
+//            '--add-opens', 'jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED',
+//            '--add-exports', 'jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED',
+//            '--add-exports', 'jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED',
+//            '--add-exports', 'jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED',
+//            '--add-exports', 'jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED',
+//            '--add-exports', 'jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED',
+//            '--add-exports', 'jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED',
+//            '--add-exports', 'jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED',
+//            '--add-exports', 'jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED',
+//            '--add-exports', 'jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED'
+//    ]
+//
+//    options.compilerArgs += [
+//            '-Xplugin:StaticDataJavacPlugin'
+//    ]
+//}
+//
+//tasks.named('compileTestJava').configure {
+//    options.fork = true
+//    options.forkOptions.jvmArgs += [
+//            '--add-opens', 'jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED',
+//            '--add-opens', 'jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED',
+//            '--add-exports', 'jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED',
+//            '--add-exports', 'jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED',
+//            '--add-exports', 'jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED',
+//            '--add-exports', 'jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED',
+//            '--add-exports', 'jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED',
+//            '--add-exports', 'jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED',
+//            '--add-exports', 'jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED',
+//            '--add-exports', 'jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED',
+//            '--add-exports', 'jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED'
+//    ]
+//
+//    options.compilerArgs += [
+//            '-Xplugin:StaticDataJavacPlugin'
+//    ]
+//}
+
+
+tasks.named('build') {
+    dependsOn(shadowJar)
+
+}
+
+tasks.named("publish") {
+    dependsOn(build)
+}
+
+test {
+    useJUnitPlatform()
+}
+
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
+javadoc {
+    options.tags = ["implSpec", "apiNote", "implNote"]
+}
+
+publishing {
+    repositories {
+        maven {
+            credentials(org.gradle.api.credentials.PasswordCredentials.class)
+            name = "StaticStudios"
+            setUrl("https://repo.staticstudios.net/private/")
+        }
+    }
+    publications {
+        maven(MavenPublication) {
+            from components.java
+            pom {
+                name = 'Static Data'
+                description = 'Data library used by StaticStudios.'
+                url = 'https://github.com/StaticStudios/static-data'
+                developers {
+                    developer {
+                        id = 'staticstudios'
+                        name = 'Static Studios'
+                        email = 'support@staticstudios.net'
+                    }
+                }
+                scm {
+                    connection = 'scm:git:git://github.com/StaticStudios/static-data.git'
+                    developerConnection = 'scm:git:ssh://github.com:StaticStudios/static-data.git'
+                    url = 'https://github.com/StaticStudios/static-data'
+                }
+            }
+        }
+    }
+}
+
+def targetJavaVersion = 21
+java {
+    def javaVersion = JavaVersion.toVersion(targetJavaVersion)
+    sourceCompatibility = javaVersion
+    targetCompatibility = javaVersion
+    toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
+}

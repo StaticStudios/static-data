@@ -20,7 +20,7 @@ import java.util.Set;
 
 @SupportedAnnotationTypes("net.staticstudios.data.Data")
 @SupportedSourceVersion(SourceVersion.RELEASE_21)
-public class DataProcessor extends AbstractProcessor { //todo: this seems to be in the classpath of the main project. address this.
+public class DataProcessor extends AbstractProcessor { //TODO: delete this class since annotation processing is no longer used.
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
         for (Element annotated : roundEnv.getElementsAnnotatedWith(Data.class)) {
