@@ -52,7 +52,7 @@ public class DataPsiAugmentProvider extends PsiAugmentProvider {
         }
 
         if (type.isAssignableFrom(PsiMethod.class)) {
-            return List.of(type.cast(getBuilderMethod(psiClass)), type.cast(getQueryMethod(psiClass)));
+            return List.of(type.cast(getBuilderMethod(psiClass)), type.cast(getBuilderMethod2(psiClass)), type.cast(getQueryMethod(psiClass)), type.cast(getQueryMethod2(psiClass)));
         }
 
         return Collections.emptyList();
@@ -97,6 +97,27 @@ public class DataPsiAugmentProvider extends PsiAugmentProvider {
         return builderMethod;
     }
 
+    private PsiMethod getBuilderMethod2(PsiClass parent) {
+//        return CachedValuesManager.getCachedValue(parent, () -> {
+//            PsiClass builderClass = getBuilderClass(parent);
+//            PsiType returnType = JavaPsiFacade.getElementFactory(parent.getProject())
+//                    .createType(builderClass, PsiSubstitutor.EMPTY);
+//            SyntheticBuilderMethod builderMethod = new SyntheticBuilderMethod(parent, "builder", returnType);
+//            return CachedValueProvider.Result.create(builderMethod, parent);
+//        });
+        PsiClass builderClass = getBuilderClass(parent);
+        PsiType returnType = JavaPsiFacade.getElementFactory(parent.getProject())
+                .createType(builderClass, PsiSubstitutor.EMPTY);
+        SyntheticMethod builderMethod = new SyntheticMethod(parent, parent, "builder", returnType);
+        PsiType dataManagerType = JavaPsiFacade.getElementFactory(parent.getProject())
+                .createTypeFromText("net.staticstudios.data.DataManager", parent);
+        builderMethod.addParameter("dataManager", dataManagerType);
+        builderMethod.addModifier(PsiModifier.PUBLIC);
+        builderMethod.addModifier(PsiModifier.STATIC);
+        builderMethod.addModifier(PsiModifier.FINAL);
+        return builderMethod;
+    }
+
     private PsiMethod getQueryMethod(PsiClass parent) {
 //        return CachedValuesManager.getCachedValue(parent, () -> {
 //            PsiClass builderClass = getBuilderClass(parent);
@@ -109,6 +130,27 @@ public class DataPsiAugmentProvider extends PsiAugmentProvider {
         PsiType returnType = JavaPsiFacade.getElementFactory(parent.getProject())
                 .createType(queryClass, PsiSubstitutor.EMPTY);
         SyntheticMethod builderMethod = new SyntheticMethod(parent, parent, "query", returnType);
+        builderMethod.addModifier(PsiModifier.PUBLIC);
+        builderMethod.addModifier(PsiModifier.STATIC);
+        builderMethod.addModifier(PsiModifier.FINAL);
+        return builderMethod;
+    }
+
+    private PsiMethod getQueryMethod2(PsiClass parent) {
+//        return CachedValuesManager.getCachedValue(parent, () -> {
+//            PsiClass builderClass = getBuilderClass(parent);
+//            PsiType returnType = JavaPsiFacade.getElementFactory(parent.getProject())
+//                    .createType(builderClass, PsiSubstitutor.EMPTY);
+//            SyntheticBuilderMethod builderMethod = new SyntheticBuilderMethod(parent, "builder", returnType);
+//            return CachedValueProvider.Result.create(builderMethod, parent);
+//        });
+        PsiClass queryClass = getQueryClass(parent);
+        PsiType returnType = JavaPsiFacade.getElementFactory(parent.getProject())
+                .createType(queryClass, PsiSubstitutor.EMPTY);
+        SyntheticMethod builderMethod = new SyntheticMethod(parent, parent, "query", returnType);
+        PsiType dataManagerType = JavaPsiFacade.getElementFactory(parent.getProject())
+                .createTypeFromText("net.staticstudios.data.DataManager", parent);
+        builderMethod.addParameter("dataManager", dataManagerType);
         builderMethod.addModifier(PsiModifier.PUBLIC);
         builderMethod.addModifier(PsiModifier.STATIC);
         builderMethod.addModifier(PsiModifier.FINAL);
