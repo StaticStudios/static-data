@@ -11,5 +11,7 @@
     <idea-version since-build="233"/>
     <extensions defaultExtensionNs="com.intellij">
         <lang.psiAugmentProvider implementation="net.staticstudios.data.ide.intellij.DataPsiAugmentProvider"/>
+
+        <dependencySupport coordinate="net.staticstudios:static-data" kind="java" displayName="Static Data"/>
     </extensions>
 </idea-plugin>
