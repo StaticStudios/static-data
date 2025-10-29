@@ -16,4 +16,7 @@ public @interface OneToOne {
      * @return The link format
      */
     String link();
+
+    //todo: option to force not null?
+
 }

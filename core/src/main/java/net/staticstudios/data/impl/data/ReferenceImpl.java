@@ -5,9 +5,9 @@ import net.staticstudios.data.DataAccessor;
 import net.staticstudios.data.OneToOne;
 import net.staticstudios.data.Reference;
 import net.staticstudios.data.UniqueData;
-import net.staticstudios.data.parse.ForeignKey;
 import net.staticstudios.data.parse.SQLBuilder;
 import net.staticstudios.data.util.*;
+import net.staticstudios.data.utils.Link;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.Nullable;
 
@@ -22,15 +22,15 @@ import java.util.Map;
 public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
     private final UniqueData holder;
     private final Class<T> type;
-    private final List<ForeignKey.Link> link;
+    private final List<Link> link;
 
-    public ReferenceImpl(UniqueData holder, Class<T> type, List<ForeignKey.Link> link) {
+    public ReferenceImpl(UniqueData holder, Class<T> type, List<Link> link) {
         this.holder = holder;
         this.type = type;
         this.link = link;
     }
 
-    public static <T extends UniqueData> void createAndDelegate(Reference.ProxyReference<T> proxy, List<ForeignKey.Link> link) {
+    public static <T extends UniqueData> void createAndDelegate(Reference.ProxyReference<T> proxy, List<Link> link) {
         ReferenceImpl<T> delegate = new ReferenceImpl<>(
                 proxy.getHolder(),
                 proxy.getReferenceType(),
@@ -39,7 +39,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
         proxy.setDelegate(delegate);
     }
 
-    public static <T extends UniqueData> ReferenceImpl<T> create(UniqueData holder, Class<T> type, List<ForeignKey.Link> link) {
+    public static <T extends UniqueData> ReferenceImpl<T> create(UniqueData holder, Class<T> type, List<Link> link) {
         return new ReferenceImpl<>(holder, type, link);
     }
 
@@ -93,7 +93,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
         DataAccessor dataAccessor = holder.getDataManager().getDataAccessor();
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("SELECT ");
-        for (ForeignKey.Link entry : link) {
+        for (Link entry : link) {
             String myColumn = entry.columnInReferringTable();
             sqlBuilder.append("\"").append(myColumn).append("\", ");
         }
@@ -111,7 +111,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
                 return null;
             }
 
-            for (ForeignKey.Link entry : link) {
+            for (Link entry : link) {
                 String myColumn = entry.columnInReferringTable();
                 String theirColumn = entry.columnInReferencedTable();
                 if (rs.getObject(myColumn) == null) {
@@ -133,7 +133,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
         List<Object> values = new ArrayList<>();
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("UPDATE \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\" SET ");
-        for (ForeignKey.Link entry : link) {
+        for (Link entry : link) {
             String myColumn = entry.columnInReferringTable();
             if (value == null) {
                 sqlBuilder.append("\"").append(myColumn).append("\" = NULL, ");

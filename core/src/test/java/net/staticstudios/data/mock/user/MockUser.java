@@ -8,6 +8,7 @@ import java.util.UUID;
 // if the super class provides a data annotation, ignore it and use the child's annotation. it would be cool tho to allow the super class to use a @data annotation. the former is whats implemented now. if changed, update the processor.
 @Data(schema = "public", table = "users")
 public class MockUser extends UniqueData {
+    //todo: test inheritance properly
     //todo: cached values
     //todo: note - maybe PC's add and remove handlers can be implemented using update handlers
     @IdColumn(name = "id")

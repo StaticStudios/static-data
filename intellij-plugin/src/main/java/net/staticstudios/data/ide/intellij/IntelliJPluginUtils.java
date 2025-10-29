@@ -1,10 +1,11 @@
 package net.staticstudios.data.ide.intellij;
 
 import com.intellij.psi.*;
+import net.staticstudios.data.utils.Constants;
 
 import java.util.Objects;
 
-public class Utils {
+public class IntelliJPluginUtils {
     public static boolean is(PsiType type, String classFqn) {
         if (!(type instanceof PsiClassType psiClassType)) {
             return false;
@@ -68,14 +69,14 @@ public class Utils {
     }
 
     public static boolean isValidPersistentValue(PsiField psiField) {
-        return Utils.is(psiField.getType(), Constants.PERSISTENT_VALUE_FQN) && (
-                Utils.hasAnnotation(psiField, Constants.COLUMN_ANNOTATION_FQN) ||
-                        Utils.hasAnnotation(psiField, Constants.FOREIGN_COLUMN_ANNOTATION_FQN) ||
-                        Utils.hasAnnotation(psiField, Constants.ID_COLUMN_ANNOTATION_FQN));
+        return IntelliJPluginUtils.is(psiField.getType(), Constants.PERSISTENT_VALUE_FQN) && (
+                IntelliJPluginUtils.hasAnnotation(psiField, Constants.COLUMN_ANNOTATION_FQN) ||
+                        IntelliJPluginUtils.hasAnnotation(psiField, Constants.FOREIGN_COLUMN_ANNOTATION_FQN) ||
+                        IntelliJPluginUtils.hasAnnotation(psiField, Constants.ID_COLUMN_ANNOTATION_FQN));
     }
 
     public static boolean isValidReference(PsiField psiField) {
-        return Utils.is(psiField.getType(), Constants.REFERENCE_FQN) &&
-                Utils.hasAnnotation(psiField, Constants.ONE_TO_ONE_ANNOTATION_FQN);
+        return IntelliJPluginUtils.is(psiField.getType(), Constants.REFERENCE_FQN) &&
+                IntelliJPluginUtils.hasAnnotation(psiField, Constants.ONE_TO_ONE_ANNOTATION_FQN);
     }
 }

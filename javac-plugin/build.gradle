@@ -7,7 +7,9 @@ repositories {
 }
 
 dependencies {
-    implementation(project(":annotations"))
+    implementation(project(":utils"))
+    implementation 'org.jetbrains:annotations:24.0.1'
+    implementation("com.google.guava:guava:33.5.0-jre")
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -23,7 +25,6 @@ tasks.withType(JavaCompile).configureEach {
             '--add-exports', 'jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED'
     ]
 }
-
 
 java {
     toolchain {

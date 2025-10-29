@@ -1,16 +1,16 @@
 package net.staticstudios.data.util;
 
 import net.staticstudios.data.UniqueData;
-import net.staticstudios.data.parse.ForeignKey;
+import net.staticstudios.data.utils.Link;
 
 import java.util.List;
 import java.util.Objects;
 
 public class ReferenceMetadata {
     private final Class<? extends UniqueData> referencedClass;
-    private final List<ForeignKey.Link> links;
+    private final List<Link> links;
 
-    public ReferenceMetadata(Class<? extends UniqueData> referencedClass, List<ForeignKey.Link> links) {
+    public ReferenceMetadata(Class<? extends UniqueData> referencedClass, List<Link> links) {
         this.referencedClass = referencedClass;
         this.links = links;
     }
@@ -19,7 +19,7 @@ public class ReferenceMetadata {
         return referencedClass;
     }
 
-    public List<ForeignKey.Link> getLinks() {
+    public List<Link> getLinks() {
         return links;
     }
 

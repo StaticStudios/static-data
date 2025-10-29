@@ -1,4 +1,4 @@
-package net.staticstudios.data.ide.intellij;
+package net.staticstudios.data.utils;
 
 public class Constants {
     public static final String DATA_ANNOTATION_FQN = "net.staticstudios.data.Data";
@@ -13,4 +13,9 @@ public class Constants {
     public static final String REFERENCE_FQN = "net.staticstudios.data.Reference";
     public static final String UNIQUE_DATA_FQN = "net.staticstudios.data.UniqueData";
     public static final String ORDER_FQN = "net.staticstudios.data.Order";
+    public static final String INSERT_ANNOTATION_FQN = "net.staticstudios.data.Insert";
+    public static final String INSERT_STRATEGY_FQN = "net.staticstudios.data.InsertStrategy";
+    public static final String INSERT_MODE_FQN = "net.staticstudios.data.InsertMode";
+    public static final String INSERT_CONTEXT_FQN = "net.staticstudios.data.insert.InsertContext";
+
 }

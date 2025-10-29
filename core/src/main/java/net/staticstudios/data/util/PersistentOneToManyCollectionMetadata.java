@@ -1,16 +1,16 @@
 package net.staticstudios.data.util;
 
 import net.staticstudios.data.UniqueData;
-import net.staticstudios.data.parse.ForeignKey;
+import net.staticstudios.data.utils.Link;
 
 import java.util.List;
 import java.util.Objects;
 
 public class PersistentOneToManyCollectionMetadata implements PersistentCollectionMetadata {
     private final Class<? extends UniqueData> dataType;
-    private final List<ForeignKey.Link> links;
+    private final List<Link> links;
 
-    public PersistentOneToManyCollectionMetadata(Class<? extends UniqueData> dataType, List<ForeignKey.Link> links) {
+    public PersistentOneToManyCollectionMetadata(Class<? extends UniqueData> dataType, List<Link> links) {
         this.dataType = dataType;
         this.links = links;
     }
@@ -19,7 +19,7 @@ public class PersistentOneToManyCollectionMetadata implements PersistentCollecti
         return dataType;
     }
 
-    public List<ForeignKey.Link> getLinks() {
+    public List<Link> getLinks() {
         return links;
     }
 

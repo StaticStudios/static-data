@@ -1,6 +1,6 @@
 package net.staticstudios.data.impl.h2.trigger;
 
-import net.staticstudios.data.parse.ForeignKey;
+import net.staticstudios.data.utils.Link;
 import org.h2.api.Trigger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,7 +15,7 @@ import java.util.List;
 public class H2DeleteStrategyCascadeTrigger implements Trigger {
     private final Logger logger = LoggerFactory.getLogger(H2DeleteStrategyCascadeTrigger.class);
     private final List<String> columnNames = new ArrayList<>();
-    private List<ForeignKey.Link> links;
+    private List<Link> links;
     private String parentSchema;
     private String parentTable;
     private String targetSchema;
@@ -56,7 +56,7 @@ public class H2DeleteStrategyCascadeTrigger implements Trigger {
         }
         this.links = new ArrayList<>();
         for (int i = 0; i < links.size(); i += 2) {
-            this.links.add(new ForeignKey.Link(links.get(i + 1), links.get(i)));
+            this.links.add(new Link(links.get(i + 1), links.get(i)));
         }
     }
 
@@ -87,7 +87,7 @@ public class H2DeleteStrategyCascadeTrigger implements Trigger {
     private void handleDelete(Connection connection, Object[] oldRow) throws SQLException {
         StringBuilder sb = new StringBuilder("DELETE FROM \"").append(targetSchema).append("\".\"").append(targetTable).append("\" WHERE ");
         List<Object> values = new ArrayList<>();
-        for (ForeignKey.Link link : links) {
+        for (Link link : links) {
             sb.append("\"").append(link.columnInReferencedTable()).append("\" = ? AND ");
             int index = columnNames.indexOf(link.columnInReferringTable());
             values.add(oldRow[index]);

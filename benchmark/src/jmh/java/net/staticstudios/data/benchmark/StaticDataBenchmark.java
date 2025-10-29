@@ -22,6 +22,7 @@ public class StaticDataBenchmark {
 
     @Benchmark
     public void testPersistentValueRead(StaticDataBenchmarkState state) {
+
     }
 
     @Benchmark

@@ -13,6 +13,7 @@ import net.staticstudios.data.parse.*;
 import net.staticstudios.data.primative.Primitives;
 import net.staticstudios.data.util.*;
 import net.staticstudios.data.util.TaskQueue;
+import net.staticstudios.data.utils.Link;
 import net.staticstudios.utils.ThreadUtils;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.ApiStatus;
@@ -462,7 +463,7 @@ public class DataManager {
             for (ForeignKey fKey : table.getForeignKeys()) {
                 SQLSchema referencedSchema = Objects.requireNonNull(sqlBuilder.getSchema(fKey.getReferencedSchema()));
                 SQLTable referencedTable = Objects.requireNonNull(referencedSchema.getTable(fKey.getReferencedTable()));
-                for (ForeignKey.Link link : fKey.getLinkingColumns()) {
+                for (Link link : fKey.getLinkingColumns()) {
                     String myColumnName = link.columnInReferringTable();
                     String otherColumnName = link.columnInReferencedTable();
                     SQLColumn otherColumn = Objects.requireNonNull(referencedTable.getColumn(otherColumnName));
@@ -493,7 +494,7 @@ public class DataManager {
 
                 boolean addDependency = true;
                 // if one of the linking columns is not present in the insert context, we can't add the dependency
-                for (ForeignKey.Link link : fKey.getLinkingColumns()) {
+                for (Link link : fKey.getLinkingColumns()) {
                     Object value = insertContext.getEntries().entrySet().stream()
                             .filter(entry -> {
                                 SimpleColumnMetadata key = entry.getKey();
@@ -643,12 +644,12 @@ public class DataManager {
         }
     }
 
-    public <T> T get(String schema, String table, String column, ColumnValuePairs idColumns, List<ForeignKey.Link> idColumnLinks, Class<T> dataType) {
+    public <T> T get(String schema, String table, String column, ColumnValuePairs idColumns, List<Link> idColumnLinks, Class<T> dataType) {
         //todo: caffeine cache for these as well.
         StringBuilder sqlBuilder = new StringBuilder().append("SELECT \"").append(column).append("\" FROM \"").append(schema).append("\".\"").append(table).append("\" WHERE ");
         for (ColumnValuePair columnValuePair : idColumns) {
             String name = columnValuePair.column();
-            for (ForeignKey.Link link : idColumnLinks) {
+            for (Link link : idColumnLinks) {
                 if (link.columnInReferringTable().equals(columnValuePair.column())) {
                     name = link.columnInReferencedTable();
                     break;
@@ -671,7 +672,7 @@ public class DataManager {
     }
 
     @ApiStatus.Internal
-    public void set(String schema, String table, String column, ColumnValuePairs idColumns, List<ForeignKey.Link> idColumnLinks, Object value, int delay) {
+    public void set(String schema, String table, String column, ColumnValuePairs idColumns, List<Link> idColumnLinks, Object value, int delay) {
         StringBuilder sqlBuilder;
         if (idColumnLinks.isEmpty()) {
             sqlBuilder = new StringBuilder().append("UPDATE \"").append(schema).append("\".\"").append(table).append("\" SET \"").append(column).append("\" = ? WHERE ");
@@ -686,7 +687,7 @@ public class DataManager {
             sqlBuilder.append(")) AS source (\"").append(column).append("\"");
             for (ColumnValuePair columnValuePair : idColumns) {
                 String name = columnValuePair.column();
-                for (ForeignKey.Link link : idColumnLinks) {
+                for (Link link : idColumnLinks) {
                     if (link.columnInReferringTable().equals(columnValuePair.column())) {
                         name = link.columnInReferencedTable();
                         break;
@@ -697,7 +698,7 @@ public class DataManager {
             sqlBuilder.append(") ON ");
             for (ColumnValuePair columnValuePair : idColumns) {
                 String name = columnValuePair.column();
-                for (ForeignKey.Link link : idColumnLinks) {
+                for (Link link : idColumnLinks) {
                     if (link.columnInReferringTable().equals(columnValuePair.column())) {
                         name = link.columnInReferencedTable();
                         break;
@@ -709,7 +710,7 @@ public class DataManager {
             sqlBuilder.append(" WHEN MATCHED THEN UPDATE SET \"").append(column).append("\" = source.\"").append(column).append("\" WHEN NOT MATCHED THEN INSERT (\"").append(column).append("\"");
             for (ColumnValuePair columnValuePair : idColumns) {
                 String name = columnValuePair.column();
-                for (ForeignKey.Link link : idColumnLinks) {
+                for (Link link : idColumnLinks) {
                     if (link.columnInReferringTable().equals(columnValuePair.column())) {
                         name = link.columnInReferencedTable();
                         break;
@@ -720,7 +721,7 @@ public class DataManager {
             sqlBuilder.append(") VALUES (source.\"").append(column).append("\"");
             for (ColumnValuePair columnValuePair : idColumns) {
                 String name = columnValuePair.column();
-                for (ForeignKey.Link link : idColumnLinks) {
+                for (Link link : idColumnLinks) {
                     if (link.columnInReferringTable().equals(columnValuePair.column())) {
                         name = link.columnInReferencedTable();
                         break;
@@ -829,4 +830,25 @@ public class DataManager {
         ValueSerializer<?, ?> serializer = getValueSerializer(clazz);
         return serializer.getSerializedType();
     }
+
+//    /**
+//     * For internal use only. A dummy instance has no DataManager, no id columns, and is marked as deleted.
+//     *
+//     * @param clazz The UniqueData class to create a dummy instance of.
+//     * @param <T>   The type of UniqueData.
+//     */
+//    @ApiStatus.Internal
+//    public <T extends UniqueData> T createDummyInstance(Class<T> clazz) {
+//        T instance;
+//        try {
+//            Constructor<T> constructor = clazz.getDeclaredConstructor();
+//            constructor.setAccessible(true);
+//            instance = constructor.newInstance();
+//        } catch (Exception e) {
+//            throw new RuntimeException(e);
+//        }
+//
+//        instance.markDeleted();
+//        return instance;
+//    }
 }

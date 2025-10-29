@@ -8,7 +8,7 @@
         provide a better developer experience, with strict type safety. This plugin makes IntelliJ aware of these
         generated classes and/or methods.
     </description>
-    <idea-version since-build="233"/>
+    <idea-version since-build="252"/>
     <extensions defaultExtensionNs="com.intellij">
         <lang.psiAugmentProvider implementation="net.staticstudios.data.ide.intellij.DataPsiAugmentProvider"/>
 

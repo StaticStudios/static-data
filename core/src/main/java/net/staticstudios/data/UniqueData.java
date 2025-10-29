@@ -68,12 +68,15 @@ public abstract class UniqueData {
     public String toString() {
         StringBuilder sb = new StringBuilder();
         sb.append(this.getClass().getSimpleName()).append("{");
-        for (ColumnValuePair idColumn : idColumns) {
-            sb.append(idColumn.column()).append("=").append(idColumn.value()).append(", ");
+        if (this.idColumns != null) {
+            for (ColumnValuePair idColumn : idColumns) {
+                sb.append(idColumn.column()).append("=").append(idColumn.value()).append(", ");
+            }
         }
-        if (!idColumns.isEmpty()) {
-            sb.setLength(sb.length() - 2);
+        if (isDeleted) {
+            sb.append("deleted=true, ");
         }
+        sb.append("dataManager=").append(dataManager);
         sb.append("}");
         return sb.toString();
     }

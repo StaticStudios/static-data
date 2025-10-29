@@ -3,7 +3,7 @@ package net.staticstudios.data.ide.intellij.query.clause;
 import com.intellij.psi.PsiField;
 import com.intellij.psi.PsiManager;
 import com.intellij.psi.PsiType;
-import net.staticstudios.data.ide.intellij.Utils;
+import net.staticstudios.data.ide.intellij.IntelliJPluginUtils;
 import net.staticstudios.data.ide.intellij.query.QueryClause;
 
 import java.util.List;
@@ -12,7 +12,7 @@ public class IsLikeClause implements QueryClause {
 
     @Override
     public boolean matches(PsiField psiField, boolean nullable) {
-        return Utils.is(psiField.getType(), String.class.getName());
+        return IntelliJPluginUtils.is(psiField.getType(), String.class.getName());
     }
 
     @Override

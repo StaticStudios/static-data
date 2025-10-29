@@ -2,9 +2,9 @@ package net.staticstudios.data.impl.data;
 
 import com.google.common.base.Preconditions;
 import net.staticstudios.data.*;
-import net.staticstudios.data.parse.ForeignKey;
 import net.staticstudios.data.parse.SQLBuilder;
 import net.staticstudios.data.util.*;
+import net.staticstudios.data.utils.Link;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -21,8 +21,8 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
     private final String parsedJoinTableSchema;
     private final String parsedJoinTableName;
     private final String links; // since we need information about the column prefixes in the join table, we have to compute these at runtime
-    private @Nullable List<ForeignKey.Link> cachedJoinTableToDataTableLinks = null;
-    private @Nullable List<ForeignKey.Link> cachedJoinTableToReferencedTableLinks = null;
+    private @Nullable List<Link> cachedJoinTableToDataTableLinks = null;
+    private @Nullable List<Link> cachedJoinTableToReferencedTableLinks = null;
 
     public PersistentManyToManyCollectionImpl(UniqueData holder, Class<T> type, String parsedJoinTableSchema, String parsedJoinTableName, String links) {
         this.holder = holder;
@@ -106,26 +106,26 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         return "";
     }
 
-    public static List<ForeignKey.Link> getJoinTableToDataTableLinks(String dataTable, String links) {
-        List<ForeignKey.Link> joinTableToDataTableLinks = new ArrayList<>();
+    public static List<Link> getJoinTableToDataTableLinks(String dataTable, String links) {
+        List<Link> joinTableToDataTableLinks = new ArrayList<>();
         String dataTableColumnPrefix = getDataTableColumnPrefix(dataTable);
-        for (ForeignKey.Link link : SQLBuilder.parseLinks(links)) {
+        for (Link link : SQLBuilder.parseLinks(links)) {
             String columnInDataTable = link.columnInReferringTable();
             String dataColumnInJoinTable = dataTableColumnPrefix + "_" + columnInDataTable;
 
-            joinTableToDataTableLinks.add(new ForeignKey.Link(columnInDataTable, dataColumnInJoinTable));
+            joinTableToDataTableLinks.add(new Link(columnInDataTable, dataColumnInJoinTable));
         }
         return joinTableToDataTableLinks;
     }
 
-    public static List<ForeignKey.Link> getJoinTableToReferencedTableLinks(String dataTable, String referencedTable, String links) {
-        List<ForeignKey.Link> joinTableToReferencedTableLinks = new ArrayList<>();
+    public static List<Link> getJoinTableToReferencedTableLinks(String dataTable, String referencedTable, String links) {
+        List<Link> joinTableToReferencedTableLinks = new ArrayList<>();
         String referencedTableColumnPrefix = getReferencedTableColumnPrefix(dataTable, referencedTable);
-        for (ForeignKey.Link link : SQLBuilder.parseLinks(links)) {
+        for (Link link : SQLBuilder.parseLinks(links)) {
             String columnInReferencedTable = link.columnInReferencedTable();
             String referencedColumnInJoinTable = referencedTableColumnPrefix + "_" + columnInReferencedTable;
 
-            joinTableToReferencedTableLinks.add(new ForeignKey.Link(columnInReferencedTable, referencedColumnInJoinTable));
+            joinTableToReferencedTableLinks.add(new Link(columnInReferencedTable, referencedColumnInJoinTable));
         }
         return joinTableToReferencedTableLinks;
     }
@@ -241,8 +241,8 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         SQLTransaction.Statement selectDataIdsStatement = buildSelectDataIdsStatement();
         SQLTransaction.Statement selectReferencedIdsStatement = buildSelectReferencedIdsStatement();
         SQLTransaction.Statement updateStatement = buildUpdateStatement();
-        List<ForeignKey.Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
-        List<ForeignKey.Link> joinTableToReferencedTableLinks = getCachedJoinTableToReferencedTableLinks();
+        List<Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
+        List<Link> joinTableToReferencedTableLinks = getCachedJoinTableToReferencedTableLinks();
 
         List<Object> holderLinkingValues = new ArrayList<>(joinTableToDataTableLinks.size());
         List<Object> holderIdValues = holder.getIdColumns().stream().map(ColumnValuePair::value).toList();
@@ -251,7 +251,7 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         transaction.query(selectDataIdsStatement, () -> holderIdValues, rs -> {
             try {
                 Preconditions.checkState(rs.next(), "Could not find holder row in database");
-                for (ForeignKey.Link entry : joinTableToDataTableLinks) {
+                for (Link entry : joinTableToDataTableLinks) {
                     String dataColumn = entry.columnInReferencedTable();
                     Object value = rs.getObject(dataColumn);
                     holderLinkingValues.add(value);
@@ -268,7 +268,7 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
             transaction.query(selectReferencedIdsStatement, () -> referencedIdValues, rs -> {
                 try {
                     Preconditions.checkState(rs.next(), "Could not find referenced row in database");
-                    for (ForeignKey.Link _entry : joinTableToReferencedTableLinks) {
+                    for (Link _entry : joinTableToReferencedTableLinks) {
                         String referencedColumn = _entry.columnInReferencedTable();
                         Object value = rs.getObject(referencedColumn);
                         referencedLinkingValues.add(value);
@@ -349,7 +349,7 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         DataAccessor dataAccessor = holder.getDataManager().getDataAccessor();
         SQLTransaction.Statement selectDataIdsStatement = buildSelectDataIdsStatement();
         SQLTransaction.Statement clearStatement = buildClearStatement();
-        List<ForeignKey.Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
+        List<Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
 
         List<Object> holderLinkingValues = new ArrayList<>(joinTableToDataTableLinks.size());
         List<Object> holderIdValues = holder.getIdColumns().stream().map(ColumnValuePair::value).toList();
@@ -358,7 +358,7 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         transaction.query(selectDataIdsStatement, () -> holderIdValues, rs -> {
             try {
                 Preconditions.checkState(rs.next(), "Could not find holder row in database");
-                for (ForeignKey.Link entry : joinTableToDataTableLinks) {
+                for (Link entry : joinTableToDataTableLinks) {
                     String dataColumn = entry.columnInReferencedTable();
                     Object value = rs.getObject(dataColumn);
                     holderLinkingValues.add(value);
@@ -387,8 +387,8 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         SQLTransaction.Statement selectDataIdsStatement = buildSelectDataIdsStatement();
         SQLTransaction.Statement selectReferencedIdsStatement = buildSelectReferencedIdsStatement();
         SQLTransaction.Statement removeStatement = buildRemoveStatement();
-        List<ForeignKey.Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
-        List<ForeignKey.Link> joinTableToReferencedTableLinks = getCachedJoinTableToReferencedTableLinks();
+        List<Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
+        List<Link> joinTableToReferencedTableLinks = getCachedJoinTableToReferencedTableLinks();
 
         List<Object> holderLinkingValues = new ArrayList<>(joinTableToDataTableLinks.size());
         List<Object> holderIdValues = holder.getIdColumns().stream().map(ColumnValuePair::value).toList();
@@ -397,7 +397,7 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         transaction.query(selectDataIdsStatement, () -> holderIdValues, rs -> {
             try {
                 Preconditions.checkState(rs.next(), "Could not find holder row in database");
-                for (ForeignKey.Link entry : joinTableToDataTableLinks) {
+                for (Link entry : joinTableToDataTableLinks) {
                     String dataColumn = entry.columnInReferencedTable();
                     Object value = rs.getObject(dataColumn);
                     holderLinkingValues.add(value);
@@ -414,7 +414,7 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
             transaction.query(selectReferencedIdsStatement, () -> referencedIdValues, rs -> {
                 try {
                     Preconditions.checkState(rs.next(), "Could not find referenced row in database");
-                    for (ForeignKey.Link _entry : joinTableToReferencedTableLinks) {
+                    for (Link _entry : joinTableToReferencedTableLinks) {
                         String referencedColumn = _entry.columnInReferencedTable();
                         Object value = rs.getObject(referencedColumn);
                         referencedLinkingValues.add(value);
@@ -456,8 +456,8 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
 
         String joinTableSchema = getJoinTableSchema(parsedJoinTableSchema, holderMetadata.schema());
         String joinTableName = getJoinTableName(parsedJoinTableName, holderMetadata.table(), target.table());
-        List<ForeignKey.Link> joinTableToDataTableLinks = getJoinTableToDataTableLinks(holderMetadata.table(), links);
-        List<ForeignKey.Link> joinTableToReferencedTableLinks = getJoinTableToReferencedTableLinks(holderMetadata.table(), target.table(), links);
+        List<Link> joinTableToDataTableLinks = getJoinTableToDataTableLinks(holderMetadata.table(), links);
+        List<Link> joinTableToReferencedTableLinks = getJoinTableToReferencedTableLinks(holderMetadata.table(), target.table(), links);
 
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("SELECT ");
@@ -467,14 +467,14 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         sqlBuilder.setLength(sqlBuilder.length() - 2);
         sqlBuilder.append(" FROM \"").append(joinTableSchema).append("\".\"").append(joinTableName).append("\" ");
         sqlBuilder.append("INNER JOIN \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\" _data ON ");
-        for (ForeignKey.Link entry : joinTableToDataTableLinks) {
+        for (Link entry : joinTableToDataTableLinks) {
             String joinColumn = entry.columnInReferringTable();
             String dataColumn = entry.columnInReferencedTable();
             sqlBuilder.append("_data.\"").append(dataColumn).append("\" = \"").append(joinTableSchema).append("\".\"").append(joinTableName).append("\".\"").append(joinColumn).append("\" AND ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 5);
         sqlBuilder.append(" INNER JOIN \"").append(target.schema()).append("\".\"").append(target.table()).append("\" _target ON ");
-        for (ForeignKey.Link entry : joinTableToReferencedTableLinks) {
+        for (Link entry : joinTableToReferencedTableLinks) {
             String joinColumn = entry.columnInReferringTable();
             String referencedColumn = entry.columnInReferencedTable();
             sqlBuilder.append("_target.\"").append(referencedColumn).append("\" = \"").append(joinTableSchema).append("\".\"").append(joinTableName).append("\".\"").append(joinColumn).append("\" AND ");
@@ -509,11 +509,11 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
 
     private SQLTransaction.Statement buildSelectDataIdsStatement() {
         UniqueDataMetadata holderMetadata = holder.getMetadata();
-        List<ForeignKey.Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
+        List<Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
 
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("SELECT ");
-        for (ForeignKey.Link entry : joinTableToDataTableLinks) {
+        for (Link entry : joinTableToDataTableLinks) {
             String dataColumn = entry.columnInReferencedTable();
             sqlBuilder.append("\"").append(dataColumn).append("\", ");
         }
@@ -529,11 +529,11 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
 
     private SQLTransaction.Statement buildSelectReferencedIdsStatement() {
         UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
-        List<ForeignKey.Link> joinTableToReferencedTableLinks = getCachedJoinTableToReferencedTableLinks();
+        List<Link> joinTableToReferencedTableLinks = getCachedJoinTableToReferencedTableLinks();
 
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("SELECT ");
-        for (ForeignKey.Link entry : joinTableToReferencedTableLinks) {
+        for (Link entry : joinTableToReferencedTableLinks) {
             String referencedColumn = entry.columnInReferencedTable();
             sqlBuilder.append("\"").append(referencedColumn).append("\", ");
         }
@@ -551,8 +551,8 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
     private SQLTransaction.Statement buildUpdateStatement() {
         UniqueDataMetadata holderMetadata = holder.getMetadata();
         UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
-        List<ForeignKey.Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
-        List<ForeignKey.Link> joinTableToReferencedTableLinks = getCachedJoinTableToReferencedTableLinks();
+        List<Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
+        List<Link> joinTableToReferencedTableLinks = getCachedJoinTableToReferencedTableLinks();
 
         String joinTableSchema = getJoinTableSchema(parsedJoinTableSchema, holderMetadata.schema());
         String joinTableName = getJoinTableName(parsedJoinTableName, holderMetadata.table(), typeMetadata.table());
@@ -561,41 +561,41 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         sqlBuilder.append("?, ".repeat(Math.max(0, joinTableToDataTableLinks.size() + joinTableToReferencedTableLinks.size())));
         sqlBuilder.setLength(sqlBuilder.length() - 2);
         sqlBuilder.append(")) AS _source (");
-        for (ForeignKey.Link entry : joinTableToDataTableLinks) {
+        for (Link entry : joinTableToDataTableLinks) {
             String joinColumn = entry.columnInReferringTable();
             sqlBuilder.append("\"").append(joinColumn).append("\", ");
         }
-        for (ForeignKey.Link entry : joinTableToReferencedTableLinks) {
+        for (Link entry : joinTableToReferencedTableLinks) {
             String joinColumn = entry.columnInReferringTable();
             sqlBuilder.append("\"").append(joinColumn).append("\", ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 2);
         sqlBuilder.append(") ON ");
-        for (ForeignKey.Link entry : joinTableToDataTableLinks) {
+        for (Link entry : joinTableToDataTableLinks) {
             String joinColumn = entry.columnInReferringTable();
             sqlBuilder.append("_target.\"").append(joinColumn).append("\" = _source.\"").append(joinColumn).append("\" AND ");
         }
-        for (ForeignKey.Link entry : joinTableToReferencedTableLinks) {
+        for (Link entry : joinTableToReferencedTableLinks) {
             String joinColumn = entry.columnInReferringTable();
             sqlBuilder.append("_target.\"").append(joinColumn).append("\" = _source.\"").append(joinColumn).append("\" AND ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 5);
         sqlBuilder.append(" WHEN NOT MATCHED THEN INSERT (");
-        for (ForeignKey.Link entry : joinTableToDataTableLinks) {
+        for (Link entry : joinTableToDataTableLinks) {
             String joinColumn = entry.columnInReferringTable();
             sqlBuilder.append("\"").append(joinColumn).append("\", ");
         }
-        for (ForeignKey.Link entry : joinTableToReferencedTableLinks) {
+        for (Link entry : joinTableToReferencedTableLinks) {
             String joinColumn = entry.columnInReferringTable();
             sqlBuilder.append("\"").append(joinColumn).append("\", ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 2);
         sqlBuilder.append(") VALUES (");
-        for (ForeignKey.Link entry : joinTableToDataTableLinks) {
+        for (Link entry : joinTableToDataTableLinks) {
             String joinColumn = entry.columnInReferringTable();
             sqlBuilder.append("_source.\"").append(joinColumn).append("\", ");
         }
-        for (ForeignKey.Link entry : joinTableToReferencedTableLinks) {
+        for (Link entry : joinTableToReferencedTableLinks) {
             String joinColumn = entry.columnInReferringTable();
             sqlBuilder.append("_source.\"").append(joinColumn).append("\", ");
         }
@@ -605,11 +605,11 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
 
         sqlBuilder.setLength(0);
         sqlBuilder.append("INSERT INTO \"").append(joinTableSchema).append("\".\"").append(joinTableName).append("\" (");
-        for (ForeignKey.Link entry : joinTableToDataTableLinks) {
+        for (Link entry : joinTableToDataTableLinks) {
             String joinColumn = entry.columnInReferringTable();
             sqlBuilder.append("\"").append(joinColumn).append("\", ");
         }
-        for (ForeignKey.Link entry : joinTableToReferencedTableLinks) {
+        for (Link entry : joinTableToReferencedTableLinks) {
             String joinColumn = entry.columnInReferringTable();
             sqlBuilder.append("\"").append(joinColumn).append("\", ");
         }
@@ -626,18 +626,18 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
     private SQLTransaction.Statement buildRemoveStatement() {
         UniqueDataMetadata holderMetadata = holder.getMetadata();
         UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
-        List<ForeignKey.Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
-        List<ForeignKey.Link> joinTableToReferencedTableLinks = getCachedJoinTableToReferencedTableLinks();
+        List<Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
+        List<Link> joinTableToReferencedTableLinks = getCachedJoinTableToReferencedTableLinks();
 
         String joinTableSchema = getJoinTableSchema(parsedJoinTableSchema, holderMetadata.schema());
         String joinTableName = getJoinTableName(parsedJoinTableName, holderMetadata.table(), typeMetadata.table());
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("DELETE FROM \"").append(joinTableSchema).append("\".\"").append(joinTableName).append("\" WHERE ");
-        for (ForeignKey.Link entry : joinTableToDataTableLinks) {
+        for (Link entry : joinTableToDataTableLinks) {
             String joinColumn = entry.columnInReferringTable();
             sqlBuilder.append("\"").append(joinColumn).append("\" = ? AND ");
         }
-        for (ForeignKey.Link entry : joinTableToReferencedTableLinks) {
+        for (Link entry : joinTableToReferencedTableLinks) {
             String joinColumn = entry.columnInReferringTable();
             sqlBuilder.append("\"").append(joinColumn).append("\" = ? AND ");
         }
@@ -649,13 +649,13 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
     private SQLTransaction.Statement buildClearStatement() {
         UniqueDataMetadata holderMetadata = holder.getMetadata();
         UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
-        List<ForeignKey.Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
+        List<Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
 
         String joinTableSchema = getJoinTableSchema(parsedJoinTableSchema, holderMetadata.schema());
         String joinTableName = getJoinTableName(parsedJoinTableName, holderMetadata.table(), typeMetadata.table());
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("DELETE FROM \"").append(joinTableSchema).append("\".\"").append(joinTableName).append("\" WHERE ");
-        for (ForeignKey.Link entry : joinTableToDataTableLinks) {
+        for (Link entry : joinTableToDataTableLinks) {
             String joinColumn = entry.columnInReferringTable();
             sqlBuilder.append("\"").append(joinColumn).append("\" = ? AND ");
         }
@@ -664,7 +664,7 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         return SQLTransaction.Statement.of(sql, sql);
     }
 
-    private List<ForeignKey.Link> getCachedJoinTableToDataTableLinks() {
+    private List<Link> getCachedJoinTableToDataTableLinks() {
         if (cachedJoinTableToDataTableLinks == null) {
             UniqueDataMetadata holderMetadata = holder.getMetadata();
             cachedJoinTableToDataTableLinks = getJoinTableToDataTableLinks(holderMetadata.table(), links);
@@ -672,7 +672,7 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         return cachedJoinTableToDataTableLinks;
     }
 
-    private List<ForeignKey.Link> getCachedJoinTableToReferencedTableLinks() {
+    private List<Link> getCachedJoinTableToReferencedTableLinks() {
         if (cachedJoinTableToReferencedTableLinks == null) {
             UniqueDataMetadata holderMetadata = holder.getMetadata();
             UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);

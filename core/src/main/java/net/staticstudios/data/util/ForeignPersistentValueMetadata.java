@@ -1,20 +1,20 @@
 package net.staticstudios.data.util;
 
 import net.staticstudios.data.UniqueData;
-import net.staticstudios.data.parse.ForeignKey;
+import net.staticstudios.data.utils.Link;
 
 import java.util.List;
 import java.util.Objects;
 
 public class ForeignPersistentValueMetadata extends PersistentValueMetadata {
-    private final List<ForeignKey.Link> links;
+    private final List<Link> links;
 
-    public ForeignPersistentValueMetadata(Class<? extends UniqueData> holderClass, ColumnMetadata columnMetadata, int updateInterval, List<ForeignKey.Link> links) {
+    public ForeignPersistentValueMetadata(Class<? extends UniqueData> holderClass, ColumnMetadata columnMetadata, int updateInterval, List<Link> links) {
         super(holderClass, columnMetadata, updateInterval);
         this.links = links;
     }
 
-    public List<ForeignKey.Link> getLinks() {
+    public List<Link> getLinks() {
         return links;
     }
 

@@ -2,7 +2,7 @@ package net.staticstudios.data.ide.intellij.query;
 
 import com.intellij.psi.PsiField;
 import com.intellij.psi.PsiType;
-import net.staticstudios.data.ide.intellij.Utils;
+import net.staticstudios.data.ide.intellij.IntelliJPluginUtils;
 import net.staticstudios.data.ide.intellij.query.clause.*;
 
 import java.sql.Timestamp;
@@ -39,7 +39,7 @@ public class QueryBuilderUtils {
     }
 
     public static List<QueryClause> getClausesForType(PsiField psiField, boolean nullable) {
-        if (Utils.isValidPersistentValue(psiField)) {
+        if (IntelliJPluginUtils.isValidPersistentValue(psiField)) {
             List<QueryClause> applicableClauses = new ArrayList<>();
             for (QueryClause clause : pvClauses) {
                 if (clause.matches(psiField, nullable)) {
@@ -48,7 +48,7 @@ public class QueryBuilderUtils {
             }
             return applicableClauses;
         }
-        if (Utils.isValidReference(psiField)) {
+        if (IntelliJPluginUtils.isValidReference(psiField)) {
             List<QueryClause> applicableClauses = new ArrayList<>();
             for (QueryClause clause : referenceClauses) {
                 if (clause.matches(psiField, nullable)) {

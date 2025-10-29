@@ -1,17 +1,13 @@
 package net.staticstudios.data.compiler.javac;
 
 import com.sun.source.tree.ClassTree;
-import com.sun.source.tree.IdentifierTree;
-import com.sun.source.tree.Tree;
 import com.sun.source.util.*;
 import com.sun.tools.javac.api.BasicJavacTask;
-import com.sun.tools.javac.code.Flags;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.util.Context;
-import com.sun.tools.javac.util.List;
 import com.sun.tools.javac.util.Names;
-import net.staticstudios.data.Data;
+import net.staticstudios.data.utils.Constants;
 
 
 public class StaticDataJavacPlugin implements Plugin {
@@ -29,7 +25,6 @@ public class StaticDataJavacPlugin implements Plugin {
         Context context = ((BasicJavacTask) task).getContext();
         TreeMaker treeMaker = TreeMaker.instance(context);
         Names names = Names.instance(context);
-        Trees trees = Trees.instance(task);
 
         task.addTaskListener(new TaskListener() {
             @Override
@@ -40,63 +35,21 @@ public class StaticDataJavacPlugin implements Plugin {
                     @Override
                     public Void visitClass(ClassTree node, Void unused) {
                         boolean hasDataAnnotation = node.getModifiers().getAnnotations().stream()
-                                .anyMatch(a -> {
-                                    Tree type = a.getAnnotationType();
-                                    if (type instanceof IdentifierTree) { //todo: handle qualified names
-                                        return type.toString().equals(Data.class.getSimpleName());
-                                    }
-                                    return false;
-                                });
+                                .anyMatch(a -> JavaCPluginUtils.isAnnotation((JCTree.JCAnnotation) a, Constants.DATA_ANNOTATION_FQN));
 
-                        if (!hasDataAnnotation) return super.visitClass(node, unused);
+                        if (hasDataAnnotation) {
+                            JCTree.JCClassDecl classDecl = (JCTree.JCClassDecl) node;
 
-                        JCTree.JCClassDecl classDecl = (JCTree.JCClassDecl) node;
-
-                        boolean hasBuilderClass = classDecl.defs.stream()
-                                .anyMatch(def -> def instanceof JCTree.JCClassDecl &&
-                                        ((JCTree.JCClassDecl) def).name.toString().equals("Builder"));
-                        boolean hasBuilderMethod = classDecl.defs.stream()
-                                .anyMatch(def -> def instanceof JCTree.JCMethodDecl &&
-                                        ((JCTree.JCMethodDecl) def).name.toString().equals("builder") &&
-                                        (((JCTree.JCMethodDecl) def).mods.flags & Flags.STATIC) != 0);
-
-                        if (!hasBuilderClass) {
-                            System.err.println("Adding Builder class to " + classDecl.name);
-                            JCTree.JCClassDecl builderClass = treeMaker.ClassDef(
-                                    treeMaker.Modifiers(Flags.PUBLIC | Flags.STATIC),
-                                    names.fromString("Builder"),
-                                    List.nil(),
-                                    null,
-                                    List.nil(),
-                                    List.nil()
-                            );
-                            classDecl.defs = classDecl.defs.append(builderClass);
+                            if (!BuilderProcessor.hasProcessed(classDecl)) {
+                                ParsedDataAnnotation dataAnnotation = ParsedDataAnnotation.extract(classDecl);
+                                new BuilderProcessor((JCTree.JCCompilationUnit) e.getCompilationUnit(), treeMaker, names, classDecl, dataAnnotation).process();
+                            }
                         }
-                        if (!hasBuilderMethod) {
-                            System.err.println("Adding builder() method to " + classDecl.name);
-                            JCTree.JCMethodDecl builderMethod = treeMaker.MethodDef(
-                                    treeMaker.Modifiers(Flags.PUBLIC | Flags.STATIC),
-                                    names.fromString("builder"),
-                                    treeMaker.Ident(names.fromString("Builder")),
-                                    List.nil(),
-                                    List.nil(),
-                                    List.nil(),
-                                    treeMaker.Block(0, List.of(
-                                            treeMaker.Return(
-                                                    treeMaker.NewClass(null, List.nil(),
-                                                            treeMaker.Ident(names.fromString("Builder")),
-                                                            List.nil(), null)
-                                            )
-                                    )),
-                                    null
-                            );
-                            classDecl.defs = classDecl.defs.append(builderMethod);
-                        }
+
                         return super.visitClass(node, unused);
                     }
                 }, null);
             }
         });
-
     }
 }

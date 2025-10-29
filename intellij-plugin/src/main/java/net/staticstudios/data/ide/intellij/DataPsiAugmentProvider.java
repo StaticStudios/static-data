@@ -10,6 +10,7 @@ import com.intellij.psi.util.CachedValueProvider;
 import com.intellij.psi.util.CachedValuesManager;
 import net.staticstudios.data.ide.intellij.query.QueryBuilderUtils;
 import net.staticstudios.data.ide.intellij.query.QueryClause;
+import net.staticstudios.data.utils.Constants;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -39,11 +40,11 @@ public class DataPsiAugmentProvider extends PsiAugmentProvider {
             return Collections.emptyList();
         }
 
-        if (!Utils.extendsClass(psiClass, Constants.UNIQUE_DATA_FQN)) {
+        if (!IntelliJPluginUtils.extendsClass(psiClass, Constants.UNIQUE_DATA_FQN)) {
             return Collections.emptyList();
         }
 
-        if (!Utils.hasAnnotation(psiClass, Constants.DATA_ANNOTATION_FQN)) {
+        if (!IntelliJPluginUtils.hasAnnotation(psiClass, Constants.DATA_ANNOTATION_FQN)) {
             return Collections.emptyList();
         }
 
@@ -163,15 +164,18 @@ public class DataPsiAugmentProvider extends PsiAugmentProvider {
                 .createType(builderClass, PsiSubstitutor.EMPTY);
         for (PsiField psiField : parentClass.getAllFields()) {
             PsiType type = psiField.getType();
-            PsiType innerType = Utils.getGenericParameter((PsiClassType) type, parentClass.getManager());
-            if (Utils.isValidPersistentValue(psiField)) {
+            if (!(type instanceof PsiClassType psiClassType)) {
+                continue;
+            }
+            PsiType innerType = IntelliJPluginUtils.getGenericParameter(psiClassType, parentClass.getManager());
+            if (IntelliJPluginUtils.isValidPersistentValue(psiField)) {
                 SyntheticMethod setterMethod = new SyntheticMethod(parentClass, builderClass, psiField.getName(), builderType);
                 setterMethod.addParameter(psiField.getName(), innerType);
                 setterMethod.addModifier(PsiModifier.PUBLIC);
                 setterMethod.addModifier(PsiModifier.FINAL);
 
                 builderClass.addMethod(setterMethod);
-            } else if (Utils.isValidReference(psiField)) {
+            } else if (IntelliJPluginUtils.isValidReference(psiField)) {
                 SyntheticMethod setterMethod = new SyntheticMethod(parentClass, builderClass, psiField.getName(), builderType);
                 setterMethod.addParameter(psiField.getName(), innerType);
                 setterMethod.addModifier(PsiModifier.PUBLIC);
@@ -181,6 +185,25 @@ public class DataPsiAugmentProvider extends PsiAugmentProvider {
             }
             //todo: support CachedValues, similar to PVs
         }
+
+        PsiType parentType = JavaPsiFacade.getElementFactory(parentClass.getProject())
+                .createType(parentClass, PsiSubstitutor.EMPTY);
+
+        SyntheticMethod insertModeMethod = new SyntheticMethod(parentClass, builderClass, "insert", parentType);
+        PsiType insertModeType = JavaPsiFacade.getElementFactory(parentClass.getProject())
+                .createTypeFromText(Constants.INSERT_MODE_FQN, parentClass);
+        insertModeMethod.addParameter("insertMode", insertModeType);
+        insertModeMethod.addModifier(PsiModifier.PUBLIC);
+        insertModeMethod.addModifier(PsiModifier.FINAL);
+        builderClass.addMethod(insertModeMethod);
+
+        SyntheticMethod insertContextMethod = new SyntheticMethod(parentClass, builderClass, "insert", null);
+        PsiType insertContextType = JavaPsiFacade.getElementFactory(parentClass.getProject())
+                .createTypeFromText(Constants.INSERT_CONTEXT_FQN, parentClass);
+        insertContextMethod.addParameter("ctx", insertContextType);
+        insertContextMethod.addModifier(PsiModifier.PUBLIC);
+        insertContextMethod.addModifier(PsiModifier.FINAL);
+        builderClass.addMethod(insertContextMethod);
 
         return builderClass;
     }
@@ -221,7 +244,7 @@ public class DataPsiAugmentProvider extends PsiAugmentProvider {
                 .createType(listClass, substitutor);
 
         for (PsiField psiField : parentClass.getAllFields()) {
-            if (Utils.isValidPersistentValue(psiField)) {
+            if (IntelliJPluginUtils.isValidPersistentValue(psiField)) {
                 SyntheticMethod orderByMethod = new SyntheticMethod(parentClass, queryClass, "orderBy" + StringUtil.capitalize(psiField.getName()), queryType);
                 orderByMethod.addParameter("order", orderType);
                 orderByMethod.addModifier(PsiModifier.PUBLIC);
@@ -291,12 +314,15 @@ public class DataPsiAugmentProvider extends PsiAugmentProvider {
         for (PsiField psiField : parentClass.getAllFields()) {
             PsiType type = psiField.getType();
             boolean isValidReference = false;
-            if (!Utils.isValidPersistentValue(psiField) && !(isValidReference = Utils.isValidReference(psiField))) {
+            if (!IntelliJPluginUtils.isValidPersistentValue(psiField) && !(isValidReference = IntelliJPluginUtils.isValidReference(psiField))) {
                 continue; //non-supported field type
             }
-            PsiType innerType = Utils.getGenericParameter((PsiClassType) type, parentClass.getManager());
+            if (!(type instanceof PsiClassType psiClassType)) {
+                continue;
+            }
+            PsiType innerType = IntelliJPluginUtils.getGenericParameter(psiClassType, parentClass.getManager());
 
-            List<QueryClause> clauses = QueryBuilderUtils.getClausesForType(psiField, isValidReference || Utils.isNullable(psiField, type));
+            List<QueryClause> clauses = QueryBuilderUtils.getClausesForType(psiField, isValidReference || IntelliJPluginUtils.isNullable(psiField, type));
             for (QueryClause clause : clauses) {
                 String methodName = clause.getMethodName(psiField.getName());
                 List<PsiType> parameterTypes = clause.getMethodParamTypes(parentClass.getManager(), innerType);

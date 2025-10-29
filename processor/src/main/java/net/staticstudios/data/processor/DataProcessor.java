@@ -91,7 +91,7 @@ public class DataProcessor extends AbstractProcessor { //TODO: delete this class
                         .build());
 
                 if (persistentValueMetadata instanceof ForeignPersistentValueMetadata foreignPersistentValueMetadata) {
-                    insertCtxMethod.beginControlFlow("if (this.$N != null)", persistentValueMetadata.fieldName());
+//                    insertCtxMethod.beginControlFlow("if (this.$N != null)", persistentValueMetadata.fieldName());
                     insertCtxMethod.addStatement("ctx.set($N, $N, $N, this.$N, $T.$L)",
                             statics.schemaFieldName(),
                             statics.tableFieldName(),
@@ -108,14 +108,14 @@ public class DataProcessor extends AbstractProcessor { //TODO: delete this class
                 }
 
                 if (persistentValueMetadata instanceof ForeignPersistentValueMetadata foreignPersistentValueMetadata) {
-                    for (ForeignLink link : MetadataUtils.makeFPVStatics(builderType, foreignPersistentValueMetadata, metadataList, dataAnnotation, statics)) {
-                        insertCtxMethod.addStatement("ctx.set($N, $N, $N, this.$N, null)",
-                                statics.schemaFieldName(),
-                                statics.tableFieldName(),
-                                link.foreignColumnFieldName(),
-                                link.localColumnMetadata().fieldName());
-                    }
-                    insertCtxMethod.endControlFlow();
+//                    for (ForeignLink link : MetadataUtils.makeFPVStatics(builderType, foreignPersistentValueMetadata, metadataList, dataAnnotation, statics)) {
+//                        insertCtxMethod.addStatement("ctx.set($N, $N, $N, this.$N, null)",
+//                                statics.schemaFieldName(),
+//                                statics.tableFieldName(),
+//                                link.foreignColumnFieldName(),
+//                                link.localColumnMetadata().fieldName());
+//                    } //todo: testing what happens and if this is needed
+//                    insertCtxMethod.endControlFlow();
                 }
             }
         }

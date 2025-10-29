@@ -2,8 +2,9 @@ package net.staticstudios.data.impl.data;
 
 import com.google.common.base.Preconditions;
 import net.staticstudios.data.*;
-import net.staticstudios.data.parse.ForeignKey;
 import net.staticstudios.data.util.*;
+import net.staticstudios.data.utils.Link;
+import net.staticstudios.data.utils.StringUtils;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Field;
@@ -103,12 +104,12 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
                     foreignColumn.index(),
                     defaultValue
             );
-            List<ForeignKey.Link> idColumnLinks = new LinkedList<>();
+            List<Link> idColumnLinks = new LinkedList<>();
             List<String> links = StringUtils.parseCommaSeperatedList(foreignColumn.link());
             for (String link : links) {
                 String[] parts = link.split("=");
                 Preconditions.checkArgument(parts.length == 2, "ForeignColumn link must be in the format localColumn=foreignColumn, got: %s", link);
-                idColumnLinks.add(new ForeignKey.Link(ValueUtils.parseValue(parts[1]), ValueUtils.parseValue(parts[0])));
+                idColumnLinks.add(new Link(ValueUtils.parseValue(parts[1]), ValueUtils.parseValue(parts[0])));
             }
             return new ForeignPersistentValueMetadata(clazz, columnMetadata, updateInterval, idColumnLinks);
         }
@@ -143,7 +144,7 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
         holder.getDataManager().set(metadata.getSchema(), metadata.getTable(), metadata.getColumn(), holder.getIdColumns(), getIdColumnLinks(), value, metadata.getUpdateInterval());
     }
 
-    private List<ForeignKey.Link> getIdColumnLinks() {
+    private List<Link> getIdColumnLinks() {
         if (metadata instanceof ForeignPersistentValueMetadata foreignMetadata) {
             return foreignMetadata.getLinks();
         }

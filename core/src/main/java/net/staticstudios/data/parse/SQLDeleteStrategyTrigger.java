@@ -2,6 +2,7 @@ package net.staticstudios.data.parse;
 
 import net.staticstudios.data.DeleteStrategy;
 import net.staticstudios.data.impl.h2.trigger.H2DeleteStrategyCascadeTrigger;
+import net.staticstudios.data.utils.Link;
 import org.intellij.lang.annotations.Language;
 
 import java.util.Set;
@@ -12,9 +13,9 @@ public class SQLDeleteStrategyTrigger implements SQLTrigger {
     private final String targetSchema;
     private final String targetTable;
     private final DeleteStrategy deleteStrategy;
-    private final Set<ForeignKey.Link> links;
+    private final Set<Link> links;
 
-    public SQLDeleteStrategyTrigger(String parentSchema, String parentTable, String targetSchema, String targetTable, DeleteStrategy deleteStrategy, Set<ForeignKey.Link> links) {
+    public SQLDeleteStrategyTrigger(String parentSchema, String parentTable, String targetSchema, String targetTable, DeleteStrategy deleteStrategy, Set<Link> links) {
         this.parentSchema = parentSchema;
         this.parentTable = parentTable;
         this.targetSchema = targetSchema;

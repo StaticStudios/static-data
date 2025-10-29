@@ -3,7 +3,6 @@ package net.staticstudios.data;
 import net.staticstudios.data.misc.DataTest;
 import net.staticstudios.data.misc.MockEnvironment;
 import net.staticstudios.data.mock.user.MockUser;
-import net.staticstudios.data.mock.user.MockUserFactory;
 import net.staticstudios.data.util.ColumnValuePair;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -30,7 +29,7 @@ public class PersistentValueTest extends DataTest {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
         for (UUID id : userIds) {
-            MockUserFactory.builder(dataManager)
+            MockUser.builder(dataManager)
                     .id(id)
                     .name("user " + id)
                     .insert(InsertMode.SYNC);
@@ -43,7 +42,6 @@ public class PersistentValueTest extends DataTest {
         }
 
         waitForDataPropagation();
-
         MockEnvironment environment2 = createMockEnvironment();
         DataManager dataManager2 = environment2.dataManager();
         dataManager2.load(MockUser.class);
@@ -55,11 +53,11 @@ public class PersistentValueTest extends DataTest {
     }
 
     @Test
-    public void test() throws SQLException {
+    public void test() throws SQLException { //todo: this test throws an exception from pg
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
         UUID id = UUID.randomUUID();
-        MockUser mockUser = MockUserFactory.builder(dataManager)
+        MockUser mockUser = MockUser.builder(dataManager)
                 .id(id)
                 .name("test user")
                 .nameUpdates(0)
@@ -108,7 +106,7 @@ public class PersistentValueTest extends DataTest {
         dataManager.load(MockUser.class);
         UUID id = UUID.randomUUID();
         assertEquals(0, dataManager.getUpdateHandlers("public", "users", "name", MockUser.class).size());
-        MockUser mockUser = MockUserFactory.builder(dataManager)
+        MockUser mockUser = MockUser.builder(dataManager)
                 .id(id)
                 .name("test user")
                 .favoriteColor("orange")
@@ -144,7 +142,7 @@ public class PersistentValueTest extends DataTest {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
         UUID id = UUID.randomUUID();
-        MockUser mockUser = MockUserFactory.builder(dataManager)
+        MockUser mockUser = MockUser.builder(dataManager)
                 .id(id)
                 .name("test user")
                 .favoriteColor("orange")
@@ -203,7 +201,7 @@ public class PersistentValueTest extends DataTest {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
         UUID id = UUID.randomUUID();
-        MockUser mockUser = MockUserFactory.builder(dataManager)
+        MockUser mockUser = MockUser.builder(dataManager)
                 .id(id)
                 .name("test user")
                 .favoriteColor("orange")
@@ -235,7 +233,7 @@ public class PersistentValueTest extends DataTest {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
         UUID id = UUID.randomUUID();
-        MockUser mockUser = MockUserFactory.builder(dataManager)
+        MockUser mockUser = MockUser.builder(dataManager)
                 .id(id)
                 .name("test user")
                 .favoriteColor("orange")
@@ -266,7 +264,7 @@ public class PersistentValueTest extends DataTest {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
         UUID id = UUID.randomUUID();
-        MockUser mockUser = MockUserFactory.builder(dataManager)
+        MockUser mockUser = MockUser.builder(dataManager)
                 .id(id)
                 .name("test user")
                 .favoriteColor("orange")
@@ -308,7 +306,7 @@ public class PersistentValueTest extends DataTest {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
         UUID id = UUID.randomUUID();
-        MockUser mockUser = MockUserFactory.builder(dataManager)
+        MockUser mockUser = MockUser.builder(dataManager)
                 .id(id)
                 .name("test user")
                 .favoriteColor("orange")
@@ -352,13 +350,13 @@ public class PersistentValueTest extends DataTest {
             preparedStatement.executeUpdate();
         }
 
-        MockUser user1 = MockUserFactory.builder(dataManager)
+        MockUser user1 = MockUser.builder(dataManager)
                 .id(UUID.randomUUID())
                 .name("test user")
                 .favoriteColor("red")
                 .insert(InsertMode.SYNC);
         assertEquals("red", user1.favoriteColor.get());
-        MockUser user2 = MockUserFactory.builder(dataManager)
+        MockUser user2 = MockUser.builder(dataManager)
                 .id(id)
                 .name("test user2")
                 .favoriteColor("green")
@@ -386,13 +384,13 @@ public class PersistentValueTest extends DataTest {
             preparedStatement.setInt(2, 5);
             preparedStatement.executeUpdate();
         }
-        MockUser user1 = MockUserFactory.builder(dataManager)
+        MockUser user1 = MockUser.builder(dataManager)
                 .id(UUID.randomUUID())
                 .name("test user")
                 .nameUpdates(10)
                 .insert(InsertMode.SYNC);
         assertEquals(10, user1.nameUpdates.get());
-        MockUser user2 = MockUserFactory.builder(dataManager)
+        MockUser user2 = MockUser.builder(dataManager)
                 .id(id)
                 .name("test user2")
                 .nameUpdates(15)
@@ -416,7 +414,7 @@ public class PersistentValueTest extends DataTest {
         Connection h2Connection = getH2Connection(dataManager);
         Connection pgConnection = getConnection();
         UUID id = UUID.randomUUID();
-        MockUser user = MockUserFactory.builder(dataManager)
+        MockUser user = MockUser.builder(dataManager)
                 .id(id)
                 .name("test user")
                 .favoriteColor("red")
@@ -464,7 +462,7 @@ public class PersistentValueTest extends DataTest {
         Connection h2Connection = getH2Connection(dataManager);
         Connection pgConnection = getConnection();
         UUID id = UUID.randomUUID();
-        MockUser user = MockUserFactory.builder(dataManager)
+        MockUser user = MockUser.builder(dataManager)
                 .id(id)
                 .name("test user")
                 .nameUpdates(10)

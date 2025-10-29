@@ -12,8 +12,9 @@ repositories {
 }
 
 dependencies {
+    implementation(project(":utils"))
     intellijPlatform {
-        intellijIdeaCommunity('2023.3')
+        intellijIdeaCommunity('2025.2')
         bundledPlugin("com.intellij.java")
     }
 }

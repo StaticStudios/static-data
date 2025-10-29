@@ -2,6 +2,7 @@ package net.staticstudios.data.parse;
 
 import net.staticstudios.data.util.OnDelete;
 import net.staticstudios.data.util.OnUpdate;
+import net.staticstudios.data.utils.Link;
 
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -61,10 +62,10 @@ public class ForeignKey {
     public String getName() {
         return "fk_"
 //                + referringSchema + "_" + referringTable + "_"
-                + String.join("_", links.stream().map(ForeignKey.Link::columnInReferringTable).toList())
+                + String.join("_", links.stream().map(Link::columnInReferringTable).toList())
                 + "_to_"
 //                + referencedSchema + "_" + referencedTable + "_"
-                + String.join("_", links.stream().map(ForeignKey.Link::columnInReferencedTable).toList());
+                + String.join("_", links.stream().map(Link::columnInReferencedTable).toList());
     }
 
     @Override
@@ -98,6 +99,4 @@ public class ForeignKey {
                 '}';
     }
 
-    public record Link(String columnInReferencedTable, String columnInReferringTable) {
-    }
 }

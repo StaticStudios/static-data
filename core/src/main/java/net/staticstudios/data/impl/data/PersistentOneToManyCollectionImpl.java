@@ -2,9 +2,9 @@ package net.staticstudios.data.impl.data;
 
 import com.google.common.base.Preconditions;
 import net.staticstudios.data.*;
-import net.staticstudios.data.parse.ForeignKey;
 import net.staticstudios.data.parse.SQLBuilder;
 import net.staticstudios.data.util.*;
+import net.staticstudios.data.utils.Link;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -18,15 +18,15 @@ import java.util.*;
 public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements PersistentCollection<T> {
     private final UniqueData holder;
     private final Class<T> type;
-    private final List<ForeignKey.Link> link;
+    private final List<Link> link;
 
-    public PersistentOneToManyCollectionImpl(UniqueData holder, Class<T> type, List<ForeignKey.Link> link) {
+    public PersistentOneToManyCollectionImpl(UniqueData holder, Class<T> type, List<Link> link) {
         this.holder = holder;
         this.type = type;
         this.link = link;
     }
 
-    public static <T extends UniqueData> void createAndDelegate(PersistentCollection.ProxyPersistentCollection<T> proxy, List<ForeignKey.Link> link) {
+    public static <T extends UniqueData> void createAndDelegate(PersistentCollection.ProxyPersistentCollection<T> proxy, List<Link> link) {
         PersistentOneToManyCollectionImpl<T> delegate = new PersistentOneToManyCollectionImpl<>(
                 proxy.getHolder(),
                 proxy.getReferenceType(),
@@ -35,7 +35,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         proxy.setDelegate(delegate);
     }
 
-    public static <T extends UniqueData> PersistentOneToManyCollectionImpl<T> create(UniqueData holder, Class<T> type, List<ForeignKey.Link> link) {
+    public static <T extends UniqueData> PersistentOneToManyCollectionImpl<T> create(UniqueData holder, Class<T> type, List<Link> link) {
         return new PersistentOneToManyCollectionImpl<>(holder, type, link);
     }
 
@@ -192,7 +192,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         transaction.query(selectDataIdsStatement, () -> holderIdValues, rs -> {
             try {
                 Preconditions.checkState(rs.next(), "Could not find holder row in database");
-                for (ForeignKey.Link entry : link) {
+                for (Link entry : link) {
                     String dataColumn = entry.columnInReferringTable();
                     Object value = rs.getObject(dataColumn);
                     holderLinkingValues.add(value);
@@ -287,7 +287,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         transaction.query(selectDataIdsStatement, () -> holderIdValues, rs -> {
             try {
                 Preconditions.checkState(rs.next(), "Could not find holder row in database");
-                for (ForeignKey.Link entry : link) {
+                for (Link entry : link) {
                     String dataColumn = entry.columnInReferringTable();
                     Object value = rs.getObject(dataColumn);
                     holderLinkingValues.add(value);
@@ -324,7 +324,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         transaction.query(selectDataIdsStatement, () -> holderIdValues, rs -> {
             try {
                 Preconditions.checkState(rs.next(), "Could not find holder row in database");
-                for (ForeignKey.Link entry : link) {
+                for (Link entry : link) {
                     String dataColumn = entry.columnInReferringTable();
                     Object value = rs.getObject(dataColumn);
                     holderLinkingValues.add(value);
@@ -358,7 +358,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
 
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("SELECT ");
-        for (ForeignKey.Link entry : link) {
+        for (Link entry : link) {
             String dataColumn = entry.columnInReferringTable();
             sqlBuilder.append("\"").append(dataColumn).append("\", ");
         }
@@ -377,7 +377,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
 
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("UPDATE \"").append(typeMetadata.schema()).append("\".\"").append(typeMetadata.table()).append("\" SET ");
-        for (ForeignKey.Link entry : link) {
+        for (Link entry : link) {
             String theirColumn = entry.columnInReferencedTable();
             sqlBuilder.append("\"").append(theirColumn).append("\" = ?, ");
         }
@@ -396,13 +396,13 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
 
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("UPDATE \"").append(typeMetadata.schema()).append("\".\"").append(typeMetadata.table()).append("\" SET ");
-        for (ForeignKey.Link entry : link) {
+        for (Link entry : link) {
             String theirColumn = entry.columnInReferencedTable();
             sqlBuilder.append("\"").append(theirColumn).append("\" = NULL, ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 2);
         sqlBuilder.append(" WHERE ");
-        for (ForeignKey.Link entry : link) {
+        for (Link entry : link) {
             String theirColumn = entry.columnInReferencedTable();
             sqlBuilder.append("\"").append(theirColumn).append("\" = ? AND ");
         }
@@ -429,7 +429,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         sqlBuilder.setLength(sqlBuilder.length() - 2);
         sqlBuilder.append(" FROM \"").append(typeMetadata.schema()).append("\".\"").append(typeMetadata.table()).append("\" ");
         sqlBuilder.append("INNER JOIN \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\" AS _source ON ");
-        for (ForeignKey.Link entry : link) {
+        for (Link entry : link) {
             String myColumn = entry.columnInReferringTable();
             String theirColumn = entry.columnInReferencedTable();
             sqlBuilder.append("\"").append(typeMetadata.schema()).append("\".\"").append(typeMetadata.table()).append("\".\"").append(theirColumn).append("\" = _source.\"").append(myColumn).append("\" AND ");
@@ -437,7 +437,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         sqlBuilder.setLength(sqlBuilder.length() - 5);
         sqlBuilder.append(" WHERE ");
 
-        for (ForeignKey.Link entry : link) {
+        for (Link entry : link) {
             String theirColumn = entry.columnInReferencedTable();
             sqlBuilder.append("\"").append(theirColumn).append("\" = _source.\"").append(entry.columnInReferringTable()).append("\" AND ");
         }

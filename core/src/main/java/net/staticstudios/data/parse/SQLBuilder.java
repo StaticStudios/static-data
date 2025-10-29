@@ -4,6 +4,8 @@ import com.google.common.base.Preconditions;
 import net.staticstudios.data.*;
 import net.staticstudios.data.impl.data.PersistentManyToManyCollectionImpl;
 import net.staticstudios.data.util.*;
+import net.staticstudios.data.utils.Link;
+import net.staticstudios.data.utils.StringUtils;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -28,33 +30,29 @@ public class SQLBuilder {
     }
 
     public static void parseLinks(ForeignKey foreignKey, String links) {
-        for (ForeignKey.Link link : parseLinks(links)) {
+        for (Link link : parseLinks(links)) {
             foreignKey.addLink(link);
         }
     }
 
     public static void parseLinksReversed(ForeignKey foreignKey, String links) {
-        for (ForeignKey.Link link : parseLinksReversed(links)) {
+        for (Link link : parseLinksReversed(links)) {
             foreignKey.addLink(link);
         }
     }
 
-    public static List<ForeignKey.Link> parseLinksReversed(String links) {
-        List<ForeignKey.Link> mappings = new ArrayList<>();
-        for (String link : StringUtils.parseCommaSeperatedList(links)) {
-            String[] parts = link.split("=");
-            Preconditions.checkArgument(parts.length == 2, "Invalid link format! Expected format: localColumn=foreignColumn, got: " + link);
-            mappings.add(new ForeignKey.Link(ValueUtils.parseValue(parts[0].trim()), ValueUtils.parseValue(parts[1].trim())));
+    public static List<Link> parseLinksReversed(String links) {
+        List<Link> mappings = new ArrayList<>();
+        for (Link rawLink : Link.parseRawLinksReversed(links)) {
+            mappings.add(new Link(ValueUtils.parseValue(rawLink.columnInReferencedTable()), ValueUtils.parseValue(rawLink.columnInReferringTable())));
         }
         return mappings;
     }
 
-    public static List<ForeignKey.Link> parseLinks(String links) {
-        List<ForeignKey.Link> mappings = new ArrayList<>();
-        for (String link : StringUtils.parseCommaSeperatedList(links)) {
-            String[] parts = link.split("=");
-            Preconditions.checkArgument(parts.length == 2, "Invalid link format! Expected format: localColumn=foreignColumn, got: " + link);
-            mappings.add(new ForeignKey.Link(ValueUtils.parseValue(parts[1].trim()), ValueUtils.parseValue(parts[0].trim())));
+    public static List<Link> parseLinks(String links) {
+        List<Link> mappings = new ArrayList<>();
+        for (Link rawLink : Link.parseRawLinks(links)) {
+            mappings.add(new Link(ValueUtils.parseValue(rawLink.columnInReferencedTable()), ValueUtils.parseValue(rawLink.columnInReferringTable())));
         }
         return mappings;
     }
@@ -183,13 +181,13 @@ public class SQLBuilder {
                     sb.append("ALTER TABLE \"").append(foreignKey.getReferringSchema()).append("\".\"").append(foreignKey.getReferringTable()).append("\" ");
                     sb.append("ADD CONSTRAINT IF NOT EXISTS ").append(fKeyName).append(" ");
                     sb.append("FOREIGN KEY (");
-                    for (ForeignKey.Link link : foreignKey.getLinkingColumns()) {
+                    for (Link link : foreignKey.getLinkingColumns()) {
                         sb.append("\"").append(link.columnInReferringTable()).append("\", ");
                     }
                     sb.setLength(sb.length() - 2);
                     sb.append(") ");
                     sb.append("REFERENCES \"").append(foreignKey.getReferencedSchema()).append("\".\"").append(foreignKey.getReferencedTable()).append("\" (");
-                    for (ForeignKey.Link link : foreignKey.getLinkingColumns()) {
+                    for (Link link : foreignKey.getLinkingColumns()) {
                         sb.append("\"").append(link.columnInReferencedTable()).append("\", ");
                     }
                     sb.setLength(sb.length() - 2);
@@ -204,13 +202,13 @@ public class SQLBuilder {
                     sb.append("ALTER TABLE \"").append(foreignKey.getReferringSchema()).append("\".\"").append(foreignKey.getReferringTable()).append("\" ");
                     sb.append("ADD CONSTRAINT ").append(fKeyName).append(" ");
                     sb.append("FOREIGN KEY (");
-                    for (ForeignKey.Link link : foreignKey.getLinkingColumns()) {
+                    for (Link link : foreignKey.getLinkingColumns()) {
                         sb.append("\"").append(link.columnInReferringTable()).append("\", ");
                     }
                     sb.setLength(sb.length() - 2);
                     sb.append(") ");
                     sb.append("REFERENCES \"").append(foreignKey.getReferencedSchema()).append("\".\"").append(foreignKey.getReferencedTable()).append("\" (");
-                    for (ForeignKey.Link link : foreignKey.getLinkingColumns()) {
+                    for (Link link : foreignKey.getLinkingColumns()) {
                         sb.append("\"").append(link.columnInReferencedTable()).append("\", ");
                     }
                     sb.setLength(sb.length() - 2);
@@ -387,8 +385,8 @@ public class SQLBuilder {
                 }
             }
         } else if (foreignColumn != null) {
-            List<ForeignKey.Link> links = parseLinks(foreignColumn.link());
-            for (ForeignKey.Link link : links) {
+            List<Link> links = parseLinks(foreignColumn.link());
+            for (Link link : links) {
                 ColumnMetadata found = null;
                 for (ColumnMetadata idCol : metadata.idColumns()) {
                     if (idCol.name().equals(link.columnInReferringTable())) {
@@ -566,8 +564,8 @@ public class SQLBuilder {
         String joinTableSchemaName = PersistentManyToManyCollectionImpl.getJoinTableSchema(ValueUtils.parseValue(manyToMany.joinTableSchema()), dataSchema);
         String joinTableName = PersistentManyToManyCollectionImpl.getJoinTableName(ValueUtils.parseValue(manyToMany.joinTable()), dataTable, referencedMetadata.table());
 
-        List<ForeignKey.Link> joinTableToDataTableLinks;
-        List<ForeignKey.Link> joinTableToReferencedTableLinks;
+        List<Link> joinTableToDataTableLinks;
+        List<Link> joinTableToReferencedTableLinks;
 
         try {
             joinTableToDataTableLinks = PersistentManyToManyCollectionImpl.getJoinTableToDataTableLinks(dataTable, manyToMany.link());
@@ -583,14 +581,14 @@ public class SQLBuilder {
         SQLTable joinTable = joinSchema.getTable(joinTableName);
         if (joinTable == null) {
             List<ColumnMetadata> joinTableIdColumns = new ArrayList<>();
-            for (ForeignKey.Link dataLink : joinTableToDataTableLinks) {
+            for (Link dataLink : joinTableToDataTableLinks) {
                 ColumnMetadata columnMetadata = metadata.idColumns().stream()
                         .filter(c -> c.name().equals(dataLink.columnInReferencedTable()))
                         .findFirst()
                         .orElseThrow(() -> new IllegalArgumentException("Column not found in data table! " + dataLink.columnInReferringTable()));
                 joinTableIdColumns.add(new ColumnMetadata(joinTableSchemaName, joinTableName, dataTableColumnPrefix + "_" + columnMetadata.name(), columnMetadata.type(), false, false, ""));
             }
-            for (ForeignKey.Link referencedLink : joinTableToReferencedTableLinks) {
+            for (Link referencedLink : joinTableToReferencedTableLinks) {
                 ColumnMetadata columnMetadata = referencedMetadata.idColumns().stream()
                         .filter(c -> c.name().equals(referencedLink.columnInReferencedTable()))
                         .findFirst()
