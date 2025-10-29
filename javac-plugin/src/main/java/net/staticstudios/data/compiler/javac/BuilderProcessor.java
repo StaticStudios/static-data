@@ -10,21 +10,10 @@ import com.sun.tools.javac.util.Names;
 import java.util.ArrayList;
 import java.util.Collection;
 
-public class BuilderProcessor { //todo: abstract processor which has utility methods maybe
-
-    private final JCTree.JCCompilationUnit compilationUnit;
-    private final TreeMaker treeMaker;
-    private final Names names;
-    private final JCTree.JCClassDecl dataClassDecl;
-    private final ParsedDataAnnotation dataAnnotation;
-    private JCTree.JCClassDecl builderClassDecl;
+public class BuilderProcessor extends AbstractBuilderProcessor {
 
     public BuilderProcessor(JCTree.JCCompilationUnit compilationUnit, TreeMaker treeMaker, Names names, JCTree.JCClassDecl dataClassDecl, ParsedDataAnnotation dataAnnotation) {
-        this.compilationUnit = compilationUnit;
-        this.treeMaker = treeMaker;
-        this.names = names;
-        this.dataClassDecl = dataClassDecl;
-        this.dataAnnotation = dataAnnotation;
+        super(compilationUnit, treeMaker, names, dataClassDecl, dataAnnotation, "Builder", "builder");
     }
 
     public static boolean hasProcessed(JCTree.JCClassDecl classDecl) {
@@ -33,24 +22,18 @@ public class BuilderProcessor { //todo: abstract processor which has utility met
                         ((JCTree.JCClassDecl) def).name.toString().equals(classDecl.name + "Builder"));
     }
 
-
-    public void process() {
-        if (hasProcessed(dataClassDecl)) {
-            return;
-        }
-
-        JavaCPluginUtils.importClass(compilationUnit, treeMaker, names, "net.staticstudios.data", "DataManager");
+    @Override
+    protected void addImports() {
         JavaCPluginUtils.importClass(compilationUnit, treeMaker, names, "net.staticstudios.data.util", "ValueUtils");
         JavaCPluginUtils.importClass(compilationUnit, treeMaker, names, "net.staticstudios.data.insert", "InsertContext");
         JavaCPluginUtils.importClass(compilationUnit, treeMaker, names, "net.staticstudios.data", "InsertMode");
         JavaCPluginUtils.importClass(compilationUnit, treeMaker, names, "net.staticstudios.data", "InsertStrategy");
         JavaCPluginUtils.importClass(compilationUnit, treeMaker, names, "net.staticstudios.data.util", "UniqueDataMetadata");
         JavaCPluginUtils.importClass(compilationUnit, treeMaker, names, "net.staticstudios.data.util", "ColumnValuePair");
+    }
 
-        makeBuilderClass();
-        makeBuilderMethod();
-        makeParameterizedBuilderMethod();
-
+    @Override
+    protected void process() {
         Collection<ParsedPersistentValue> persistentValues = ParsedPersistentValue.extractPersistentValues(dataClassDecl, dataAnnotation, treeMaker, names);
         for (ParsedPersistentValue pv : persistentValues) {
             processValue(pv);
@@ -63,124 +46,6 @@ public class BuilderProcessor { //todo: abstract processor which has utility met
 
         makeInsertContextMethod(persistentValues, references);
         makeInsertModeMethod();
-    }
-
-
-    private void makeBuilderClass() {
-        builderClassDecl = treeMaker.ClassDef(
-                treeMaker.Modifiers(Flags.PUBLIC | Flags.STATIC),
-                names.fromString(getBuilderClassName()),
-                List.nil(),
-                null,
-                List.nil(),
-                List.nil()
-        );
-
-        JCTree.JCVariableDecl dataManagerField = treeMaker.VarDef(
-                treeMaker.Modifiers(Flags.PRIVATE | Flags.FINAL),
-                names.fromString("dataManager"),
-                treeMaker.Ident(names.fromString("DataManager")),
-                null
-        );
-        builderClassDecl.defs = builderClassDecl.defs.append(dataManagerField);
-
-        JCTree.JCMethodDecl constructor = treeMaker.MethodDef(
-                treeMaker.Modifiers(Flags.PUBLIC),
-                names.fromString("<init>"),
-                null,
-                List.nil(),
-                List.of(
-                        treeMaker.VarDef(
-                                treeMaker.Modifiers(Flags.PARAMETER),
-                                names.fromString("dataManager"),
-                                treeMaker.Ident(names.fromString("DataManager")),
-                                null
-                        )
-                ),
-                List.nil(),
-                treeMaker.Block(0, List.of(
-                        treeMaker.Exec(
-                                treeMaker.Assign(
-                                        treeMaker.Select(
-                                                treeMaker.Ident(names.fromString("this")),
-                                                names.fromString("dataManager")
-                                        ),
-                                        treeMaker.Ident(names.fromString("dataManager"))
-                                )
-                        )
-                )),
-                null
-        );
-        builderClassDecl.defs = builderClassDecl.defs.append(constructor);
-
-        dataClassDecl.defs = dataClassDecl.defs.append(builderClassDecl);
-    }
-
-
-    private void makeParameterizedBuilderMethod() {
-        JCTree.JCMethodDecl builderMethod = treeMaker.MethodDef(
-                treeMaker.Modifiers(Flags.PUBLIC | Flags.STATIC),
-                names.fromString("builder"),
-                treeMaker.Ident(names.fromString(getBuilderClassName())),
-                List.nil(),
-                List.nil(),
-                List.nil(),
-                treeMaker.Block(0, List.of(
-                        treeMaker.Return(
-                                treeMaker.Apply(
-                                        List.nil(),
-                                        treeMaker.Ident(names.fromString("builder")),
-                                        List.of(
-                                                treeMaker.Apply(
-                                                        List.nil(),
-                                                        treeMaker.Select(
-                                                                treeMaker.Ident(names.fromString("DataManager")),
-                                                                names.fromString("getInstance")
-                                                        ),
-                                                        List.nil()
-                                                )
-                                        )
-                                )
-                        )
-                )),
-                null
-        );
-        dataClassDecl.defs = dataClassDecl.defs.append(builderMethod);
-    }
-
-    private void makeBuilderMethod() {
-        JCTree.JCMethodDecl builderMethod = treeMaker.MethodDef(
-                treeMaker.Modifiers(Flags.PUBLIC | Flags.STATIC),
-                names.fromString("builder"),
-                treeMaker.Ident(names.fromString(getBuilderClassName())),
-                List.nil(),
-                List.of(
-                        treeMaker.VarDef(
-                                treeMaker.Modifiers(Flags.PARAMETER),
-                                names.fromString("dataManager"),
-                                treeMaker.Ident(names.fromString("DataManager")),
-                                null
-                        )
-                ),
-                List.nil(),
-                treeMaker.Block(0, List.of(
-                        treeMaker.Return(
-                                treeMaker.NewClass(null, List.nil(),
-                                        treeMaker.Ident(names.fromString(getBuilderClassName())),
-                                        List.of(
-                                                treeMaker.Ident(names.fromString("dataManager"))
-                                        ),
-                                        null
-                                )
-                        )
-                )),
-                null
-        );
-        dataClassDecl.defs = dataClassDecl.defs.append(builderMethod);
-    }
-
-    private String getBuilderClassName() {
-        return dataClassDecl.name.toString() + "Builder";
     }
 
 

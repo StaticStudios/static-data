@@ -350,9 +350,6 @@ public class JavaCPluginUtils {
         // Fallback to a simple identifier (covers type variables / wildcards minimally)
         return treeMaker.Ident(names.fromString(type.toString()));
     }
-
-
-    //todo: need to be able to extract the generic type
 }
 
 

@@ -42,7 +42,8 @@ public class StaticDataJavacPlugin implements Plugin {
 
                             if (!BuilderProcessor.hasProcessed(classDecl)) {
                                 ParsedDataAnnotation dataAnnotation = ParsedDataAnnotation.extract(classDecl);
-                                new BuilderProcessor((JCTree.JCCompilationUnit) e.getCompilationUnit(), treeMaker, names, classDecl, dataAnnotation).process();
+                                new BuilderProcessor((JCTree.JCCompilationUnit) e.getCompilationUnit(), treeMaker, names, classDecl, dataAnnotation).runProcessor();
+                                new QueryBuilderProcessor((JCTree.JCCompilationUnit) e.getCompilationUnit(), treeMaker, names, classDecl, dataAnnotation).runProcessor();
                             }
                         }
 
