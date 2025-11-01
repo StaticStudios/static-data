@@ -23,19 +23,6 @@ dependencies {
     implementation 'net.staticstudios:static-utils:1.0.6-SNAPSHOT'
     implementation 'com.h2database:h2:2.3.232'
     implementation 'org.jetbrains:annotations:24.0.1'
-//    api project(":annotations")
-//    implementation project(":annotations")
-//    annotationProcessor project(":processor")
-//    compileOnly project(":processor")
-
-//
-//    testAnnotationProcessor project(":processor")
-//    testCompileOnly project(":processor")
-
-//    testImplementation(platform('org.junit:junit-bom:5.10.3'))
-//    testImplementation('org.junit.jupiter:junit-jupiter')
-//    testImplementation('org.junit-pioneer:junit-pioneer:2.3.0');
-//    testRuntimeOnly('org.junit.platform:junit-platform-launcher')
 
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
@@ -44,7 +31,7 @@ dependencies {
     testImplementation("org.testcontainers:postgresql:1.19.8")
     testImplementation("com.redis:testcontainers-redis:2.2.2")
     testImplementation("org.slf4j:slf4j-log4j12:2.0.16")
-    compileOnly project(':javac-plugin') //TODO: java-c
+    compileOnly project(':javac-plugin')
     annotationProcessor project(':javac-plugin')
     testCompileOnly project(':javac-plugin')
     testAnnotationProcessor project(':javac-plugin')
