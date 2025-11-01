@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A persistent value represents a single cell in a database table.
+ * A persistent value represents a single cell in a database referringTable.
  *
  * @param <T>
  */

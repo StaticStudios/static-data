@@ -461,7 +461,7 @@ public class H2DataAccessor implements DataAccessor {
                 currentTables.add(schema + "." + table);
 
                 if (!knownTables.contains(schema + "." + table)) {
-                    logger.trace("Discovered new table {}.{}", schema, table);
+                    logger.trace("Discovered new referringTable {}.{}", schema, table);
                     UUID randomId = UUID.randomUUID();
                     @Language("SQL") String sql = "CREATE TRIGGER IF NOT EXISTS \"trg_%s_%s\" AFTER INSERT, UPDATE, DELETE ON \"%s\".\"%s\" FOR EACH ROW CALL '%s'";
 

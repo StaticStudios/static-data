@@ -1,11 +1,8 @@
 package net.staticstudios.data.ide.intellij.query.clause;
 
-import com.intellij.psi.PsiField;
-import com.intellij.psi.PsiManager;
-import com.intellij.psi.PsiType;
+import com.intellij.psi.*;
 import net.staticstudios.data.ide.intellij.query.QueryClause;
 
-import java.util.Collections;
 import java.util.List;
 
 public class IsNotNullClause implements QueryClause {
@@ -21,7 +18,7 @@ public class IsNotNullClause implements QueryClause {
     }
 
     @Override
-    public List<PsiType> getMethodParamTypes(PsiManager manager, PsiType fieldType) {
-        return Collections.emptyList();
+    public List<PsiParameter> getMethodParamTypes(PsiManager manager, PsiType fieldType, PsiElement scope) {
+        return List.of();
     }
 }

@@ -3,9 +3,7 @@ package net.staticstudios.data;
 import net.staticstudios.data.misc.DataTest;
 import net.staticstudios.data.misc.TestUtils;
 import net.staticstudios.data.mock.user.MockUser;
-import net.staticstudios.data.mock.user.MockUserFactory;
 import net.staticstudios.data.mock.user.MockUserSession;
-import net.staticstudios.data.mock.user.MockUserSessionFactory;
 import net.staticstudios.utils.RandomUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,7 +31,7 @@ public class PersistentOneToManyCollectionTest extends DataTest {
         dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
         UUID id = UUID.randomUUID();
-        mockUser = MockUserFactory.builder(dataManager)
+        mockUser = MockUser.builder(dataManager)
                 .id(id)
                 .name("test user")
                 .insert(InsertMode.SYNC);
@@ -42,7 +40,7 @@ public class PersistentOneToManyCollectionTest extends DataTest {
     private List<MockUserSession> createSessions(int count) {
         List<MockUserSession> sessions = new ArrayList<>();
         for (int i = 0; i < count; i++) {
-            MockUserSession session = MockUserSessionFactory.builder(dataManager)
+            MockUserSession session = MockUserSession.builder(dataManager)
                     .id(UUID.randomUUID())
                     .timestamp(Timestamp.from(Instant.ofEpochSecond(RandomUtils.randomInt(0, 1_000_000_000))))
                     .insert(InsertMode.ASYNC);
@@ -297,7 +295,7 @@ public class PersistentOneToManyCollectionTest extends DataTest {
 
     @Test
     public void testEqualsAndHashCode() {
-        MockUser anotherMockUser = MockUserFactory.builder(dataManager)
+        MockUser anotherMockUser = MockUser.builder(dataManager)
                 .id(UUID.randomUUID())
                 .name("another user")
                 .insert(InsertMode.SYNC);

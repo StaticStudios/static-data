@@ -6,6 +6,7 @@ import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.util.Names;
 import net.staticstudios.data.utils.Constants;
+import net.staticstudios.data.utils.Link;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -13,18 +14,20 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
-class ParsedPersistentValue {
+public class ParsedPersistentValue {
     private final String fieldName;
     private final String schema;
     private final String table;
     private final String column;
+    private final boolean nullable;
     private final JCTree.JCExpression type;
 
-    public ParsedPersistentValue(String fieldName, String schema, String table, String column, JCTree.JCExpression type) {
+    public ParsedPersistentValue(String fieldName, String schema, String table, String column, boolean nullable, JCTree.JCExpression type) {
         this.fieldName = fieldName;
         this.schema = schema;
         this.table = table;
         this.column = column;
+        this.nullable = nullable;
         this.type = type;
     }
 
@@ -49,20 +52,28 @@ class ParsedPersistentValue {
                 String columnName = Objects.requireNonNull(JavaCPluginUtils.getStringAnnotationValue(annotation, "name"));
                 String schemaValue;
                 String tableValue;
+                boolean nullable;
 
                 if (isIdColumnAnnotation) {
                     schemaValue = dataAnnotation.getSchema();
                     tableValue = dataAnnotation.getTable();
+                    nullable = false;
                 } else {
-                    schemaValue = JavaCPluginUtils.getStringAnnotationValue(annotation, "schema");
-                    tableValue = JavaCPluginUtils.getStringAnnotationValue(annotation, "table");
-
-                    if (schemaValue == null) {
+                    if (isForeignColumnAnnotation) {
+                        schemaValue = JavaCPluginUtils.getStringAnnotationValue(annotation, "schema");
+                        tableValue = JavaCPluginUtils.getStringAnnotationValue(annotation, "table");
+                        if (schemaValue == null) {
+                            schemaValue = dataAnnotation.getSchema();
+                        }
+                        if (tableValue == null) {
+                            tableValue = dataAnnotation.getTable();
+                        }
+                    } else {
                         schemaValue = dataAnnotation.getSchema();
-                    }
-                    if (tableValue == null) {
                         tableValue = dataAnnotation.getTable();
                     }
+
+                    nullable = JavaCPluginUtils.getBooleanAnnotationValue(annotation, "nullable");
                 }
 
                 JCTree.JCExpression typeExpression = JavaCPluginUtils.getGenericTypeExpression(treeMaker, names, varSymbol, 0);
@@ -78,8 +89,10 @@ class ParsedPersistentValue {
                             schemaValue,
                             tableValue,
                             columnName,
+                            nullable,
                             typeExpression,
-                            insertStrategy
+                            insertStrategy,
+                            Link.parseRawLinks(JavaCPluginUtils.getStringAnnotationValue(annotation, "link"))
                     );
                 } else {
                     parsedPersistentValue = new ParsedPersistentValue(
@@ -87,6 +100,7 @@ class ParsedPersistentValue {
                             schemaValue,
                             tableValue,
                             columnName,
+                            nullable,
                             typeExpression
                     );
                 }
@@ -112,6 +126,10 @@ class ParsedPersistentValue {
 
     public String getColumn() {
         return column;
+    }
+
+    public boolean isNullable() {
+        return nullable;
     }
 
     public JCTree.JCExpression getType() {

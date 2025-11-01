@@ -10,10 +10,6 @@ import java.lang.annotation.Target;
 public @interface Column {
     String name();
 
-    String schema() default "";
-
-    String table() default "";
-
     boolean index() default false;
 
     boolean nullable() default false;

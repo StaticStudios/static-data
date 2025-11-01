@@ -325,10 +325,10 @@ public class DataPsiAugmentProvider extends PsiAugmentProvider {
             List<QueryClause> clauses = QueryBuilderUtils.getClausesForType(psiField, isValidReference || IntelliJPluginUtils.isNullable(psiField, type));
             for (QueryClause clause : clauses) {
                 String methodName = clause.getMethodName(psiField.getName());
-                List<PsiType> parameterTypes = clause.getMethodParamTypes(parentClass.getManager(), innerType);
                 SyntheticMethod queryMethod = new SyntheticMethod(parentClass, whereClass, methodName, whereType);
-                for (int i = 0; i < parameterTypes.size(); i++) {
-                    queryMethod.addParameter(psiField.getName() + i, parameterTypes.get(i));
+                List<PsiParameter> parameterTypes = clause.getMethodParamTypes(parentClass.getManager(), innerType, queryMethod);
+                for (PsiParameter parameterType : parameterTypes) {
+                    queryMethod.addParameter(parameterType);
                 }
                 queryMethod.addModifier(PsiModifier.PUBLIC);
                 queryMethod.addModifier(PsiModifier.FINAL);

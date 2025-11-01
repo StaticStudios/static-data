@@ -84,8 +84,8 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
         }
         if (columnAnnotation != null) {
             ColumnMetadata columnMetadata = new ColumnMetadata(
-                    columnAnnotation.schema().isEmpty() ? schema : ValueUtils.parseValue(columnAnnotation.schema()),
-                    columnAnnotation.table().isEmpty() ? table : ValueUtils.parseValue(columnAnnotation.table()),
+                    schema,
+                    table,
                     ValueUtils.parseValue(columnAnnotation.name()),
                     ReflectionUtils.getGenericType(field),
                     columnAnnotation.nullable(),

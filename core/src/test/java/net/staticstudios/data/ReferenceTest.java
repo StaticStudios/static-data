@@ -3,9 +3,7 @@ package net.staticstudios.data;
 import net.staticstudios.data.insert.InsertContext;
 import net.staticstudios.data.misc.DataTest;
 import net.staticstudios.data.mock.user.MockUser;
-import net.staticstudios.data.mock.user.MockUserFactory;
 import net.staticstudios.data.mock.user.MockUserSettings;
-import net.staticstudios.data.mock.user.MockUserSettingsFactory;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
@@ -22,7 +20,7 @@ public class ReferenceTest extends DataTest {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
 
-        MockUserSettings settings = MockUserSettingsFactory.builder(dataManager)
+        MockUserSettings settings = MockUserSettings.builder(dataManager)
                 .id(UUID.randomUUID())
                 .insert(InsertMode.SYNC);
 
@@ -34,13 +32,13 @@ public class ReferenceTest extends DataTest {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
 
-        MockUserSettings settings = MockUserSettingsFactory.builder(dataManager)
+        MockUserSettings settings = MockUserSettings.builder(dataManager)
                 .id(UUID.randomUUID())
                 .insert(InsertMode.SYNC);
 
         assertNotNull(settings);
 
-        MockUser user = MockUserFactory.builder(dataManager)
+        MockUser user = MockUser.builder(dataManager)
                 .id(UUID.randomUUID())
                 .name("test user")
                 .settingsId(settings.id.get())
@@ -57,11 +55,11 @@ public class ReferenceTest extends DataTest {
 
         UUID settingsId = UUID.randomUUID();
         InsertContext ctx = dataManager.createInsertContext();
-        MockUserSettingsFactory.builder(dataManager)
+        MockUserSettings.builder(dataManager)
                 .id(settingsId)
                 .insert(ctx);
 
-        MockUserFactory.builder(dataManager)
+        MockUser.builder(dataManager)
                 .id(UUID.randomUUID())
                 .name("test user")
                 .settingsId(settingsId)
@@ -81,13 +79,13 @@ public class ReferenceTest extends DataTest {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
 
-        MockUserSettings settings = MockUserSettingsFactory.builder(dataManager)
+        MockUserSettings settings = MockUserSettings.builder(dataManager)
                 .id(UUID.randomUUID())
                 .insert(InsertMode.SYNC);
 
         assertNotNull(settings);
 
-        MockUser user = MockUserFactory.builder(dataManager)
+        MockUser user = MockUser.builder(dataManager)
                 .id(UUID.randomUUID())
                 .name("test user")
                 .settingsId(settings.id.get())
@@ -96,7 +94,7 @@ public class ReferenceTest extends DataTest {
         assertNotNull(user);
         assertSame(settings, user.settings.get());
 
-        MockUserSettings settings2 = MockUserSettingsFactory.builder(dataManager)
+        MockUserSettings settings2 = MockUserSettings.builder(dataManager)
                 .id(UUID.randomUUID())
                 .insert(InsertMode.SYNC);
 
@@ -124,11 +122,11 @@ public class ReferenceTest extends DataTest {
         Connection h2Connection = getH2Connection(dataManager);
         Connection pgConnection = getConnection();
         UUID id = UUID.randomUUID();
-        MockUserSettings settings = MockUserSettingsFactory.builder(dataManager)
+        MockUserSettings settings = MockUserSettings.builder(dataManager)
                 .id(id)
                 .insert(InsertMode.SYNC);
 
-        MockUser user = MockUserFactory.builder(dataManager)
+        MockUser user = MockUser.builder(dataManager)
                 .id(UUID.randomUUID())
                 .name("test user")
                 .settingsId(settings.id.get())

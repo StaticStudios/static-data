@@ -20,7 +20,7 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
     private final Class<T> type;
     private final String parsedJoinTableSchema;
     private final String parsedJoinTableName;
-    private final String links; // since we need information about the column prefixes in the join table, we have to compute these at runtime
+    private final String links; // since we need information about the column prefixes in the join referringTable, we have to compute these at runtime
     private @Nullable List<Link> cachedJoinTableToDataTableLinks = null;
     private @Nullable List<Link> cachedJoinTableToReferencedTableLinks = null;
 

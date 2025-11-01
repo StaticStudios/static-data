@@ -123,7 +123,7 @@ public class DataManager {
                     }
                 }
                 if (!found) {
-                    throw new IllegalArgumentException("Not all ID columns were provided for UniqueData class " + holderClass.getName() + ". Required: " + metadata.idColumns() + ", Provided: " + columnNames);
+                    throw new IllegalArgumentException("Not all ID columnsInReferringTable were provided for UniqueData class " + holderClass.getName() + ". Required: " + metadata.idColumns() + ", Provided: " + columnNames);
                 }
             }
             UniqueData instance = getInstance(holderClass, idColumns);
@@ -244,7 +244,7 @@ public class DataManager {
                         break;
                     }
                 }
-                Preconditions.checkArgument(found, "Not all ID columns were provided for UniqueData class %s. Required: %s, Provided: %s", uniqueDataMetadata.clazz().getName(), uniqueDataMetadata.idColumns(), Arrays.toString(values));
+                Preconditions.checkArgument(found, "Not all ID columnsInReferringTable were provided for UniqueData class %s. Required: %s, Provided: %s", uniqueDataMetadata.clazz().getName(), uniqueDataMetadata.idColumns(), Arrays.toString(values));
             }
 
             UniqueData instance = uniqueDataInstanceCache.getOrDefault(uniqueDataMetadata.clazz(), Collections.emptyMap()).get(new ColumnValuePairs(idColumns));
@@ -286,10 +286,10 @@ public class DataManager {
                         break;
                     }
                 }
-                Preconditions.checkArgument(found, "Not all ID columns were provided for UniqueData class %s. Required: %s, Provided: %s", uniqueDataMetadata.clazz().getName(), uniqueDataMetadata.idColumns(), Arrays.toString(oldValues));
+                Preconditions.checkArgument(found, "Not all ID columnsInReferringTable were provided for UniqueData class %s. Required: %s, Provided: %s", uniqueDataMetadata.clazz().getName(), uniqueDataMetadata.idColumns(), Arrays.toString(oldValues));
             }
             if (Arrays.equals(oldIdColumns, newIdColumns)) {
-                return; // no change to id columns here
+                return; // no change to id columnsInReferringTable here
             }
 
             ColumnValuePairs oldIdCols = new ColumnValuePairs(oldIdColumns);
@@ -364,11 +364,11 @@ public class DataManager {
             Preconditions.checkNotNull(providedIdColumn.value(), "ID name value for name %s in UniqueData class %s cannot be null", providedIdColumn.column(), clazz.getName());
         }
 
-        Preconditions.checkArgument(hasAllIdColumns, "Not all @IdColumn columns were provided for UniqueData class %s. Required: %s, Provided: %s", clazz.getName(), metadata.idColumns(), idColumns);
+        Preconditions.checkArgument(hasAllIdColumns, "Not all @IdColumn columnsInReferringTable were provided for UniqueData class %s. Required: %s, Provided: %s", clazz.getName(), metadata.idColumns(), idColumns);
 
         T instance;
         if (uniqueDataInstanceCache.containsKey(clazz) && uniqueDataInstanceCache.get(clazz).containsKey(idColumns)) {
-            logger.trace("Cache hit for UniqueData class {} with ID columns {}", clazz.getName(), idColumns);
+            logger.trace("Cache hit for UniqueData class {} with ID columnsInReferringTable {}", clazz.getName(), idColumns);
             instance = (T) uniqueDataInstanceCache.get(clazz).get(idColumns);
             if (instance.isDeleted()) {
                 return null;
@@ -414,7 +414,7 @@ public class DataManager {
         uniqueDataInstanceCache.computeIfAbsent(clazz, k -> new MapMaker().weakValues().makeMap())
                 .put(idColumns, instance);
 
-        logger.trace("Cache miss for UniqueData class {} with ID columns {}. Created new instance.", clazz.getName(), idColumns);
+        logger.trace("Cache miss for UniqueData class {} with ID columnsInReferringTable {}. Created new instance.", clazz.getName(), idColumns);
 
         return instance;
     }
@@ -478,13 +478,13 @@ public class DataManager {
             }
         }
 
-        tables.clear(); // rebuild the table set in case we added any new tables from foreign keys
+        tables.clear(); // rebuild the referringTable set in case we added any new tables from foreign keys
         insertContext.getEntries().forEach((simpleColumnMetadata, o) -> {
             SQLTable table = Objects.requireNonNull(sqlBuilder.getSchema(simpleColumnMetadata.schema())).getTable(simpleColumnMetadata.table());
             tables.add(table);
         });
 
-        // Build dependency graph: table -> set of tables it depends on
+        // Build dependency graph: referringTable -> set of tables it depends on
         Map<String, Set<SQLTable>> dependencyGraph = new HashMap<>();
         for (SQLTable table : tables) {
             Set<SQLTable> dependsOn = new HashSet<>();
@@ -493,7 +493,7 @@ public class DataManager {
                 SQLTable referencedTable = Objects.requireNonNull(referencedSchema.getTable(fKey.getReferencedTable()));
 
                 boolean addDependency = true;
-                // if one of the linking columns is not present in the insert context, we can't add the dependency
+                // if one of the linking columnsInReferringTable is not present in the insert context, we can't add the dependency
                 for (Link link : fKey.getLinkingColumns()) {
                     Object value = insertContext.getEntries().entrySet().stream()
                             .filter(entry -> {
@@ -525,7 +525,7 @@ public class DataManager {
         Set<SQLTable> stack = new HashSet<>();
         for (SQLTable table : tables) {
             if (hasCycle(table, dependencyGraph, visited, stack)) {
-                throw new IllegalStateException(String.format("Cycle detected in foreign key dependencies involving table %s.%s", table.getSchema().getName(), table.getName()));
+                throw new IllegalStateException(String.format("Cycle detected in foreign key dependencies involving referringTable %s.%s", table.getSchema().getName(), table.getName()));
             }
         }
 
@@ -832,7 +832,7 @@ public class DataManager {
     }
 
 //    /**
-//     * For internal use only. A dummy instance has no DataManager, no id columns, and is marked as deleted.
+//     * For internal use only. A dummy instance has no DataManager, no id columnsInReferringTable, and is marked as deleted.
 //     *
 //     * @param clazz The UniqueData class to create a dummy instance of.
 //     * @param <T>   The type of UniqueData.

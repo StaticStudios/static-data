@@ -75,12 +75,12 @@ public class SQLTable {
 
     public void addColumn(SQLColumn column) {
         if (column.getTable() != this) {
-            throw new IllegalArgumentException("Column does not belong to this table");
+            throw new IllegalArgumentException("Column does not belong to this referringTable");
         }
         Preconditions.checkNotNull(column, "Column cannot be null");
         SQLColumn existingColumn = columns.get(column.getName());
         if (existingColumn != null && !Objects.equals(existingColumn, column)) {
-            throw new IllegalArgumentException("Column with name " + column.getName() + " already exists in table " + name + " in schema " + schema.getName() + " and is different from the one being added");
+            throw new IllegalArgumentException("Column with name " + column.getName() + " already exists in referringTable " + name + " in referringSchema " + schema.getName() + " and is different from the one being added");
         }
 
         columns.put(column.getName(), column);

@@ -86,7 +86,7 @@ public class SQLBuilder {
                 for (SQLColumn newColumn : newTable.getColumns()) {
                     SQLColumn existingColumn = existingTable.getColumn(newColumn.getName());
                     if (existingColumn != null) {
-                        Preconditions.checkState(existingColumn.equals(newColumn), "Column " + newColumn.getName() + " in table " + newTable.getName() + " has conflicting definitions! Existing: " + existingColumn + ", New: " + newColumn);
+                        Preconditions.checkState(existingColumn.equals(newColumn), "Column " + newColumn.getName() + " in referringTable " + newTable.getName() + " has conflicting definitions! Existing: " + existingColumn + ", New: " + newColumn);
                         continue;
                     }
                     existingTable.addColumn(newColumn);
@@ -169,7 +169,7 @@ public class SQLBuilder {
             }
         }
 
-        // define fkeys after table creation, to ensure all tables exist before adding fkeys
+        // define fkeys after referringTable creation, to ensure all tables exist before adding fkeys
         for (SQLSchema schema : schemas) { //todo: what if an fkey's on delete/ on cascade strategy has changed?
             for (SQLTable table : schema.getTables()) {
                 for (ForeignKey foreignKey : table.getForeignKeys()) {
@@ -256,7 +256,7 @@ public class SQLBuilder {
     }
 
     private void parseIndividualColumns(Class<? extends UniqueData> clazz, Map<String, SQLSchema> schemas) {
-        logger.trace("Parsing columns for class {}", clazz.getName());
+        logger.trace("Parsing columnsInReferringTable for class {}", clazz.getName());
         UniqueDataMetadata metadata = dataManager.getMetadata(clazz);
         if (!clazz.isAnnotationPresent(Data.class)) {
             throw new IllegalArgumentException("Class " + clazz.getName() + " is not annotated with @Data");
@@ -318,8 +318,8 @@ public class SQLBuilder {
             unique = true;
             defaultValue = "";
         } else if (columnAnnotation != null) {
-            schemaName = ValueUtils.parseValue(columnAnnotation.schema());
-            tableName = ValueUtils.parseValue(columnAnnotation.table());
+            schemaName = ValueUtils.parseValue(dataAnnotation.schema());
+            tableName = ValueUtils.parseValue(dataAnnotation.table());
             columnName = ValueUtils.parseValue(columnAnnotation.name());
             nullable = columnAnnotation.nullable();
             indexed = columnAnnotation.index();
@@ -342,7 +342,7 @@ public class SQLBuilder {
         tableName = tableName.isEmpty() ? dataTable : tableName;
 
         if (foreignColumn != null) {
-            Preconditions.checkArgument(!(schemaName.equals(dataSchema) && tableName.equals(dataTable)), "ForeignColumn field %s in class %s cannot reference its own table", field.getName(), clazz.getName());
+            Preconditions.checkArgument(!(schemaName.equals(dataSchema) && tableName.equals(dataTable)), "ForeignColumn field %s in class %s cannot reference its own referringTable", field.getName(), clazz.getName());
         }
 
         SQLSchema schema = schemas.computeIfAbsent(schemaName, SQLSchema::new);
@@ -379,7 +379,7 @@ public class SQLBuilder {
 
             if (foreignColumn != null) {
                 for (ColumnMetadata idCol : table.getIdColumns()) {
-                    Preconditions.checkState(table.getColumn(idCol.name()) == null, "ID column name " + idCol.name() + " in table " + tableName + " is duplicated!");
+                    Preconditions.checkState(table.getColumn(idCol.name()) == null, "ID column name " + idCol.name() + " in referringTable " + tableName + " is duplicated!");
                     SQLColumn sqlColumn = new SQLColumn(table, idCol.type(), idCol.name(), false, false, true, null);
                     table.addColumn(sqlColumn);
                 }
@@ -415,7 +415,7 @@ public class SQLBuilder {
                 referencedTable = tableName;
             }
 
-            Preconditions.checkArgument(!(referencedSchema.equals(dataSchema) && referencedTable.equals(dataTable)), "ForeignColumn field %s in class %s cannot reference its own table", field.getName(), clazz.getName());
+            Preconditions.checkArgument(!(referencedSchema.equals(dataSchema) && referencedTable.equals(dataTable)), "ForeignColumn field %s in class %s cannot reference its own referringTable", field.getName(), clazz.getName());
 
             ForeignKey foreignKey = new ForeignKey(dataSchema, dataTable, referencedSchema, referencedTable, OnDelete.CASCADE);
             try {
@@ -435,7 +435,7 @@ public class SQLBuilder {
 
         SQLColumn existingColumn = table.getColumn(columnName);
         if (existingColumn != null) {
-            Preconditions.checkState(existingColumn.equals(sqlColumn), "Column " + columnName + " in table " + tableName + " has conflicting definitions! Existing: " + existingColumn + ", New: " + sqlColumn);
+            Preconditions.checkState(existingColumn.equals(sqlColumn), "Column " + columnName + " in referringTable " + tableName + " has conflicting definitions! Existing: " + existingColumn + ", New: " + sqlColumn);
             return;
         }
 
@@ -472,7 +472,7 @@ public class SQLBuilder {
             parseLinks(foreignKey, oneToOne.link());
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Error parsing @OneToOne link on field " + field.getName() + " in class " + clazz.getName() + ": " + e.getMessage(), e);
-        } //todo: all columns in the link must be unique in our table, and must be id columns in the referenced table. this will be enforced by H2 but check here for better errors
+        } //todo: all columnsInReferringTable in the link must be unique in our referringTable, and must be id columnsInReferringTable in the referenced referringTable. this will be enforced by H2 but check here for better errors
         table.addForeignKey(foreignKey);
 
         Delete delete = field.getAnnotation(Delete.class);
@@ -532,14 +532,14 @@ public class SQLBuilder {
         DeleteStrategy deleteStrategy = delete != null ? delete.value() : DeleteStrategy.NO_ACTION;
         OnDelete onDelete = deleteStrategy == DeleteStrategy.CASCADE ? OnDelete.CASCADE : OnDelete.SET_NULL;
 
-        // unlike a Reference, this foreign key goes on the referenced table, not our table.
-        // Since the foreign key is on the other table, let the foreign key handle the deletion strategy instead of a trigger.
+        // unlike a Reference, this foreign key goes on the referenced referringTable, not our referringTable.
+        // Since the foreign key is on the other referringTable, let the foreign key handle the deletion strategy instead of a trigger.
         ForeignKey foreignKey = new ForeignKey(referencedSchema.getName(), referencedTable.getName(), schema.getName(), table.getName(), onDelete);
         try {
             parseLinksReversed(foreignKey, oneToMany.link());
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Error parsing @OneToMany link on field " + field.getName() + " in class " + clazz.getName() + ": " + e.getMessage(), e);
-        } //todo: all columns in the link must be unique in our table, and must be id columns in the referenced table. this will be enforced by H2 but check here for better errors
+        } //todo: all columnsInReferringTable in the link must be unique in our referringTable, and must be id columnsInReferringTable in the referenced referringTable. this will be enforced by H2 but check here for better errors
         referencedTable.addForeignKey(foreignKey);
     }
 
@@ -585,14 +585,14 @@ public class SQLBuilder {
                 ColumnMetadata columnMetadata = metadata.idColumns().stream()
                         .filter(c -> c.name().equals(dataLink.columnInReferencedTable()))
                         .findFirst()
-                        .orElseThrow(() -> new IllegalArgumentException("Column not found in data table! " + dataLink.columnInReferringTable()));
+                        .orElseThrow(() -> new IllegalArgumentException("Column not found in data referringTable! " + dataLink.columnInReferringTable()));
                 joinTableIdColumns.add(new ColumnMetadata(joinTableSchemaName, joinTableName, dataTableColumnPrefix + "_" + columnMetadata.name(), columnMetadata.type(), false, false, ""));
             }
             for (Link referencedLink : joinTableToReferencedTableLinks) {
                 ColumnMetadata columnMetadata = referencedMetadata.idColumns().stream()
                         .filter(c -> c.name().equals(referencedLink.columnInReferencedTable()))
                         .findFirst()
-                        .orElseThrow(() -> new IllegalArgumentException("Column not found in referenced table! " + referencedLink.columnInReferringTable()));
+                        .orElseThrow(() -> new IllegalArgumentException("Column not found in referenced referringTable! " + referencedLink.columnInReferringTable()));
                 joinTableIdColumns.add(new ColumnMetadata(joinTableSchemaName, joinTableName, referencedTableColumnPrefix + "_" + columnMetadata.name(), columnMetadata.type(), false, false, ""));
             }
             joinTable = new SQLTable(joinSchema, joinTableName, joinTableIdColumns);
@@ -603,7 +603,7 @@ public class SQLBuilder {
         DeleteStrategy deleteStrategy = delete != null ? delete.value() : DeleteStrategy.NO_ACTION;
         OnDelete onDelete = OnDelete.CASCADE;
         //todo: deletion strategy in this case is different than in the one to many case.
-        // it should always cascade on the join table, but depending on the delete strategy, we may or may not delete the referenced data.
+        // it should always cascade on the join referringTable, but depending on the delete strategy, we may or may not delete the referenced data.
         // impl with a trigger?
 
         ForeignKey foreignKeyJoinToDataTable = new ForeignKey(joinSchema.getName(), joinTable.getName(), schema.getName(), table.getName(), onDelete);

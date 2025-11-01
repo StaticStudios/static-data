@@ -43,17 +43,19 @@ public class SQLParseTest extends DataTest {
 
     private static void assertSqlLinesEqualOrderIndependent(List<String> expectedLines, List<String> actualLines) {
         Set<String> expectedSet = new LinkedHashSet<>(expectedLines.stream().map(l -> {
-            if (l.endsWith(",")) {
-                l = l.substring(0, l.length() - 1);
-            }
-            return l.trim();
-        }).toList());
+                    if (l.endsWith(",")) {
+                        l = l.substring(0, l.length() - 1);
+                    }
+                    return l.trim();
+                })
+                .toList());
         Set<String> actualSet = new LinkedHashSet<>(actualLines.stream().map(l -> {
-            if (l.endsWith(",")) {
-                l = l.substring(0, l.length() - 1);
-            }
-            return l.trim();
-        }).toList());
+                    if (l.endsWith(",")) {
+                        l = l.substring(0, l.length() - 1);
+                    }
+                    return l.trim();
+                })
+                .toList());
 
         if (!expectedSet.equals(actualSet)) {
             Set<String> missing = new LinkedHashSet<>(expectedSet);
@@ -111,7 +113,7 @@ public class SQLParseTest extends DataTest {
         }
 
         Container.ExecResult result = postgres.execInContainer("pg_dump",
-                "--schema-only",
+                "--referringSchema-only",
                 "--no-owner",
                 "--no-privileges",
                 "--no-comments",

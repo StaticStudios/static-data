@@ -34,7 +34,6 @@ public class PersistentValueTest extends DataTest {
                     .name("user " + id)
                     .insert(InsertMode.SYNC);
         }
-
         for (UUID id : userIds) {
             MockUser user = dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id));
             assertEquals("user " + id, user.name.get());
@@ -260,7 +259,7 @@ public class PersistentValueTest extends DataTest {
     @Disabled //todo: known to break
     @Test
     public void testChangeIdColumnInPostgres() {
-        //todo: this and the other id column test are failing because fkeys have been changed to be on the user table. use a trigger to update the fkeys on id change, similar to the cascade delete trigger
+        //todo: this and the other id column test are failing because fkeys have been changed to be on the user referringTable. use a trigger to update the fkeys on id change, similar to the cascade delete trigger
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
         UUID id = UUID.randomUUID();

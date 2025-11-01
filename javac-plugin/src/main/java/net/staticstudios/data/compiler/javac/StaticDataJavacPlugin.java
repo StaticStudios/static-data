@@ -9,11 +9,10 @@ import com.sun.tools.javac.util.Context;
 import com.sun.tools.javac.util.Names;
 import net.staticstudios.data.utils.Constants;
 
+import java.util.Collection;
+
 
 public class StaticDataJavacPlugin implements Plugin {
-    //TODO: properly implement this and match the IntelliJ plugin's behavior
-    // note: delegate a lot of behavior to utility classes to avoid generated unnecessary (and less reliable/more complex) code.
-    // i.e. AbstractQueryBuilder or something
 
     @Override
     public String getName() {
@@ -42,8 +41,10 @@ public class StaticDataJavacPlugin implements Plugin {
 
                             if (!BuilderProcessor.hasProcessed(classDecl)) {
                                 ParsedDataAnnotation dataAnnotation = ParsedDataAnnotation.extract(classDecl);
-                                new BuilderProcessor((JCTree.JCCompilationUnit) e.getCompilationUnit(), treeMaker, names, classDecl, dataAnnotation).runProcessor();
-                                new QueryBuilderProcessor((JCTree.JCCompilationUnit) e.getCompilationUnit(), treeMaker, names, classDecl, dataAnnotation).runProcessor();
+                                Collection<ParsedPersistentValue> persistentValues = ParsedPersistentValue.extractPersistentValues(classDecl, dataAnnotation, treeMaker, names);
+                                Collection<ParsedReference> references = ParsedReference.extractReferences(classDecl, dataAnnotation, treeMaker, names);
+                                new BuilderProcessor((JCTree.JCCompilationUnit) e.getCompilationUnit(), treeMaker, names, classDecl, dataAnnotation, persistentValues, references).runProcessor();
+                                new QueryBuilderProcessor((JCTree.JCCompilationUnit) e.getCompilationUnit(), treeMaker, names, classDecl, dataAnnotation, persistentValues, references).runProcessor();
                             }
                         }
 

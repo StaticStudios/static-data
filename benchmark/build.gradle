@@ -19,29 +19,6 @@ dependencies {
     implementation("org.testcontainers:postgresql:1.19.8")
     implementation("com.redis:testcontainers-redis:2.2.2")
     implementation("org.slf4j:slf4j-log4j12:2.0.16")
-
-    annotationProcessor project(":processor")
-    compileOnly project(":processor")
-}
-
-def generatedSourcesDir = file("$buildDir/generated/sources/annotations")
-sourceSets.main.java.srcDir(generatedSourcesDir)
-
-
-tasks.register('runAnnotationProcessor', JavaCompile) {
-    group = 'build'
-    description = 'Run annotation processor manually (codegen only)'
-
-    source = sourceSets.main.java
-    classpath = configurations.compileClasspath + configurations.annotationProcessor
-    destinationDir = file("$buildDir/tmp/classes/manual") // arbitrary, ignored with -proc:only
-
-    options.annotationProcessorPath = configurations.annotationProcessor
-    options.compilerArgs += [
-            '-proc:only',
-            '-processor', 'net.staticstudios.data.processor.DataProcessor',
-            '-s', generatedSourcesDir
-    ]
 }
 
 tasks.named('jmhRunBytecodeGenerator') {

@@ -167,11 +167,11 @@ public class PostgresListener {
 
 
     /**
-     * Whenever we see a new table, make sure the trigger is added to it
+     * Whenever we see a new referringTable, make sure the trigger is added to it
      *
      * @param connection the connection to the database
-     * @param schema     the schema of the table
-     * @param table      the table to ensure has the trigger
+     * @param schema     the referringSchema of the referringTable
+     * @param table      the referringTable to ensure has the trigger
      */
     public void ensureTableHasTrigger(Connection connection, String schema, String table) {
         String schemaTable = schema + "." + table;
@@ -180,7 +180,7 @@ public class PostgresListener {
         }
 
         String sql = CREATE_TRIGGER.formatted(schemaTable, schemaTable);
-        logger.debug("Adding propagate_data_update_trigger to table: {}", schemaTable);
+        logger.debug("Adding propagate_data_update_trigger to referringTable: {}", schemaTable);
 
         try (Statement statement = connection.createStatement()) {
             statement.execute(sql);

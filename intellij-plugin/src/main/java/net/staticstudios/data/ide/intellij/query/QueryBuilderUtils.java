@@ -18,6 +18,12 @@ public class QueryBuilderUtils {
         pvClauses.add(new IsClause());
         pvClauses.add(new IsNotClause());
 
+        pvClauses.add(new IsInCollectionClause());
+        pvClauses.add(new IsNotInCollectionClause());
+
+        pvClauses.add(new IsInArrayClause());
+        pvClauses.add(new IsNotInArrayClause());
+
         pvClauses.add(new IsNullClause());
         pvClauses.add(new IsNotNullClause());
 
@@ -32,10 +38,12 @@ public class QueryBuilderUtils {
         pvClauses.add(new IsNotBetweenClause());
 
         referenceClauses = new ArrayList<>();
-        referenceClauses.add(new IsClause());
-        referenceClauses.add(new IsNotClause());
-        referenceClauses.add(new IsNullClause());
-        referenceClauses.add(new IsNotNullClause());
+        //todo: supporting these clauses in the java-c plugin is more involved than pvs, so until those are implemented
+        // these will remain diables. at the time of writing this, uncommenting this will cause IJ to behave as expected.
+//        referenceClauses.add(new IsClause());
+//        referenceClauses.add(new IsNotClause());
+//        referenceClauses.add(new IsNullClause());
+//        referenceClauses.add(new IsNotNullClause());
     }
 
     public static List<QueryClause> getClausesForType(PsiField psiField, boolean nullable) {

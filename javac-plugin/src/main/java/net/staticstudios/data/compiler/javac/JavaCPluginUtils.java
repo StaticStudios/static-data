@@ -120,6 +120,11 @@ public class JavaCPluginUtils {
         return null; // Treat empty strings as null
     }
 
+    public static boolean getBooleanAnnotationValue(@NotNull Attribute.Compound annotation, @NotNull String key) {
+        Boolean value = getAnnotationValue(annotation, Boolean.class, key);
+        return value != null ? value : false;
+    }
+
     public static <T> @Nullable T getAnnotationValue(@NotNull Attribute.Compound annotation,
                                                      @NotNull Class<T> type,
                                                      @NotNull String key) {
@@ -349,6 +354,29 @@ public class JavaCPluginUtils {
 
         // Fallback to a simple identifier (covers type variables / wildcards minimally)
         return treeMaker.Ident(names.fromString(type.toString()));
+    }
+
+    public static boolean isType(JCTree.JCExpression expression, Class<?> clazz) {
+        if (expression.type == null) {
+            return expression.toString().equals(clazz.getCanonicalName());
+        }
+        String typeName = expression.type.toString();
+        return typeName.equals(clazz.getCanonicalName());
+    }
+
+    public static boolean isNumericType(JCTree.JCExpression expression) {
+        String typeName;
+        if (expression.type == null) {
+            typeName = expression.toString();
+        } else {
+            typeName = expression.type.toString();
+        }
+        return switch (typeName) {
+            case "byte", "short", "int", "long", "float", "double",
+                 "java.lang.Byte", "java.lang.Short", "java.lang.Integer",
+                 "java.lang.Long", "java.lang.Float", "java.lang.Double" -> true;
+            default -> false;
+        };
     }
 }
 

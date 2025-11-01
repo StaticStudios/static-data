@@ -30,10 +30,10 @@ public class SQLSchema {
 
     public void addTable(SQLTable table) {
         if (table.getSchema() != this) {
-            throw new IllegalArgumentException("Table does not belong to this schema");
+            throw new IllegalArgumentException("Table does not belong to this referringSchema");
         }
         if (tables.containsKey(table.getName())) {
-            throw new IllegalArgumentException("Table with name " + table.getName() + " already exists in schema " + name);
+            throw new IllegalArgumentException("Table with name " + table.getName() + " already exists in referringSchema " + name);
         }
 
         tables.put(table.getName(), table);

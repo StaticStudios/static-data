@@ -1,8 +1,6 @@
 package net.staticstudios.data.ide.intellij.query;
 
-import com.intellij.psi.PsiField;
-import com.intellij.psi.PsiManager;
-import com.intellij.psi.PsiType;
+import com.intellij.psi.*;
 
 import java.util.List;
 
@@ -12,5 +10,5 @@ public interface QueryClause {
 
     String getMethodName(String fieldName);
 
-    List<PsiType> getMethodParamTypes(PsiManager manager, PsiType fieldType);
+    List<PsiParameter> getMethodParamTypes(PsiManager manager, PsiType fieldType, PsiElement scope);
 }

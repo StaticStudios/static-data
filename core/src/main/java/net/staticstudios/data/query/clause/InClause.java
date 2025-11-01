@@ -15,10 +15,6 @@ public class InClause implements ValueClause {
         this.values = values;
     }
 
-    public InClause(String schema, String table, String column, List<?> values) {
-        this(schema, table, column, values.toArray());
-    }
-
     @Override
     public List<Object> append(StringBuilder sb) {
         sb.append("\"").append(schema).append("\".\"").append(table).append("\".\"").append(column).append("\" IN (");

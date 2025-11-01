@@ -55,7 +55,7 @@ public class MockUser extends UniqueData {
     @ManyToMany(link = "id=id", joinTable = "user_friends")
     public PersistentCollection<MockUser> friends;
 
-    //todo: support OneToMany Collections where the data type is not a uniquedata. in this case additional info about what table and schema to use will be required, since we will have to create this table.
+    //todo: support OneToMany Collections where the data type is not a uniquedata. in this case additional info about what referringTable and referringSchema to use will be required, since we will have to create this referringTable.
 
     public int getNameUpdates() {
         return nameUpdates.get();

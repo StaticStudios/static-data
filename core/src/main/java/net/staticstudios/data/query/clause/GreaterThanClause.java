@@ -2,13 +2,13 @@ package net.staticstudios.data.query.clause;
 
 import java.util.List;
 
-public class GreaterThanClause<N> implements ValueClause {
+public class GreaterThanClause implements ValueClause {
     private final String schema;
     private final String table;
     private final String column;
-    private final N value;
+    private final Object value;
 
-    public GreaterThanClause(String schema, String table, String column, N value) {
+    public GreaterThanClause(String schema, String table, String column, Object value) {
         this.schema = schema;
         this.table = table;
         this.column = column;

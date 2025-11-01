@@ -1,8 +1,6 @@
 rootProject.name = 'static-data'
 
 
-include 'annotations'
-include 'processor'
 include 'benchmark'
 include 'core'
 include 'javac-plugin'

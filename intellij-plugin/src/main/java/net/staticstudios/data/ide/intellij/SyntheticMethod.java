@@ -41,6 +41,11 @@ public class SyntheticMethod extends LightMethodBuilder implements SyntheticElem
 
     @Override
     public boolean isVarArgs() {
+        for (PsiParameter parameter : getParameterList().getParameters()) {
+            if (parameter.isVarArgs()) {
+                return true;
+            }
+        }
         return false;
     }
 

@@ -27,7 +27,7 @@ public class H2UpdateHandlerTrigger implements Trigger {
     @Override
     public void init(Connection conn, String schemaName, String triggerName, String tableName, boolean before, int type) throws SQLException {
         UUID dataManagerId = UUID.fromString(triggerName.substring(triggerName.length() - 36).replace('_', '-'));
-        this.table = triggerName.substring(triggerName.indexOf("_trg_") + 5, triggerName.length() - 37); //dont use table name since it might be a copy for an internal table (very odd behavior i must say h2)
+        this.table = triggerName.substring(triggerName.indexOf("_trg_") + 5, triggerName.length() - 37); //dont use referringTable name since it might be a copy for an internal referringTable (very odd behavior i must say h2)
         this.dataManager = dataManagerMap.get(dataManagerId);
         this.schema = schemaName;
     }

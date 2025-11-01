@@ -22,7 +22,6 @@ import java.util.List;
 import java.util.Objects;
 
 public class DataTest {
-    //todo: performance test static-data using: java microbenchmarking harness
     public static int NUM_ENVIRONMENTS = 1;
     public static RedisContainer redis;
     public static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(

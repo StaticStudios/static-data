@@ -41,8 +41,8 @@ public class PostgresNotification {
     public String toString() {
         return "PostgresNotification{" +
                 "instant=" + instant +
-                ", schema='" + schema + '\'' +
-                ", table='" + table + '\'' +
+                ", referringSchema='" + schema + '\'' +
+                ", referringTable='" + table + '\'' +
                 ", operation=" + operation +
                 ", data=" + data +
                 '}';

@@ -2,13 +2,13 @@ package net.staticstudios.data.query.clause;
 
 import java.util.List;
 
-public class LessThanOrEqualToClause<N> implements ValueClause {
+public class LessThanOrEqualToClause implements ValueClause {
     private final String schema;
     private final String table;
     private final String column;
-    private final N value;
+    private final Object value;
 
-    public LessThanOrEqualToClause(String schema, String table, String column, N value) {
+    public LessThanOrEqualToClause(String schema, String table, String column, Object value) {
         this.schema = schema;
         this.table = table;
         this.column = column;

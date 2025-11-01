@@ -412,7 +412,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
     }
 
     private Set<ColumnValuePair[]> getIds() {
-        // note: we need the join since we support linking on non-id columns
+        // note: we need the join since we support linking on non-id columnsInReferringTable
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot get entries on a deleted UniqueData instance");
         Set<ColumnValuePair[]> ids = new HashSet<>();
         UniqueDataMetadata holderMetadata = holder.getMetadata();

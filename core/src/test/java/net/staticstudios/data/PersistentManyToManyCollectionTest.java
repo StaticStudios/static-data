@@ -3,7 +3,6 @@ package net.staticstudios.data;
 import net.staticstudios.data.misc.DataTest;
 import net.staticstudios.data.misc.TestUtils;
 import net.staticstudios.data.mock.user.MockUser;
-import net.staticstudios.data.mock.user.MockUserFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -28,7 +27,7 @@ public class PersistentManyToManyCollectionTest extends DataTest {
         dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
         UUID id = UUID.randomUUID();
-        mockUser = MockUserFactory.builder(dataManager)
+        mockUser = MockUser.builder(dataManager)
                 .id(id)
                 .name("test user")
                 .insert(InsertMode.SYNC);
@@ -37,7 +36,7 @@ public class PersistentManyToManyCollectionTest extends DataTest {
     private List<MockUser> createFriends(int count) {
         List<MockUser> friends = new ArrayList<>();
         for (int i = 0; i < count; i++) {
-            MockUser friend = MockUserFactory.builder(dataManager)
+            MockUser friend = MockUser.builder(dataManager)
                     .id(UUID.randomUUID())
                     .name("friend " + i)
                     .insert(InsertMode.ASYNC);
@@ -293,7 +292,7 @@ public class PersistentManyToManyCollectionTest extends DataTest {
 
     @Test
     public void testEqualsAndHashCode() {
-        MockUser anotherUser = MockUserFactory.builder(dataManager)
+        MockUser anotherUser = MockUser.builder(dataManager)
                 .id(UUID.randomUUID())
                 .name("another user")
                 .insert(InsertMode.SYNC);

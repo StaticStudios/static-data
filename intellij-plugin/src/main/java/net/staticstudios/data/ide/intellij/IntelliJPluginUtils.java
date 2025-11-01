@@ -6,6 +6,18 @@ import net.staticstudios.data.utils.Constants;
 import java.util.Objects;
 
 public class IntelliJPluginUtils {
+    public static boolean genericTypeIs(PsiType type, String classFqn) {
+        if (!(type instanceof PsiClassType psiClassType)) {
+            return false;
+        }
+        PsiType[] params = psiClassType.getParameters();
+        if (params.length == 0) {
+            return false;
+        }
+
+        return is(params[0], classFqn);
+    }
+
     public static boolean is(PsiType type, String classFqn) {
         if (!(type instanceof PsiClassType psiClassType)) {
             return false;

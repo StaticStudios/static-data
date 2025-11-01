@@ -11,9 +11,15 @@ import java.util.ArrayList;
 import java.util.Collection;
 
 public class BuilderProcessor extends AbstractBuilderProcessor {
+    private final Collection<ParsedPersistentValue> persistentValues;
+    private final Collection<ParsedReference> references;
 
-    public BuilderProcessor(JCTree.JCCompilationUnit compilationUnit, TreeMaker treeMaker, Names names, JCTree.JCClassDecl dataClassDecl, ParsedDataAnnotation dataAnnotation) {
+    public BuilderProcessor(JCTree.JCCompilationUnit compilationUnit, TreeMaker treeMaker, Names names, JCTree.JCClassDecl dataClassDecl, ParsedDataAnnotation dataAnnotation,
+                            Collection<ParsedPersistentValue> persistentValues, Collection<ParsedReference> references
+    ) {
         super(compilationUnit, treeMaker, names, dataClassDecl, dataAnnotation, "Builder", "builder");
+        this.persistentValues = persistentValues;
+        this.references = references;
     }
 
     public static boolean hasProcessed(JCTree.JCClassDecl classDecl) {
@@ -34,12 +40,10 @@ public class BuilderProcessor extends AbstractBuilderProcessor {
 
     @Override
     protected void process() {
-        Collection<ParsedPersistentValue> persistentValues = ParsedPersistentValue.extractPersistentValues(dataClassDecl, dataAnnotation, treeMaker, names);
         for (ParsedPersistentValue pv : persistentValues) {
             processValue(pv);
         }
 
-        Collection<ParsedReference> references = ParsedReference.extractReferences(dataClassDecl, dataAnnotation, treeMaker, names);
         for (ParsedReference ref : references) {
             processReference(ref);
         }
@@ -50,45 +54,9 @@ public class BuilderProcessor extends AbstractBuilderProcessor {
 
 
     private void processValue(ParsedPersistentValue pv) {
-        String schemaFieldName = pv.getFieldName() + "$schema";
-        String tableFieldName = pv.getFieldName() + "$table";
-        String columnFieldName = pv.getFieldName() + "$column";
-
-        JCTree.JCExpression stringType = treeMaker.Ident(names.fromString("String"));
-        JCTree.JCExpression schemaInit = treeMaker.Apply(
-                List.nil(),
-                treeMaker.Select(
-                        treeMaker.Ident(names.fromString("ValueUtils")),
-                        names.fromString("parseValue")
-                ),
-                List.of(
-                        treeMaker.Literal(pv.getSchema())
-                )
-        );
-        JCTree.JCExpression tableInit = treeMaker.Apply(
-                List.nil(),
-                treeMaker.Select(
-                        treeMaker.Ident(names.fromString("ValueUtils")),
-                        names.fromString("parseValue")
-                ),
-                List.of(
-                        treeMaker.Literal(pv.getTable())
-                )
-        );
-        JCTree.JCExpression columnInit = treeMaker.Apply(
-                List.nil(),
-                treeMaker.Select(
-                        treeMaker.Ident(names.fromString("ValueUtils")),
-                        names.fromString("parseValue")
-                ),
-                List.of(
-                        treeMaker.Literal(pv.getColumn())
-                )
-        );
-
-        JavaCPluginUtils.generatePrivateStaticField(treeMaker, names, builderClassDecl, schemaFieldName, stringType, schemaInit);
-        JavaCPluginUtils.generatePrivateStaticField(treeMaker, names, builderClassDecl, tableFieldName, stringType, tableInit);
-        JavaCPluginUtils.generatePrivateStaticField(treeMaker, names, builderClassDecl, columnFieldName, stringType, columnInit);
+        storeSchema(pv.getFieldName(), pv.getSchema());
+        storeTable(pv.getFieldName(), pv.getTable());
+        storeColumn(pv.getFieldName(), pv.getColumn());
 
         JCTree.JCExpression nullInit = treeMaker.Literal(TypeTag.BOT, null);
 
