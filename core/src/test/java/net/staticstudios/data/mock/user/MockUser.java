@@ -10,7 +10,6 @@ import java.util.UUID;
 public class MockUser extends UniqueData {
     //todo: test inheritance properly
     //todo: cached values
-    //todo: note - maybe PC's add and remove handlers can be implemented using update handlers
     @IdColumn(name = "id")
     public PersistentValue<UUID> id = PersistentValue.of(this, UUID.class);
 
@@ -46,16 +45,17 @@ public class MockUser extends UniqueData {
     @Column(name = "views", nullable = true)
     public PersistentValue<Integer> views;
 
-    //todo: on delete we need to have an option to set null. No action will handle this actually.
     @Delete(DeleteStrategy.NO_ACTION)
     @OneToMany(link = "id=user_id")
     public PersistentCollection<MockUserSession> sessions;
 
-    @Delete(DeleteStrategy.CASCADE) //todo: impl delete strategy for collections
+    @Delete(DeleteStrategy.CASCADE) //todo: impl delete strategy for many to many collections
     @ManyToMany(link = "id=id", joinTable = "user_friends")
     public PersistentCollection<MockUser> friends;
 
-    //todo: support OneToMany Collections where the data type is not a uniquedata. in this case additional info about what referringTable and referringSchema to use will be required, since we will have to create this referringTable.
+    @Delete(DeleteStrategy.CASCADE)
+    @OneToMany(link = "id=user_id", table = "favorite_numbers", column = "number")
+    public PersistentCollection<Integer> favoriteNumbers;
 
     public int getNameUpdates() {
         return nameUpdates.get();

@@ -143,7 +143,7 @@ public class StaticDataProcessor extends AbstractProcessor {
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
         Set<? extends Element> annotated = roundEnv.getElementsAnnotatedWith(Data.class);
-        annotated.forEach(e -> {
+        annotated.forEach(e -> { //todo: if abstract, skip
             TypeElement typeElement = (TypeElement) e;
             Tree tree = trees.getTree(e);
             TypeUtils typeUtils = new TypeUtils(processingEnvironment);

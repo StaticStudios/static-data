@@ -112,20 +112,30 @@ public class SQLBuilder {
                 pgSb = new StringBuilder();
                 h2Sb.append("CREATE TABLE IF NOT EXISTS \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" (\n");
                 pgSb.append("CREATE TABLE IF NOT EXISTS \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" (\n");
+                boolean skipPKDef = false;
                 for (ColumnMetadata idColumn : table.getIdColumns()) {
-                    h2Sb.append(INDENT).append("\"").append(idColumn.name()).append("\" ").append(SQLUtils.getH2SqlType(idColumn.type())).append(",\n");
-                    pgSb.append(INDENT).append("\"").append(idColumn.name()).append("\" ").append(SQLUtils.getPgSqlType(idColumn.type())).append(" NOT NULL,\n");
+                    if (idColumn instanceof AutoIncrementingIntegerColumnMetadata) {
+                        Preconditions.checkArgument(table.getIdColumns().size() == 1, "Auto-incrementing ID column can only be used as the sole ID column in referringTable " + table.getName());
+                        h2Sb.append(INDENT).append("\"").append(idColumn.name()).append("\" ").append("BIGINT AUTO_INCREMENT PRIMARY KEY\n");
+                        pgSb.append(INDENT).append("\"").append(idColumn.name()).append("\" ").append("BIGSERIAL PRIMARY KEY\n");
+                        skipPKDef = true;
+                    } else {
+                        h2Sb.append(INDENT).append("\"").append(idColumn.name()).append("\" ").append(SQLUtils.getH2SqlType(idColumn.type())).append(",\n");
+                        pgSb.append(INDENT).append("\"").append(idColumn.name()).append("\" ").append(SQLUtils.getPgSqlType(idColumn.type())).append(" NOT NULL,\n");
+                    }
                 }
-                h2Sb.append(INDENT).append("PRIMARY KEY (");
-                pgSb.append(INDENT).append("PRIMARY KEY (");
-                for (ColumnMetadata idColumn : table.getIdColumns()) {
-                    h2Sb.append("\"").append(idColumn.name()).append("\", ");
-                    pgSb.append("\"").append(idColumn.name()).append("\", ");
+                if (!skipPKDef) {
+                    h2Sb.append(INDENT).append("PRIMARY KEY (");
+                    pgSb.append(INDENT).append("PRIMARY KEY (");
+                    for (ColumnMetadata idColumn : table.getIdColumns()) {
+                        h2Sb.append("\"").append(idColumn.name()).append("\", ");
+                        pgSb.append("\"").append(idColumn.name()).append("\", ");
+                    }
+                    h2Sb.setLength(h2Sb.length() - 2);
+                    pgSb.setLength(pgSb.length() - 2);
+                    h2Sb.append(")\n");
+                    pgSb.append(")\n");
                 }
-                h2Sb.setLength(h2Sb.length() - 2);
-                pgSb.setLength(pgSb.length() - 2);
-                h2Sb.append(")\n");
-                pgSb.append(")\n");
                 h2Sb.append(");");
                 pgSb.append(");");
                 statements.add(DDLStatement.of(h2Sb.toString(), pgSb.toString()));
@@ -472,7 +482,7 @@ public class SQLBuilder {
             parseLinks(foreignKey, oneToOne.link());
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Error parsing @OneToOne link on field " + field.getName() + " in class " + clazz.getName() + ": " + e.getMessage(), e);
-        } //todo: all columnsInReferringTable in the link must be unique in our referringTable, and must be id columnsInReferringTable in the referenced referringTable. this will be enforced by H2 but check here for better errors
+        }
         table.addForeignKey(foreignKey);
 
         Delete delete = field.getAnnotation(Delete.class);
@@ -507,7 +517,56 @@ public class SQLBuilder {
     }
 
     private void parseOneToManyValuePersistentCollection(OneToMany oneToMany, Class<?> genericType, Class<? extends UniqueData> clazz, Map<String, SQLSchema> schemas, Data dataAnnotation, UniqueDataMetadata metadata, Field field) {
-        //todo: this
+        String dataSchema = ValueUtils.parseValue(dataAnnotation.schema());
+        String dataTable = ValueUtils.parseValue(dataAnnotation.table());
+
+        String referencedSchemaName = oneToMany.schema();
+        if (referencedSchemaName.isEmpty()) {
+            referencedSchemaName = dataSchema;
+        }
+        referencedSchemaName = ValueUtils.parseValue(referencedSchemaName);
+        String referencedTableName = ValueUtils.parseValue(oneToMany.table());
+        String referencedColumnName = ValueUtils.parseValue(oneToMany.column());
+
+        Preconditions.checkArgument(!referencedTableName.isEmpty(), "OneToMany PersistentCollection field " + field.getName() + " in class " + clazz.getName() + " must specify a table name in the @OneToMany annotation when the generic type is not a UniqueData type.");
+        Preconditions.checkArgument(!referencedColumnName.isEmpty(), "OneToMany PersistentCollection field " + field.getName() + " in class " + clazz.getName() + " must specify a column name in the @OneToMany annotation when the generic type is not a UniqueData type.");
+
+        SQLSchema schema = Objects.requireNonNull(schemas.get(dataSchema));
+        SQLTable table = Objects.requireNonNull(schema.getTable(dataTable));
+
+        SQLSchema referencedSchema = schemas.computeIfAbsent(referencedSchemaName, SQLSchema::new);
+        SQLTable referencedTable = referencedSchema.getTable(referencedTableName);
+        if (referencedTable == null) {
+            List<ColumnMetadata> idColumns = List.of(new AutoIncrementingIntegerColumnMetadata(referencedSchemaName, referencedTableName, referencedTableName + "_id"));
+            referencedTable = new SQLTable(referencedSchema, referencedTableName, idColumns);
+            referencedSchema.addTable(referencedTable);
+            referencedTable.addColumn(new SQLColumn(referencedTable, genericType, referencedColumnName, oneToMany.nullable(), oneToMany.indexed(), oneToMany.unique(), null));
+            for (Link link : parseLinks(oneToMany.link())) {
+                Class<?> columnType = null;
+                SQLColumn columnInReferringTable = table.getColumn(link.columnInReferringTable());
+                if (columnInReferringTable != null) {
+                    columnType = columnInReferringTable.getType();
+                }
+                Preconditions.checkNotNull(columnType, "Link name %s in OneToMany annotation on field %s in class %s is not an ID name", link.columnInReferringTable(), field.getName(), clazz.getName());
+                SQLColumn linkingColumn = new SQLColumn(referencedTable, columnType, link.columnInReferencedTable(), false, false, false, null);
+                referencedTable.addColumn(linkingColumn);
+            }
+
+        } //if non-null don't attempt to create/structure it, assume the user knows what they're doing.
+
+        Delete delete = field.getAnnotation(Delete.class);
+        DeleteStrategy deleteStrategy = delete != null ? delete.value() : DeleteStrategy.NO_ACTION;
+        OnDelete onDelete = deleteStrategy == DeleteStrategy.CASCADE ? OnDelete.CASCADE : OnDelete.SET_NULL;
+
+        // unlike a Reference, this foreign key goes on the referenced referringTable, not our referringTable.
+        // Since the foreign key is on the other referringTable, let the foreign key handle the deletion strategy instead of a trigger.
+        ForeignKey foreignKey = new ForeignKey(referencedSchemaName, referencedTableName, schema.getName(), table.getName(), onDelete);
+        try {
+            parseLinksReversed(foreignKey, oneToMany.link());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Error parsing @OneToMany link on field " + field.getName() + " in class " + clazz.getName() + ": " + e.getMessage(), e);
+        }
+        referencedTable.addForeignKey(foreignKey);
     }
 
     private void parseOneToManyPersistentCollection(OneToMany oneToMany, Class<? extends UniqueData> genericType, Class<? extends UniqueData> clazz, Map<String, SQLSchema> schemas, Data dataAnnotation, UniqueDataMetadata metadata, Field field) {
@@ -517,13 +576,8 @@ public class SQLBuilder {
         String dataSchema = ValueUtils.parseValue(dataAnnotation.schema());
         String dataTable = ValueUtils.parseValue(dataAnnotation.table());
 
-        SQLSchema schema = schemas.computeIfAbsent(dataSchema, SQLSchema::new);
-        SQLTable table = schema.getTable(dataTable);
-
-        if (table == null) {
-            table = new SQLTable(schema, dataTable, metadata.idColumns());
-            schema.addTable(table);
-        }
+        SQLSchema schema = Objects.requireNonNull(schemas.get(dataSchema));
+        SQLTable table = Objects.requireNonNull(schema.getTable(dataTable));
 
         SQLSchema referencedSchema = Objects.requireNonNull(schemas.get(referencedMetadata.schema()));
         SQLTable referencedTable = Objects.requireNonNull(referencedSchema.getTable(referencedMetadata.table()));
@@ -539,7 +593,7 @@ public class SQLBuilder {
             parseLinksReversed(foreignKey, oneToMany.link());
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Error parsing @OneToMany link on field " + field.getName() + " in class " + clazz.getName() + ": " + e.getMessage(), e);
-        } //todo: all columnsInReferringTable in the link must be unique in our referringTable, and must be id columnsInReferringTable in the referenced referringTable. this will be enforced by H2 but check here for better errors
+        }
         referencedTable.addForeignKey(foreignKey);
     }
 
@@ -550,13 +604,8 @@ public class SQLBuilder {
         String dataSchema = ValueUtils.parseValue(dataAnnotation.schema());
         String dataTable = ValueUtils.parseValue(dataAnnotation.table());
 
-        SQLSchema schema = schemas.computeIfAbsent(dataSchema, SQLSchema::new);
-        SQLTable table = schema.getTable(dataTable);
-
-        if (table == null) {
-            table = new SQLTable(schema, dataTable, metadata.idColumns());
-            schema.addTable(table);
-        }
+        SQLSchema schema = Objects.requireNonNull(schemas.get(dataSchema));
+        SQLTable table = Objects.requireNonNull(schema.getTable(dataTable));
 
         SQLSchema referencedSchema = Objects.requireNonNull(schemas.get(referencedMetadata.schema()));
         SQLTable referencedTable = Objects.requireNonNull(referencedSchema.getTable(referencedMetadata.table()));
@@ -582,18 +631,26 @@ public class SQLBuilder {
         if (joinTable == null) {
             List<ColumnMetadata> joinTableIdColumns = new ArrayList<>();
             for (Link dataLink : joinTableToDataTableLinks) {
-                ColumnMetadata columnMetadata = metadata.idColumns().stream()
-                        .filter(c -> c.name().equals(dataLink.columnInReferencedTable()))
-                        .findFirst()
-                        .orElseThrow(() -> new IllegalArgumentException("Column not found in data referringTable! " + dataLink.columnInReferringTable()));
-                joinTableIdColumns.add(new ColumnMetadata(joinTableSchemaName, joinTableName, dataTableColumnPrefix + "_" + columnMetadata.name(), columnMetadata.type(), false, false, ""));
+                SQLColumn foundColumn = null;
+                for (SQLColumn column : table.getColumns()) {
+                    if (column.getName().equals(dataLink.columnInReferencedTable())) {
+                        foundColumn = column;
+                        break;
+                    }
+                }
+                Preconditions.checkNotNull(foundColumn, "Column not found in data referringTable! " + dataLink.columnInReferringTable());
+                joinTableIdColumns.add(new ColumnMetadata(joinTableSchemaName, joinTableName, dataTableColumnPrefix + "_" + foundColumn.getName(), foundColumn.getType(), false, false, ""));
             }
             for (Link referencedLink : joinTableToReferencedTableLinks) {
-                ColumnMetadata columnMetadata = referencedMetadata.idColumns().stream()
-                        .filter(c -> c.name().equals(referencedLink.columnInReferencedTable()))
-                        .findFirst()
-                        .orElseThrow(() -> new IllegalArgumentException("Column not found in referenced referringTable! " + referencedLink.columnInReferringTable()));
-                joinTableIdColumns.add(new ColumnMetadata(joinTableSchemaName, joinTableName, referencedTableColumnPrefix + "_" + columnMetadata.name(), columnMetadata.type(), false, false, ""));
+                SQLColumn foundColumn = null;
+                for (SQLColumn column : referencedTable.getColumns()) {
+                    if (column.getName().equals(referencedLink.columnInReferencedTable())) {
+                        foundColumn = column;
+                        break;
+                    }
+                }
+                Preconditions.checkNotNull(foundColumn, "Column not found in referenced referringTable! " + referencedLink.columnInReferringTable());
+                joinTableIdColumns.add(new ColumnMetadata(joinTableSchemaName, joinTableName, referencedTableColumnPrefix + "_" + foundColumn.getName(), foundColumn.getType(), false, false, ""));
             }
             joinTable = new SQLTable(joinSchema, joinTableName, joinTableIdColumns);
             joinSchema.addTable(joinTable);

@@ -2,10 +2,7 @@ package net.staticstudios.data;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.MapMaker;
-import net.staticstudios.data.impl.data.PersistentManyToManyCollectionImpl;
-import net.staticstudios.data.impl.data.PersistentOneToManyCollectionImpl;
-import net.staticstudios.data.impl.data.PersistentValueImpl;
-import net.staticstudios.data.impl.data.ReferenceImpl;
+import net.staticstudios.data.impl.data.*;
 import net.staticstudios.data.impl.h2.H2DataAccessor;
 import net.staticstudios.data.impl.pg.PostgresListener;
 import net.staticstudios.data.insert.InsertContext;
@@ -205,8 +202,9 @@ public class DataManager {
         String schema = ValueUtils.parseValue(dataAnnotation.schema());
         String table = ValueUtils.parseValue(dataAnnotation.table());
         Map<Field, PersistentCollectionMetadata> persistentCollectionMetadataMap = new HashMap<>();
-        persistentCollectionMetadataMap.putAll(PersistentOneToManyCollectionImpl.extractMetadata(clazz)); //todo: add other collection types
+        persistentCollectionMetadataMap.putAll(PersistentOneToManyCollectionImpl.extractMetadata(clazz));
         persistentCollectionMetadataMap.putAll(PersistentManyToManyCollectionImpl.extractMetadata(clazz));
+        persistentCollectionMetadataMap.putAll(PersistentOneToManyValueCollectionImpl.extractMetadata(clazz, schema));
         UniqueDataMetadata metadata = new UniqueDataMetadata(clazz, schema, table, idColumns, PersistentValueImpl.extractMetadata(schema, table, clazz), ReferenceImpl.extractMetadata(clazz), persistentCollectionMetadataMap);
         uniqueDataMetadataMap.put(clazz, metadata);
 
@@ -409,7 +407,7 @@ public class DataManager {
         ReferenceImpl.delegate(instance);
         PersistentOneToManyCollectionImpl.delegate(instance);
         PersistentManyToManyCollectionImpl.delegate(instance);
-        //todo: other collection types
+        PersistentOneToManyValueCollectionImpl.delegate(instance);
 
         uniqueDataInstanceCache.computeIfAbsent(clazz, k -> new MapMaker().weakValues().makeMap())
                 .put(idColumns, instance);

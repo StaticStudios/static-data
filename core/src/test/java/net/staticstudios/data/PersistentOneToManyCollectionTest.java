@@ -150,7 +150,6 @@ public class PersistentOneToManyCollectionTest extends DataTest {
         }
     }
 
-    @SuppressWarnings("SuspiciousMethodCalls")
     @Test
     public void testRemoveAll() {
         List<MockUserSession> sessions = createSessions(SESSION_COUNT);

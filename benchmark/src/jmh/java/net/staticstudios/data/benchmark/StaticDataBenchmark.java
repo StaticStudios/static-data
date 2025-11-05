@@ -34,7 +34,7 @@ public class StaticDataBenchmark {
             SkyblockPlayer player = SkyblockPlayer.builder()
                     .id(UUID.randomUUID())
                     .name("Player" + i)
-                    .insert(InsertMode.ASYNC);
+                    .insert(InsertMode.ASYNC); //todo: this seems broken, the bench takes oddly long.
         }
     }
 

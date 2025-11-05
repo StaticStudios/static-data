@@ -9,48 +9,68 @@ import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
 
-public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements PersistentCollection<T> {
+public class PersistentOneToManyValueCollectionImpl<T> implements PersistentCollection<T> {
     private final UniqueData holder;
     private final Class<T> type;
+    private final String dataSchema;
+    private final String dataTable;
+    private final String dataColumn;
     private final List<Link> link;
 
-    public PersistentOneToManyCollectionImpl(UniqueData holder, Class<T> type, List<Link> link) {
+    public PersistentOneToManyValueCollectionImpl(UniqueData holder, Class<T> type, String dataSchema, String dataTable, String dataColumn, List<Link> link) {
         this.holder = holder;
         this.type = type;
+        this.dataSchema = dataSchema;
+        this.dataTable = dataTable;
+        this.dataColumn = dataColumn;
         this.link = link;
     }
 
-    public static <T extends UniqueData> void createAndDelegate(PersistentCollection.ProxyPersistentCollection<T> proxy, List<Link> link) {
-        PersistentOneToManyCollectionImpl<T> delegate = new PersistentOneToManyCollectionImpl<>(
+    public static <T> void createAndDelegate(ProxyPersistentCollection<T> proxy, String dataSchema, String dataTable, String dataColumn, List<Link> link) {
+        PersistentOneToManyValueCollectionImpl<T> delegate = new PersistentOneToManyValueCollectionImpl<>(
                 proxy.getHolder(),
                 proxy.getReferenceType(),
+                dataSchema,
+                dataTable,
+                dataColumn,
                 link
         );
         proxy.setDelegate(delegate);
     }
 
-    public static <T extends UniqueData> PersistentOneToManyCollectionImpl<T> create(UniqueData holder, Class<T> type, List<Link> link) {
-        return new PersistentOneToManyCollectionImpl<>(holder, type, link);
+    public static <T> PersistentOneToManyValueCollectionImpl<T> create(UniqueData holder, Class<T> type, String dataSchema, String dataTable, String dataColumn, List<Link> link) {
+        return new PersistentOneToManyValueCollectionImpl<>(holder, type, dataSchema, dataTable, dataColumn, link);
     }
 
     public static <T extends UniqueData> void delegate(T instance) {
         UniqueDataMetadata metadata = instance.getDataManager().getMetadata(instance.getClass());
         for (FieldInstancePair<@Nullable PersistentCollection> pair : ReflectionUtils.getFieldInstancePairs(instance, PersistentCollection.class)) {
             PersistentCollectionMetadata collectionMetadata = metadata.persistentCollectionMetadata().get(pair.field());
-            if (!(collectionMetadata instanceof PersistentOneToManyCollectionMetadata oneToManyMetadata)) continue;
+            if (!(collectionMetadata instanceof PersistentOneToManyValueCollectionMetadata oneToManyValueMetadata))
+                continue;
 
             if (pair.instance() instanceof PersistentCollection.ProxyPersistentCollection<?> proxyCollection) {
-                createAndDelegate((PersistentCollection.ProxyPersistentCollection<? extends UniqueData>) proxyCollection, oneToManyMetadata.getLinks());
+                createAndDelegate((ProxyPersistentCollection<?>) proxyCollection,
+                        oneToManyValueMetadata.getDataSchema(),
+                        oneToManyValueMetadata.getDataTable(),
+                        oneToManyValueMetadata.getDataColumn(),
+                        oneToManyValueMetadata.getLinks()
+                );
             } else {
                 pair.field().setAccessible(true);
                 try {
-                    pair.field().set(instance, create(instance, oneToManyMetadata.getDataType(), oneToManyMetadata.getLinks()));
+                    pair.field().set(instance, create(instance,
+                            oneToManyValueMetadata.getDataType(),
+                            oneToManyValueMetadata.getDataSchema(),
+                            oneToManyValueMetadata.getDataTable(),
+                            oneToManyValueMetadata.getDataColumn(),
+                            oneToManyValueMetadata.getLinks()
+                    ));
                 } catch (IllegalAccessException e) {
                     throw new RuntimeException(e);
                 }
@@ -58,15 +78,23 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         }
     }
 
-    public static <T extends UniqueData> Map<Field, PersistentOneToManyCollectionMetadata> extractMetadata(Class<T> clazz) {
-        Map<Field, PersistentOneToManyCollectionMetadata> metadataMap = new HashMap<>();
+    public static <T extends UniqueData> Map<Field, PersistentOneToManyValueCollectionMetadata> extractMetadata(Class<T> clazz, String holderSchema) {
+        Map<Field, PersistentOneToManyValueCollectionMetadata> metadataMap = new HashMap<>();
         for (Field field : ReflectionUtils.getFields(clazz, PersistentCollection.class)) {
             OneToMany oneToManyAnnotation = field.getAnnotation(OneToMany.class);
             if (oneToManyAnnotation == null) continue;
             Class<?> genericType = ReflectionUtils.getGenericType(field);
-            if (genericType == null || !UniqueData.class.isAssignableFrom(genericType)) continue;
-            Class<? extends UniqueData> referencedClass = genericType.asSubclass(UniqueData.class);
-            metadataMap.put(field, new PersistentOneToManyCollectionMetadata(referencedClass, SQLBuilder.parseLinks(oneToManyAnnotation.link())));
+            if (genericType == null || UniqueData.class.isAssignableFrom(genericType)) continue;
+            String schema = oneToManyAnnotation.schema();
+            if (schema.isEmpty()) {
+                schema = holderSchema;
+            }
+            schema = ValueUtils.parseValue(schema);
+            String table = ValueUtils.parseValue(oneToManyAnnotation.table());
+            String column = ValueUtils.parseValue(oneToManyAnnotation.column());
+            Preconditions.checkArgument(!schema.isEmpty(), "OneToMany PersistentCollection field %s in class %s must specify a schema name since the data type %s does not extend UniqueData", field.getName(), clazz.getName(), genericType.getName());
+            Preconditions.checkArgument(!table.isEmpty(), "OneToMany PersistentCollection field %s in class %s must specify a table name since the data type %s does not extend UniqueData", field.getName(), clazz.getName(), genericType.getName());
+            metadataMap.put(field, new PersistentOneToManyValueCollectionMetadata(genericType, schema, table, column, SQLBuilder.parseLinks(oneToManyAnnotation.link())));
         }
 
         return metadataMap;
@@ -80,7 +108,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
 
     @Override
     public int size() {
-        return getIds().size();
+        return getValues().size();
     }
 
     @Override
@@ -90,52 +118,22 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
 
     @Override
     public boolean contains(Object o) {
-        if (!type.isInstance(o)) {
-            return false;
-        }
-        T data = type.cast(o);
-        Set<ColumnValuePair[]> ids = getIds();
-        ColumnValuePair[] thatIdColumns = data.getIdColumns().getPairs();
-        for (ColumnValuePair[] idColumns : ids) {
-            if (Arrays.equals(idColumns, thatIdColumns)) {
-                return true;
-            }
-        }
-
-        return false;
+        return containsAll(Collections.singleton(o));
     }
 
     @Override
     public @NotNull Iterator<T> iterator() {
-        return new IteratorImpl(getIds());
+        return new IteratorImpl(getValues());
     }
 
     @Override
     public @NotNull Object @NotNull [] toArray() {
-        Set<ColumnValuePair[]> ids = getIds();
-        Object[] array = new Object[ids.size()];
-        int i = 0;
-        for (ColumnValuePair[] idColumns : ids) {
-            T instance = holder.getDataManager().getInstance(type, idColumns);
-            array[i++] = instance;
-        }
-        return array;
+        return getValues().toArray();
     }
 
-    @SuppressWarnings("unchecked")
     @Override
     public @NotNull <T1> T1 @NotNull [] toArray(@NotNull T1 @NotNull [] a) {
-        Set<ColumnValuePair[]> ids = getIds();
-        if (a.length < ids.size()) {
-            a = (T1[]) Array.newInstance(a.getClass().getComponentType(), ids.size());
-        }
-        int i = 0;
-        for (ColumnValuePair[] idColumns : ids) {
-            T instance = holder.getDataManager().getInstance(type, idColumns);
-            T1 element = (T1) instance;
-            a[i++] = element;
-        }
-        return a;
+        return getValues().toArray(a);
     }
 
     @Override
@@ -155,22 +153,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
                 return false;
             }
         }
-        Set<ColumnValuePair[]> ids = getIds();
-        for (Object o : c) {
-            T data = type.cast(o);
-            ColumnValuePair[] thatIdColumns = data.getIdColumns().getPairs();
-            boolean found = false;
-            for (ColumnValuePair[] idColumns : ids) {
-                if (Arrays.equals(idColumns, thatIdColumns)) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                return false;
-            }
-        }
-        return true;
+        return getValues().containsAll(c);
     }
 
     @Override
@@ -182,7 +165,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         DataAccessor dataAccessor = holder.getDataManager().getDataAccessor();
 
         SQLTransaction.Statement selectDataIdsStatement = buildSelectDataIdsStatement();
-        SQLTransaction.Statement updateStatement = buildUpdateStatement();
+        SQLTransaction.Statement insertStatement = buildInsertStatement();
 
 
         List<Object> holderLinkingValues = new ArrayList<>(link.size());
@@ -203,11 +186,9 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         });
 
         for (T entry : c) {
-            transaction.update(updateStatement, () -> {
+            transaction.update(insertStatement, () -> {
                 List<Object> values = new ArrayList<>(holderLinkingValues);
-                for (ColumnValuePair idColumn : entry.getIdColumns()) {
-                    values.add(idColumn.value());
-                }
+                values.add(entry);
                 return values;
             });
         }
@@ -222,49 +203,47 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
 
     @Override
     public boolean removeAll(@NotNull Collection<?> c) {
-        List<ColumnValuePair[]> ids = new ArrayList<>();
+        List<T> toRemove = new ArrayList<>();
         for (Object o : c) {
             if (!type.isInstance(o)) {
                 continue;
             }
             T data = type.cast(o);
-            ColumnValuePair[] thatIdColumns = data.getIdColumns().getPairs();
-            ids.add(thatIdColumns);
+            toRemove.add(data);
         }
-        removeIds(ids);
+        removeValues(toRemove);
 
-        return !ids.isEmpty();
+        return !toRemove.isEmpty();
     }
 
     @Override
     public boolean retainAll(@NotNull Collection<?> c) {
-        Set<ColumnValuePair[]> currentIds = getIds();
-        Set<ColumnValuePair[]> idsToRetain = new HashSet<>();
+        Set<T> currentValues = getValues();
+        Set<T> valuesToRetain = new HashSet<>();
         for (Object o : c) {
             if (!type.isInstance(o)) {
                 continue;
             }
             T data = type.cast(o);
-            ColumnValuePair[] thatIdColumns = data.getIdColumns().getPairs();
-            idsToRetain.add(thatIdColumns);
+            valuesToRetain.add(data);
         }
 
-        List<ColumnValuePair[]> idsToRemove = new ArrayList<>();
-        for (ColumnValuePair[] idColumns : currentIds) {
+        List<T> valuesToRemove = new ArrayList<>();
+        for (T value : currentValues) {
             boolean found = false;
-            for (ColumnValuePair[] retainIdColumns : idsToRetain) {
-                if (Arrays.equals(idColumns, retainIdColumns)) {
+            for (T retainValue : valuesToRetain) {
+                if (Objects.equals(value, retainValue)) {
                     found = true;
                     break;
                 }
             }
             if (!found) {
-                idsToRemove.add(idColumns);
+                valuesToRemove.add(value);
             }
         }
 
-        if (!idsToRemove.isEmpty()) {
-            removeIds(idsToRemove);
+        if (!valuesToRemove.isEmpty()) {
+            removeValues(valuesToRemove);
             return true;
         }
 
@@ -305,16 +284,16 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         }
     }
 
-    private void removeIds(List<ColumnValuePair[]> ids) {
+    private void removeValues(Collection<T> values) {
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot set entries on a deleted UniqueData instance");
-        if (ids.isEmpty()) {
+        if (values.isEmpty()) {
             return;
         }
 
         DataAccessor dataAccessor = holder.getDataManager().getDataAccessor();
 
         SQLTransaction.Statement selectDataIdsStatement = buildSelectDataIdsStatement();
-        SQLTransaction.Statement updateStatement = buildUpdateStatement();
+        SQLTransaction.Statement removeStatement = buildRemoveStatement();
 
 
         List<Object> holderLinkingValues = new ArrayList<>(link.size());
@@ -334,16 +313,11 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
             }
         });
 
-        for (ColumnValuePair[] idColumns : ids) {
-            transaction.update(updateStatement, () -> {
-                List<Object> values = new ArrayList<>();
-                for (Object holderLinkingValue : holderLinkingValues) { //set them to null
-                    values.add(null);
-                }
-                for (ColumnValuePair idColumn : idColumns) {
-                    values.add(idColumn.value());
-                }
-                return values;
+        for (T value : values) {
+            transaction.update(removeStatement, () -> {
+                List<Object> statementValues = new ArrayList<>(holderLinkingValues);
+                statementValues.add(value);
+                return statementValues;
             });
         }
         try {
@@ -372,36 +346,55 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         return SQLTransaction.Statement.of(sql, sql);
     }
 
-    private SQLTransaction.Statement buildUpdateStatement() {
-        UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
-
+    private SQLTransaction.Statement buildInsertStatement() {
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append("UPDATE \"").append(typeMetadata.schema()).append("\".\"").append(typeMetadata.table()).append("\" SET ");
+        sqlBuilder.append("INSERT INTO \"").append(dataSchema).append("\".\"").append(dataTable).append("\" (");
         for (Link entry : link) {
             String theirColumn = entry.columnInReferencedTable();
-            sqlBuilder.append("\"").append(theirColumn).append("\" = ?, ");
+            sqlBuilder.append("\"").append(theirColumn).append("\", ");
         }
+        sqlBuilder.append("\"").append(dataColumn).append("\"");
+        sqlBuilder.append(") VALUES (");
+        sqlBuilder.append("?, ".repeat(link.size() + 1));
         sqlBuilder.setLength(sqlBuilder.length() - 2);
-        sqlBuilder.append(" WHERE ");
-        for (ColumnMetadata theirIdColumn : typeMetadata.idColumns()) {
-            sqlBuilder.append("\"").append(theirIdColumn.name()).append("\" = ? AND ");
-        }
-        sqlBuilder.setLength(sqlBuilder.length() - 5);
+        sqlBuilder.append(")");
         @Language("SQL") String sql = sqlBuilder.toString();
         return SQLTransaction.Statement.of(sql, sql);
     }
 
-    private SQLTransaction.Statement buildClearStatement() {
-        UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
-
+    private SQLTransaction.Statement buildRemoveStatement() {
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append("UPDATE \"").append(typeMetadata.schema()).append("\".\"").append(typeMetadata.table()).append("\" SET ");
+        sqlBuilder.append("DELETE FROM \"").append(dataSchema).append("\".\"").append(dataTable).append("\" WHERE ");
         for (Link entry : link) {
             String theirColumn = entry.columnInReferencedTable();
-            sqlBuilder.append("\"").append(theirColumn).append("\" = NULL, ");
+            sqlBuilder.append("\"").append(theirColumn).append("\" = ? AND ");
         }
-        sqlBuilder.setLength(sqlBuilder.length() - 2);
-        sqlBuilder.append(" WHERE ");
+        sqlBuilder.append("\"").append(dataColumn).append("\" = ? LIMIT 1");
+        @Language("SQL") String h2 = sqlBuilder.toString();
+
+        sqlBuilder = new StringBuilder();
+        sqlBuilder.append("WITH to_delete AS (")
+                .append("SELECT ctid FROM \"").append(dataSchema).append("\".\"").append(dataTable).append("\" WHERE ");
+
+        for (Link entry : link) {
+            String theirColumn = entry.columnInReferencedTable();
+            sqlBuilder.append("\"").append(theirColumn).append("\" = ? AND ");
+        }
+
+        sqlBuilder.append("\"").append(dataColumn).append("\" = ? ")
+                .append("LIMIT 1")
+                .append(") DELETE FROM \"").append(dataSchema).append("\".\"").append(dataTable)
+                .append("\" WHERE ctid IN (SELECT ctid FROM to_delete)");
+
+        @Language("SQL")
+        String pg = sqlBuilder.toString();
+
+        return SQLTransaction.Statement.of(h2, pg);
+    }
+
+    private SQLTransaction.Statement buildClearStatement() {
+        StringBuilder sqlBuilder = new StringBuilder();
+        sqlBuilder.append("DELETE FROM \"").append(dataSchema).append("\".\"").append(dataTable).append("\" WHERE ");
         for (Link entry : link) {
             String theirColumn = entry.columnInReferencedTable();
             sqlBuilder.append("\"").append(theirColumn).append("\" = ? AND ");
@@ -411,28 +404,24 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         return SQLTransaction.Statement.of(sql, sql);
     }
 
-    private Set<ColumnValuePair[]> getIds() {
+    private Set<T> getValues() {
         // note: we need the join since we support linking on non-id columnsInReferringTable
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot get entries on a deleted UniqueData instance");
-        Set<ColumnValuePair[]> ids = new HashSet<>();
+        Set<T> values = new HashSet<>();
         UniqueDataMetadata holderMetadata = holder.getMetadata();
-        UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
         DataAccessor dataAccessor = holder.getDataManager().getDataAccessor();
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append("SELECT ");
-        for (ColumnMetadata columnMetadata : typeMetadata.idColumns()) {
-            sqlBuilder.append("\"").append(columnMetadata.name()).append("\", ");
-        }
+        sqlBuilder.append("SELECT ").append("\"").append(dataColumn).append("\", ");
         for (ColumnMetadata columnMetadata : holderMetadata.idColumns()) {
             sqlBuilder.append("_source.\"").append(columnMetadata.name()).append("\", ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 2);
-        sqlBuilder.append(" FROM \"").append(typeMetadata.schema()).append("\".\"").append(typeMetadata.table()).append("\" ");
+        sqlBuilder.append(" FROM \"").append(dataSchema).append("\".\"").append(dataTable).append("\" ");
         sqlBuilder.append("INNER JOIN \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\" AS _source ON ");
         for (Link entry : link) {
             String myColumn = entry.columnInReferringTable();
             String theirColumn = entry.columnInReferencedTable();
-            sqlBuilder.append("\"").append(typeMetadata.schema()).append("\".\"").append(typeMetadata.table()).append("\".\"").append(theirColumn).append("\" = _source.\"").append(myColumn).append("\" AND ");
+            sqlBuilder.append("\"").append(dataSchema).append("\".\"").append(dataTable).append("\".\"").append(theirColumn).append("\" = _source.\"").append(myColumn).append("\" AND ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 5);
         sqlBuilder.append(" WHERE ");
@@ -449,25 +438,20 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         @Language("SQL") String sql = sqlBuilder.toString();
         try (ResultSet rs = dataAccessor.executeQuery(sql, holder.getIdColumns().stream().map(ColumnValuePair::value).toList())) {
             while (rs.next()) {
-                int i = 0;
-                ColumnValuePair[] idColumns = new ColumnValuePair[typeMetadata.idColumns().size()];
-                for (ColumnMetadata columnMetadata : typeMetadata.idColumns()) {
-                    Object value = rs.getObject(columnMetadata.name());
-                    idColumns[i++] = new ColumnValuePair(columnMetadata.name(), value);
-                }
-                ids.add(idColumns);
+                Object value = rs.getObject(dataColumn);
+                values.add(type.cast(value));
             }
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
 
-        return ids;
+        return values;
     }
 
     @Override
     public boolean equals(Object obj) {
         if (this == obj) return true;
-        if (!(obj instanceof PersistentOneToManyCollectionImpl<?> that)) return false;
+        if (!(obj instanceof PersistentOneToManyValueCollectionImpl<?> that)) return false;
         //due to the nature of how one-to-many collections work, this will == that only if the holder is the same. no need to compare contents.
         return Objects.equals(type, that.type) && Objects.equals(holder, that.holder);
     }
@@ -494,16 +478,16 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
     }
 
     class IteratorImpl implements Iterator<T> {
-        private final List<ColumnValuePair[]> ids;
+        private final List<T> values;
         private int index = 0;
 
-        public IteratorImpl(Set<ColumnValuePair[]> ids) {
-            this.ids = new ArrayList<>(ids);
+        public IteratorImpl(Set<T> valuesSet) {
+            this.values = new ArrayList<>(valuesSet);
         }
 
         @Override
         public boolean hasNext() {
-            return index < ids.size();
+            return index < values.size();
         }
 
         @Override
@@ -511,15 +495,14 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
             if (!hasNext()) {
                 throw new NoSuchElementException();
             }
-            ColumnValuePair[] idColumns = ids.get(index++);
-            return holder.getDataManager().getInstance(type, idColumns);
+            return values.get(index++);
         }
 
         @Override
         public void remove() {
             Preconditions.checkState(index > 0, "next() has not been called yet");
-            removeIds(Collections.singletonList(ids.get(index - 1)));
-            ids.remove(--index);
+            removeValues(Collections.singletonList(values.get(index - 1)));
+            values.remove(--index);
         }
     }
 }
