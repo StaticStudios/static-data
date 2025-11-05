@@ -78,23 +78,23 @@ public class PersistentValueTest extends DataTest {
         mockUser.favoriteColor.set("blue");
         assertEquals("blue", mockUser.favoriteColor.get());
 
-//        long start;
-//        int count = 10_000;
-//        for (int j = 0; j < 5; j++) {
-//            start = System.currentTimeMillis();
-//            for (int i = 0; i < count; i++) {
-//                mockUser.name.set("name " + i);
-//            }
-//
-//            System.out.println("Took " + (System.currentTimeMillis() - start) + "ms to do " + count + " updates");
-//        }
-//        for (int j = 0; j < 5; j++) {
-//            start = System.currentTimeMillis();
-//            for (int i = 0; i < count; i++) {
-//                mockUser.name.get();
-//            }
-//            System.out.println("Took " + (System.currentTimeMillis() - start) + "ms to do " + count + " gets");
-//        }
+/// /        long start;
+/// /        int count = 10_000;
+/// /        for (int j = 0; j < 5; j++) {
+/// /            start = System.currentTimeMillis();
+/// /            for (int i = 0; i < count; i++) {
+/// /                mockUser.name.set("name " + i);
+/// /            }
+/// /
+/// /            System.out.println("Took " + (System.currentTimeMillis() - start) + "ms to do " + count + " updates");
+/// /        }
+/// /        for (int j = 0; j < 5; j++) {
+/// /            start = System.currentTimeMillis();
+/// /            for (int i = 0; i < count; i++) {
+/// /                mockUser.name.get();
+/// /            }
+/// /            System.out.println("Took " + (System.currentTimeMillis() - start) + "ms to do " + count + " gets");
+/// /        }
 
         waitForDataPropagation();
     }

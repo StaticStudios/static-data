@@ -15,6 +15,10 @@ dependencies {
     implementation("org.openjdk.jmh:jmh-core:1.37")
     implementation("org.openjdk.jmh:jmh-generator-annprocess:1.37")
     implementation(project(":core"))
+    implementation(project(":utils"))
+    compileOnly project(':javac-plugin')
+    jmhAnnotationProcessor project(':javac-plugin')
+
     implementation 'net.staticstudios:static-utils:1.0.6-SNAPSHOT'
     implementation("org.testcontainers:postgresql:1.19.8")
     implementation("com.redis:testcontainers-redis:2.2.2")
@@ -35,6 +39,8 @@ tasks.named('jmh') {
 }
 
 java {
+    targetCompatibility = JavaVersion.VERSION_21
+    sourceCompatibility = JavaVersion.VERSION_21
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
     }

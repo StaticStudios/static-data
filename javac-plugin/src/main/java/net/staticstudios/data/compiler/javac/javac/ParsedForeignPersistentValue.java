@@ -1,21 +1,22 @@
-package net.staticstudios.data.compiler.javac;
+package net.staticstudios.data.compiler.javac.javac;
 
-import com.sun.tools.javac.tree.JCTree;
+import net.staticstudios.data.InsertStrategy;
 import net.staticstudios.data.utils.Link;
 
+import javax.lang.model.element.TypeElement;
 import java.util.List;
 
 class ParsedForeignPersistentValue extends ParsedPersistentValue {
-    private final String insertStrategy;
+    private final InsertStrategy insertStrategy;
     private final List<Link> links;
 
-    public ParsedForeignPersistentValue(String fieldName, String schema, String table, String column, boolean nullable, JCTree.JCExpression type, String insertStrategy, List<Link> links) {
+    public ParsedForeignPersistentValue(String fieldName, String schema, String table, String column, boolean nullable, TypeElement type, InsertStrategy insertStrategy, List<Link> links) {
         super(fieldName, schema, table, column, nullable, type);
         this.insertStrategy = insertStrategy;
         this.links = links;
     }
 
-    public String getInsertStrategy() {
+    public InsertStrategy getInsertStrategy() {
         return insertStrategy;
     }
 

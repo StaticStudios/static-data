@@ -1,1 +1,1 @@
-net.staticstudios.data.compiler.javac.DummyProcessor
+net.staticstudios.data.compiler.javac.StaticDataProcessor
