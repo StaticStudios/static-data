@@ -7,6 +7,7 @@ import net.staticstudios.data.util.ColumnValuePair;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import java.lang.ref.WeakReference;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -52,7 +53,7 @@ public class PersistentValueTest extends DataTest {
     }
 
     @Test
-    public void test() throws SQLException { //todo: this test throws an exception from pg
+    public void testUniqueDataCache() throws SQLException {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
         UUID id = UUID.randomUUID();
@@ -61,42 +62,121 @@ public class PersistentValueTest extends DataTest {
                 .name("test user")
                 .nameUpdates(0)
                 .insert(InsertMode.SYNC);
-        assertEquals("test user", mockUser.name.get());
-        mockUser.name.set("updated name");
-        assertEquals("updated name", mockUser.name.get());
 
-        assertNull(mockUser.age.get());
-        mockUser.age.set(25);
-        assertEquals(25, mockUser.age.get());
+        WeakReference<MockUser> weakRef = new WeakReference<>(mockUser);
+
+        System.gc();
+
+        assertNotNull(weakRef.get());
 
         mockUser = dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id));
+        assertSame(mockUser, weakRef.get());
         mockUser = null; // remove strong reference
         System.gc();
+
+        assertNull(weakRef.get());
+
         mockUser = dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id)); // should have a cache miss
+    }
 
-        assertNull(mockUser.favoriteColor.get());
-        mockUser.favoriteColor.set("blue");
-        assertEquals("blue", mockUser.favoriteColor.get());
+    @Test
+    public void testUpdate() throws SQLException {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        UUID id = UUID.randomUUID();
+        MockUser mockUser = MockUser.builder(dataManager)
+                .id(id)
+                .name("test user")
+                .age(0)
+                .insert(InsertMode.SYNC);
 
-/// /        long start;
-/// /        int count = 10_000;
-/// /        for (int j = 0; j < 5; j++) {
-/// /            start = System.currentTimeMillis();
-/// /            for (int i = 0; i < count; i++) {
-/// /                mockUser.name.set("name " + i);
-/// /            }
-/// /
-/// /            System.out.println("Took " + (System.currentTimeMillis() - start) + "ms to do " + count + " updates");
-/// /        }
-/// /        for (int j = 0; j < 5; j++) {
-/// /            start = System.currentTimeMillis();
-/// /            for (int i = 0; i < count; i++) {
-/// /                mockUser.name.get();
-/// /            }
-/// /            System.out.println("Took " + (System.currentTimeMillis() - start) + "ms to do " + count + " gets");
-/// /        }
+        assertEquals(0, mockUser.age.get());
+
+        Connection h2Connection = getH2Connection(dataManager);
+        try (PreparedStatement preparedStatement = h2Connection.prepareStatement("SELECT \"age\" FROM \"public\".\"users\" WHERE \"id\" = ?")) {
+            preparedStatement.setObject(1, id);
+            ResultSet rs = preparedStatement.executeQuery();
+            assertTrue(rs.next());
+            assertEquals(0, rs.getObject("age"));
+        }
 
         waitForDataPropagation();
+
+        Connection pgConnection = getConnection();
+        try (PreparedStatement preparedStatement = pgConnection.prepareStatement("SELECT \"age\" FROM \"public\".\"users\" WHERE \"id\" = ?")) {
+            preparedStatement.setObject(1, id);
+            ResultSet rs = preparedStatement.executeQuery();
+            assertTrue(rs.next());
+            assertEquals(0, rs.getObject("age"));
+        }
+
+        mockUser.age.set(30);
+
+        try (PreparedStatement preparedStatement = h2Connection.prepareStatement("SELECT \"age\" FROM \"public\".\"users\" WHERE \"id\" = ?")) {
+            preparedStatement.setObject(1, id);
+            ResultSet rs = preparedStatement.executeQuery();
+            assertTrue(rs.next());
+            assertEquals(30, rs.getObject("age"));
+        }
+
+        waitForDataPropagation();
+
+        try (PreparedStatement preparedStatement = pgConnection.prepareStatement("SELECT \"age\" FROM \"public\".\"users\" WHERE \"id\" = ?")) {
+            preparedStatement.setObject(1, id);
+            ResultSet rs = preparedStatement.executeQuery();
+            assertTrue(rs.next());
+            assertEquals(30, rs.getObject("age"));
+        }
+    }
+
+    @Test
+    public void testUpdateForeignColumn() throws SQLException {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        UUID id = UUID.randomUUID();
+        MockUser mockUser = MockUser.builder(dataManager)
+                .id(id)
+                .name("test user")
+                .favoriteColor("blue")
+                .insert(InsertMode.SYNC);
+
+        assertEquals("blue", mockUser.favoriteColor.get());
+
+        Connection h2Connection = getH2Connection(dataManager);
+        try (PreparedStatement preparedStatement = h2Connection.prepareStatement("SELECT \"fav_color\" FROM \"public\".\"user_preferences\" WHERE \"user_id\" = ?")) {
+            preparedStatement.setObject(1, id);
+            ResultSet rs = preparedStatement.executeQuery();
+            assertTrue(rs.next());
+            assertEquals("blue", rs.getObject("fav_color"));
+        }
+
+        waitForDataPropagation();
+
+        Connection pgConnection = getConnection();
+        try (PreparedStatement preparedStatement = pgConnection.prepareStatement("SELECT \"fav_color\" FROM \"public\".\"user_preferences\" WHERE \"user_id\" = ?")) {
+            preparedStatement.setObject(1, id);
+            ResultSet rs = preparedStatement.executeQuery();
+            assertTrue(rs.next());
+            assertEquals("blue", rs.getObject("fav_color"));
+        }
+
+        mockUser.favoriteColor.set("red");
+
+        try (PreparedStatement preparedStatement = h2Connection.prepareStatement("SELECT \"fav_color\" FROM \"public\".\"user_preferences\" WHERE \"user_id\" = ?")) {
+            preparedStatement.setObject(1, id);
+            ResultSet rs = preparedStatement.executeQuery();
+            assertTrue(rs.next());
+            assertEquals("red", rs.getObject("fav_color"));
+        }
+
+        waitForDataPropagation();
+
+        try (PreparedStatement preparedStatement = pgConnection.prepareStatement("SELECT \"fav_color\" FROM \"public\".\"user_preferences\" WHERE \"user_id\" = ?")) {
+            preparedStatement.setObject(1, id);
+            ResultSet rs = preparedStatement.executeQuery();
+            assertTrue(rs.next());
+            assertEquals("red", rs.getObject("fav_color"));
+        }
     }
 
     @Test

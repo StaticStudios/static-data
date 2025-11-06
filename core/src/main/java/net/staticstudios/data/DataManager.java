@@ -680,6 +680,7 @@ public class DataManager {
             }
             sqlBuilder.setLength(sqlBuilder.length() - 5);
         } else { // we're dealing with a foreign key
+            //todo: use update on conclifct bla bla bla for pg
             sqlBuilder = new StringBuilder().append("MERGE INTO \"").append(schema).append("\".\"").append(table).append("\" target USING (VALUES (?");
             sqlBuilder.append(", ?".repeat(idColumns.getPairs().length));
             sqlBuilder.append(")) AS source (\"").append(column).append("\"");
@@ -729,14 +730,30 @@ public class DataManager {
             }
             sqlBuilder.append(")");
         }
-        @Language("SQL") String sql = sqlBuilder.toString();
+        @Language("SQL") String h2Sql = sqlBuilder.toString();
+
+        sqlBuilder.setLength(0);
+        sqlBuilder.append("UPDATE \"").append(schema).append("\".\"").append(table).append("\" SET \"").append(column).append("\" = ? WHERE ");
+        for (ColumnValuePair columnValuePair : idColumns) {
+            String name = columnValuePair.column();
+            for (Link link : idColumnLinks) {
+                if (link.columnInReferringTable().equals(columnValuePair.column())) {
+                    name = link.columnInReferencedTable();
+                    break;
+                }
+            }
+            sqlBuilder.append("\"").append(name).append("\" = ? AND ");
+        }
+        sqlBuilder.setLength(sqlBuilder.length() - 5);
+        @Language("SQL") String pgSql = sqlBuilder.toString();
+
         List<Object> values = new ArrayList<>(1 + idColumns.getPairs().length);
         values.add(serialize(value));
         for (ColumnValuePair columnValuePair : idColumns) {
             values.add(columnValuePair.value());
         }
         try {
-            dataAccessor.executeUpdate(sql, values, delay);
+            dataAccessor.executeUpdate(SQLTransaction.Statement.of(h2Sql, pgSql), values, delay);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }

@@ -4,6 +4,7 @@ import com.google.common.base.Preconditions;
 import net.staticstudios.data.util.ColumnValuePair;
 import net.staticstudios.data.util.ColumnValuePairs;
 import net.staticstudios.data.util.UniqueDataMetadata;
+import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.ApiStatus;
 
 import java.sql.SQLException;
@@ -49,16 +50,17 @@ public abstract class UniqueData {
         Preconditions.checkState(!isDeleted, "This object has already been deleted!");
         UniqueDataMetadata metadata = getMetadata();
 
-        StringBuilder sql = new StringBuilder("DELETE FROM \"" + metadata.schema() + "\".\"" + metadata.table() + "\" WHERE ");
+        StringBuilder stringBuilder = new StringBuilder("DELETE FROM \"" + metadata.schema() + "\".\"" + metadata.table() + "\" WHERE ");
         List<Object> values = new ArrayList<>();
         for (ColumnValuePair idColumn : idColumns) {
-            sql.append("\"").append(idColumn.column()).append("\" = ? AND ");
+            stringBuilder.append("\"").append(idColumn.column()).append("\" = ? AND ");
             values.add(idColumn.value());
         }
-        sql.setLength(sql.length() - 5);
+        stringBuilder.setLength(stringBuilder.length() - 5);
+        @Language("SQL") String sql = stringBuilder.toString();
 
         try {
-            dataManager.getDataAccessor().executeUpdate(sql.toString(), values, 0);
+            dataManager.getDataAccessor().executeUpdate(SQLTransaction.Statement.of(sql, sql), values, 0);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }

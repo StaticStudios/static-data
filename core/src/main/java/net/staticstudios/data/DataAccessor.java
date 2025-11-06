@@ -12,8 +12,8 @@ public interface DataAccessor {
 
     ResultSet executeQuery(@Language("SQL") String sql, List<Object> values) throws SQLException;
 
-    default void executeUpdate(@Language("SQL") String sql, List<Object> values, int delay) throws SQLException {
-        executeTransaction(new SQLTransaction().update(SQLTransaction.Statement.of(sql, sql), values), delay);
+    default void executeUpdate(SQLTransaction.Statement statement, List<Object> values, int delay) throws SQLException {
+        executeTransaction(new SQLTransaction().update(statement, values), delay);
     }
 
     void executeTransaction(SQLTransaction transaction, int delay) throws SQLException;

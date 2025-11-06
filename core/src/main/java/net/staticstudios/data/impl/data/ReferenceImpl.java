@@ -1,10 +1,7 @@
 package net.staticstudios.data.impl.data;
 
 import com.google.common.base.Preconditions;
-import net.staticstudios.data.DataAccessor;
-import net.staticstudios.data.OneToOne;
-import net.staticstudios.data.Reference;
-import net.staticstudios.data.UniqueData;
+import net.staticstudios.data.*;
 import net.staticstudios.data.parse.SQLBuilder;
 import net.staticstudios.data.util.*;
 import net.staticstudios.data.utils.Link;
@@ -164,8 +161,10 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
             values.add(columnValuePair.value());
         }
 
+        @Language("SQL") String sql = sqlBuilder.toString();
+
         try {
-            holder.getDataManager().getDataAccessor().executeUpdate(sqlBuilder.toString(), values, 0);
+            holder.getDataManager().getDataAccessor().executeUpdate(SQLTransaction.Statement.of(sql, sql), values, 0);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
