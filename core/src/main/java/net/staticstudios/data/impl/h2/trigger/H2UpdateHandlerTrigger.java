@@ -85,7 +85,7 @@ public class H2UpdateHandlerTrigger implements Trigger {
         }
 
         for (String changedColumn : changedColumns) {
-            dataManager.callUpdateHandlers(columnNames, schema, table, changedColumn, oldRow, newRow);
+            dataManager.callPersistentValueUpdateHandlers(columnNames, schema, table, changedColumn, oldRow, newRow);
         }
     }
 

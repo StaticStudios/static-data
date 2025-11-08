@@ -2,33 +2,37 @@ package net.staticstudios.data.impl.h2;
 
 import com.google.common.base.Preconditions;
 import com.impossibl.postgres.api.jdbc.PGConnection;
-import net.staticstudios.data.DataAccessor;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.InsertMode;
-import net.staticstudios.data.SQLTransaction;
+import net.staticstudios.data.impl.DataAccessor;
 import net.staticstudios.data.impl.h2.trigger.H2UpdateHandlerTrigger;
 import net.staticstudios.data.impl.pg.PostgresListener;
+import net.staticstudios.data.impl.redis.RedisCacheEntry;
+import net.staticstudios.data.impl.redis.RedisEvent;
+import net.staticstudios.data.impl.redis.RedisListener;
 import net.staticstudios.data.parse.DDLStatement;
 import net.staticstudios.data.parse.SQLColumn;
 import net.staticstudios.data.parse.SQLSchema;
 import net.staticstudios.data.parse.SQLTable;
 import net.staticstudios.data.primative.Primitives;
-import net.staticstudios.data.util.ColumnMetadata;
-import net.staticstudios.data.util.SQlStatement;
-import net.staticstudios.data.util.SchemaTable;
+import net.staticstudios.data.util.*;
 import net.staticstudios.data.util.TaskQueue;
 import net.staticstudios.utils.Pair;
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
 import org.intellij.lang.annotations.Language;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import redis.clients.jedis.params.ScanParams;
+import redis.clients.jedis.resps.ScanResult;
 
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.*;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
@@ -55,10 +59,14 @@ public class H2DataAccessor implements DataAccessor {
         t.setName(H2DataAccessor.class.getSimpleName() + "-ScheduledExecutor");
         return t;
     });
+    private final RedisListener redisListener;
+    private final Map<String, RedisCacheEntry> redisCache = new ConcurrentHashMap<>();
+    private final Set<String> knownRedisPartialKeys = ConcurrentHashMap.newKeySet();
 
-    public H2DataAccessor(DataManager dataManager, PostgresListener postgresListener, TaskQueue taskQueue) {
+    public H2DataAccessor(DataManager dataManager, PostgresListener postgresListener, RedisListener redisListener, TaskQueue taskQueue) {
         this.taskQueue = taskQueue;
         this.postgresListener = postgresListener;
+        this.redisListener = redisListener;
         this.jdbcUrl = "jdbc:h2:mem:static-data-cache;DB_CLOSE_DELAY=-1;LOCK_MODE=3;CACHE_SIZE=65536;QUERY_CACHE_SIZE=1024;CACHE_TYPE=SOFT_LRU";
         this.dataManager = dataManager;
 
@@ -210,68 +218,94 @@ public class H2DataAccessor implements DataAccessor {
         });
     }
 
-    public synchronized void sync(List<SchemaTable> schemaTables) throws SQLException {
+    public synchronized void resync() {
         //todo: i would ideally like to support periodic resyncing of data. even if this means we pause everything until then. not exactly sure how this would look tho.
 
         //todo: when we resync we should clear the task queue and steal the connection
         //todo: if possible, id like to pause everything else until we are done syncing
-        dataManager.submitBlockingTask(realDbConnection -> {
-            Connection h2Connection = getConnection();
-            boolean autoCommit = h2Connection.getAutoCommit();
-            try (
-                    Statement h2Statement = h2Connection.createStatement()
-            ) {
-                h2Connection.setAutoCommit(false);
-                logger.trace("[H2] {}", SET_REFERENTIAL_INTEGRITY_FALSE);
-                h2Statement.execute(SET_REFERENTIAL_INTEGRITY_FALSE);
+    }
 
-                for (SchemaTable schemaTable : schemaTables) {
-                    String schema = schemaTable.schema();
-                    String table = schemaTable.table();
-                    Path tmpFile = Paths.get(System.getProperty("java.io.tmpdir"), UUID.randomUUID() + "_" + schema + "_" + table + ".csv");
-                    String absolutePath = tmpFile.toAbsolutePath().toString();
+    public synchronized void sync(List<SchemaTable> schemaTables, List<String> redisPartialKeys) throws SQLException {
+        taskQueue.submitTask((realDbConnection, jedis) -> {
+            if (!schemaTables.isEmpty()) {
+                Connection h2Connection = getConnection();
+                boolean autoCommit = h2Connection.getAutoCommit();
+                try (
+                        Statement h2Statement = h2Connection.createStatement()
+                ) {
+                    h2Connection.setAutoCommit(false);
+                    logger.trace("[H2] {}", SET_REFERENTIAL_INTEGRITY_FALSE);
+                    h2Statement.execute(SET_REFERENTIAL_INTEGRITY_FALSE);
 
-                    List<String> columns = getColumnsInTable(schema, table);
+                    for (SchemaTable schemaTable : schemaTables) {
+                        String schema = schemaTable.schema();
+                        String table = schemaTable.table();
+                        Path tmpFile = Paths.get(System.getProperty("java.io.tmpdir"), UUID.randomUUID() + "_" + schema + "_" + table + ".csv");
+                        String absolutePath = tmpFile.toAbsolutePath().toString();
 
-                    StringBuilder sqlBuilder = new StringBuilder("COPY (SELECT ");
-                    for (String column : columns) {
-                        sqlBuilder.append("\"").append(column).append("\", ");
+                        List<String> columns = getColumnsInTable(schema, table);
+
+                        StringBuilder sqlBuilder = new StringBuilder("COPY (SELECT ");
+                        for (String column : columns) {
+                            sqlBuilder.append("\"").append(column).append("\", ");
+                        }
+                        sqlBuilder.setLength(sqlBuilder.length() - 2);
+                        sqlBuilder.append(" FROM \"").append(schema).append("\".\"").append(table).append("\") TO STDOUT WITH CSV HEADER");
+                        @Language("SQL") String copySql = sqlBuilder.toString();
+                        @Language("SQL") String truncateSql = "TRUNCATE TABLE \"" + schema + "\".\"" + table + "\"";
+                        StringBuilder insertSqlBuilder = new StringBuilder("INSERT INTO \"").append(schema).append("\".\"").append(table).append("\" (");
+                        for (String column : columns) {
+                            insertSqlBuilder.append("\"").append(column).append("\", ");
+                        }
+                        insertSqlBuilder.setLength(insertSqlBuilder.length() - 2);
+                        insertSqlBuilder.append(") SELECT * FROM CSVREAD('").append(absolutePath).append("')");
+                        String insertSql = insertSqlBuilder.toString();
+                        PGConnection pgConnection = realDbConnection.unwrap(PGConnection.class);
+                        FileOutputStream fileOutputStream;
+                        try {
+                            fileOutputStream = new FileOutputStream(absolutePath);
+                        } catch (FileNotFoundException e) {
+                            throw new RuntimeException(e);
+                        }
+                        logger.debug("[DB] {}", copySql);
+                        pgConnection.copyTo(copySql, fileOutputStream);
+                        logger.trace("[H2] {}", truncateSql);
+                        h2Statement.execute(truncateSql);
+                        logger.trace("[H2] {}", insertSql);
+                        h2Statement.execute(insertSql);
                     }
-                    sqlBuilder.setLength(sqlBuilder.length() - 2);
-                    sqlBuilder.append(" FROM \"").append(schema).append("\".\"").append(table).append("\") TO STDOUT WITH CSV HEADER");
-                    @Language("SQL") String copySql = sqlBuilder.toString();
-                    @Language("SQL") String truncateSql = "TRUNCATE TABLE \"" + schema + "\".\"" + table + "\"";
-                    StringBuilder insertSqlBuilder = new StringBuilder("INSERT INTO \"").append(schema).append("\".\"").append(table).append("\" (");
-                    for (String column : columns) {
-                        insertSqlBuilder.append("\"").append(column).append("\", ");
+                    logger.trace("[H2] {}", SET_REFERENTIAL_INTEGRITY_TRUE);
+                    h2Statement.execute(SET_REFERENTIAL_INTEGRITY_TRUE);
+                } finally {
+                    if (autoCommit) {
+                        h2Connection.setAutoCommit(true);
+                    } else {
+                        h2Connection.commit();
                     }
-                    insertSqlBuilder.setLength(insertSqlBuilder.length() - 2);
-                    insertSqlBuilder.append(") SELECT * FROM CSVREAD('").append(absolutePath).append("')");
-                    String insertSql = insertSqlBuilder.toString();
-                    PGConnection pgConnection = realDbConnection.unwrap(PGConnection.class);
-                    FileOutputStream fileOutputStream;
-                    try {
-                        fileOutputStream = new FileOutputStream(absolutePath);
-                    } catch (FileNotFoundException e) {
-                        throw new RuntimeException(e);
-                    }
-                    logger.debug("[DB] {}", copySql);
-                    pgConnection.copyTo(copySql, fileOutputStream);
-                    logger.trace("[H2] {}", truncateSql);
-                    h2Statement.execute(truncateSql);
-                    logger.trace("[H2] {}", insertSql);
-                    h2Statement.execute(insertSql);
-                }
-                logger.trace("[H2] {}", SET_REFERENTIAL_INTEGRITY_TRUE);
-                h2Statement.execute(SET_REFERENTIAL_INTEGRITY_TRUE);
-            } finally {
-                if (autoCommit) {
-                    h2Connection.setAutoCommit(true);
-                } else {
-                    h2Connection.commit();
                 }
             }
-        });
+            if (!redisPartialKeys.isEmpty()) {
+                for (String partialKey : redisPartialKeys) {
+                    if (knownRedisPartialKeys.contains(partialKey)) {
+                        continue;
+                    }
+
+                    String cursor = ScanParams.SCAN_POINTER_START;
+                    ScanParams scanParams = new ScanParams().match(partialKey).count(1000);
+
+                    do {
+                        ScanResult<String> scanResult = jedis.scan(cursor, scanParams);
+                        cursor = scanResult.getCursor();
+
+                        for (String key : scanResult.getResult()) {
+                            redisCache.put(key, new RedisCacheEntry(jedis.get(key), Instant.now()));
+                        }
+                    } while (!cursor.equals(ScanParams.SCAN_POINTER_START));
+
+                    redisListener.listen(partialKey, this::handleRedisEvent);
+                }
+            }
+        }).join();
 
         //todo: start listening to changes from pg
         // then log them
@@ -456,6 +490,53 @@ public class H2DataAccessor implements DataAccessor {
         updateKnownTables();
     }
 
+    @Override
+    public @Nullable String getRedisValue(String key) {
+        RedisCacheEntry cacheEntry = redisCache.get(key);
+        if (cacheEntry != null) {
+            return cacheEntry.value();
+        }
+        return null;
+    }
+
+    @Override
+    public void setRedisValue(String key, String value, int expirationSeconds) {
+        RedisCacheEntry prev;
+        if (value == null) {
+            prev = redisCache.remove(key);
+            taskQueue.submitTask((connection, jedis) -> {
+                jedis.del(key);
+            });
+        } else {
+            prev = redisCache.put(key, new RedisCacheEntry(value, Instant.now()));
+            taskQueue.submitTask((connection, jedis) -> {
+                if (expirationSeconds > 0) {
+                    jedis.setex(key, expirationSeconds, value);
+                } else {
+                    jedis.set(key, value);
+                }
+            });
+        }
+
+        String prevValue = null;
+
+        if (prev != null) {
+            prevValue = prev.value();
+        }
+        RedisUtils.DeconstructedKey deconstructedKey = RedisUtils.deconstruct(key);
+        dataManager.callCachedValueUpdateHandlers(deconstructedKey.partialKey(), deconstructedKey.encodedIdNames(), deconstructedKey.encodedIdValues(), prevValue, value);
+    }
+
+    @Override
+    public void discoverRedisKeys(List<String> partialRedisKeys) {
+        try {
+            sync(Collections.emptyList(), partialRedisKeys);
+            knownRedisPartialKeys.addAll(partialRedisKeys);
+        } catch (SQLException e) {
+            logger.error("Error discovering redis keys", e);
+        }
+    }
+
     private synchronized void updateKnownTables() throws SQLException {
         Set<String> currentTables = new HashSet<>();
         Connection connection = getConnection();
@@ -480,11 +561,11 @@ public class H2DataAccessor implements DataAccessor {
                         createTrigger.execute(formatted);
                     }
 
-                    dataManager.submitBlockingTask(realDbConnection -> postgresListener.ensureTableHasTrigger(realDbConnection, schema, table));
+                    taskQueue.submitTask(realDbConnection -> postgresListener.ensureTableHasTrigger(realDbConnection, schema, table)).join();
                     toSync.add(new SchemaTable(schema, table));
                 }
             }
-            sync(toSync);
+            sync(toSync, Collections.emptyList());
         }
         knownTables.clear();
         knownTables.addAll(currentTables);
@@ -555,6 +636,20 @@ public class H2DataAccessor implements DataAccessor {
                     removed.run();
                 }
             }, delay, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private void handleRedisEvent(RedisEvent event, String key, @Nullable String value) {
+        if (event == RedisEvent.SET) {
+            RedisCacheEntry entry = redisCache.get(key);
+            if (entry != null && (entry.entryInstant().isAfter(Instant.now()) || Objects.equals(entry.value(), value))) {
+                return;
+            }
+            redisCache.put(key, new RedisCacheEntry(value, Instant.now()));
+            RedisUtils.DeconstructedKey deconstructedKey = RedisUtils.deconstruct(key);
+            dataManager.callCachedValueUpdateHandlers(deconstructedKey.partialKey(), deconstructedKey.encodedIdNames(), deconstructedKey.encodedIdValues(), entry == null ? null : entry.value(), value);
+        } else if (event == RedisEvent.DEL || event == RedisEvent.EXPIRED) {
+            redisCache.remove(key);
         }
     }
 }

@@ -3,6 +3,7 @@ package net.staticstudios.data;
 import com.google.common.base.Preconditions;
 import net.staticstudios.data.util.ColumnValuePair;
 import net.staticstudios.data.util.ColumnValuePairs;
+import net.staticstudios.data.util.SQLTransaction;
 import net.staticstudios.data.util.UniqueDataMetadata;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.ApiStatus;

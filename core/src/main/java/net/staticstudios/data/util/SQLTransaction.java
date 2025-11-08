@@ -1,4 +1,4 @@
-package net.staticstudios.data;
+package net.staticstudios.data.util;
 
 import com.google.common.base.Preconditions;
 import org.intellij.lang.annotations.Language;

@@ -10,15 +10,18 @@ public class ValueUpdateHandlerWrapper<U extends UniqueData, T> {
     private final Class<? extends UniqueData> holderClass;
 
     public ValueUpdateHandlerWrapper(ValueUpdateHandler<U, T> handler, Class<T> dataType, Class<? extends UniqueData> holderClass) {
-        if (handler.getClass().getDeclaredFields().length > 0) {
-            throw new ValueUpdateHandlerNonStaticException("Value update handler must not capture any variables! It must act as a static function. Did you reference 'this' or a member variable? Use the provided instance instead!");
-            // we don't want to hold a reference to a UniqueData instances, since it won't get GCed
-            // and the handler may be called for any holder instance.
-        }
+        LambdaUtils.assertLambdaDoesntCapture(handler, "Use thr provided instance to access member variables.");
+        // we don't want to hold a reference to a UniqueData instances, since it won't get GCed
+        // and the handler may be called for any holder instance.
 
         this.handler = handler;
         this.dataType = dataType;
         this.holderClass = holderClass;
+    }
+
+
+    public ValueUpdateHandler<U, T> getHandler() {
+        return handler;
     }
 
     public Class<T> getDataType() {

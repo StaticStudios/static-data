@@ -303,6 +303,5 @@ public class PersistentOneToManyCollectionTest extends DataTest {
 
     }
 
-    //todo: test other collection types (one to many valued collections is all thats left. this ont to many valued collection is important since it is the simplest to use, and makes things like contains very straightforward.)
     //todo: test add/remove handlers
 }

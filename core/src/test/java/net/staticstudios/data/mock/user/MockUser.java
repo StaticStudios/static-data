@@ -8,8 +8,7 @@ import java.util.UUID;
 // if the super class provides a data annotation, ignore it and use the child's annotation. it would be cool tho to allow the super class to use a @data annotation. the former is whats implemented now. if changed, update the processor.
 @Data(schema = "public", table = "users")
 public class MockUser extends UniqueData {
-    //todo: test inheritance properly
-    //todo: cached values
+    //todo: test inheritance properly. test the ij plugin and AP too.
     @IdColumn(name = "id")
     public PersistentValue<UUID> id = PersistentValue.of(this, UUID.class);
 
@@ -56,6 +55,16 @@ public class MockUser extends UniqueData {
     @Delete(DeleteStrategy.CASCADE)
     @OneToMany(link = "id=user_id", table = "favorite_numbers", column = "number")
     public PersistentCollection<Integer> favoriteNumbers;
+    @Identifier("cooldown_updates")
+    public CachedValue<Integer> cooldownUpdates = CachedValue.of(this, Integer.class)
+            .withFallback(0);
+    @Identifier("on_cooldown")
+    @ExpireAfter(5)
+    public CachedValue<Boolean> onCooldown = CachedValue.of(this, Boolean.class)
+            .onUpdate(MockUser.class, (user, update) -> {
+                user.cooldownUpdates.set(user.cooldownUpdates.get() + 1);
+            })
+            .withFallback(false);
 
     public int getNameUpdates() {
         return nameUpdates.get();

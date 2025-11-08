@@ -1,7 +1,10 @@
 package net.staticstudios.data.impl.data;
 
 import com.google.common.base.Preconditions;
-import net.staticstudios.data.*;
+import net.staticstudios.data.ManyToMany;
+import net.staticstudios.data.PersistentCollection;
+import net.staticstudios.data.UniqueData;
+import net.staticstudios.data.impl.DataAccessor;
 import net.staticstudios.data.parse.SQLBuilder;
 import net.staticstudios.data.util.*;
 import net.staticstudios.data.utils.Link;

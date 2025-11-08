@@ -2,9 +2,11 @@ package net.staticstudios.data;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.MapMaker;
+import net.staticstudios.data.impl.DataAccessor;
 import net.staticstudios.data.impl.data.*;
 import net.staticstudios.data.impl.h2.H2DataAccessor;
 import net.staticstudios.data.impl.pg.PostgresListener;
+import net.staticstudios.data.impl.redis.RedisListener;
 import net.staticstudios.data.insert.InsertContext;
 import net.staticstudios.data.parse.*;
 import net.staticstudios.data.primative.Primitives;
@@ -14,7 +16,7 @@ import net.staticstudios.data.utils.Link;
 import net.staticstudios.utils.ThreadUtils;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.ApiStatus;
-import org.jetbrains.annotations.Blocking;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,9 +38,13 @@ public class DataManager {
     private final TaskQueue taskQueue;
     private final ConcurrentHashMap<Class<? extends UniqueData>, UniqueDataMetadata> uniqueDataMetadataMap = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Class<? extends UniqueData>, Map<ColumnValuePairs, UniqueData>> uniqueDataInstanceCache = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Map<Class<? extends UniqueData>, List<ValueUpdateHandlerWrapper<?, ?>>>> updateHandlers = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Map<Class<? extends UniqueData>, List<ValueUpdateHandlerWrapper<?, ?>>>> persistentValueUpdateHandlers = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Map<Class<? extends UniqueData>, List<CachedValueUpdateHandlerWrapper<?, ?>>>> cachedValueUpdateHandlers = new ConcurrentHashMap<>();
     private final PostgresListener postgresListener;
-    private final Set<PersistentValueMetadata> registeredUpdateHandlersForColumns = Collections.synchronizedSet(new HashSet<>());
+    private final RedisListener redisListener;
+    private final Set<PersistentValueMetadata> registeredUpdateHandlersForColumns = ConcurrentHashMap.newKeySet();
+    private final Set<CachedValueMetadata> registeredUpdateHandlersForRedis = ConcurrentHashMap.newKeySet();
+
     private final List<ValueSerializer<?, ?>> valueSerializers = new CopyOnWriteArrayList<>();
     //todo: custom types are serialized and deserialized all the time currently, we should have a cache for these. caffeine with time based eviction sounds good.
 
@@ -57,13 +63,12 @@ public class DataManager {
         DataManager.useGlobal = setGlobal;
         applicationName = "static_data_manager_v3-" + UUID.randomUUID();
         postgresListener = new PostgresListener(this, dataSourceConfig);
-        sqlBuilder = new SQLBuilder(this);
         this.taskQueue = new TaskQueue(dataSourceConfig, applicationName);
-        dataAccessor = new H2DataAccessor(this, postgresListener, taskQueue);
+        redisListener = new RedisListener(dataSourceConfig, this.taskQueue);
+        sqlBuilder = new SQLBuilder(this);
+        dataAccessor = new H2DataAccessor(this, postgresListener, redisListener, taskQueue);
 
         //todo: when we reconnect to postgres, refresh the internal cache from the source
-
-        //todo: support for CachedValues
     }
 
     public static DataManager getInstance() {
@@ -89,15 +94,21 @@ public class DataManager {
 
     public void addUpdateHandler(String schema, String table, String column, ValueUpdateHandlerWrapper<?, ?> handler) {//todo: allow us to specify what data type to convert the data to. this is useful when this method is called externally
         String key = schema + "." + table + "." + column;
-        updateHandlers.computeIfAbsent(key, k -> new ConcurrentHashMap<>())
+        persistentValueUpdateHandlers.computeIfAbsent(key, k -> new ConcurrentHashMap<>())
+                .computeIfAbsent(handler.getHolderClass(), k -> new CopyOnWriteArrayList<>())
+                .add(handler);
+    }
+
+    private void addRedisUpdateHandler(String partialKey, CachedValueUpdateHandlerWrapper<?, ?> handler) {
+        cachedValueUpdateHandlers.computeIfAbsent(partialKey, k -> new ConcurrentHashMap<>())
                 .computeIfAbsent(handler.getHolderClass(), k -> new CopyOnWriteArrayList<>())
                 .add(handler);
     }
 
     @ApiStatus.Internal
-    public void callUpdateHandlers(List<String> columnNames, String schema, String table, String column, Object[] oldSerializedValues, Object[] newSerializedValues) {
+    public void callPersistentValueUpdateHandlers(List<String> columnNames, String schema, String table, String column, Object[] oldSerializedValues, Object[] newSerializedValues) {
         logger.trace("Calling update handlers for {}.{}.{} with old values {} and new values {}", schema, table, column, Arrays.toString(oldSerializedValues), Arrays.toString(newSerializedValues));
-        Map<Class<? extends UniqueData>, List<ValueUpdateHandlerWrapper<?, ?>>> handlersForColumn = updateHandlers.get(schema + "." + table + "." + column);
+        Map<Class<? extends UniqueData>, List<ValueUpdateHandlerWrapper<?, ?>>> handlersForColumn = persistentValueUpdateHandlers.get(schema + "." + table + "." + column);
         if (handlersForColumn == null) {
             return;
         }
@@ -136,7 +147,59 @@ public class DataManager {
     }
 
     @ApiStatus.Internal
-    public void registerUpdateHandler(PersistentValueMetadata metadata, Collection<ValueUpdateHandlerWrapper<?, ?>> handlers) {
+    public void callCachedValueUpdateHandlers(String partialKey, List<String> encodedIdNames, List<String> encodedIdValues, @Nullable String oldValue, @Nullable String newValue) {
+        if (Objects.equals(oldValue, newValue)) {
+            return;
+        }
+        logger.trace("Calling Redis update handlers for {} with old value {} and new value {}", partialKey, oldValue, newValue);
+        Map<Class<? extends UniqueData>, List<CachedValueUpdateHandlerWrapper<?, ?>>> handlersForKey = cachedValueUpdateHandlers.get(partialKey);
+        if (handlersForKey == null) {
+            return;
+        }
+        for (Map.Entry<Class<? extends UniqueData>, List<CachedValueUpdateHandlerWrapper<?, ?>>> entry : handlersForKey.entrySet()) {
+            Class<? extends UniqueData> holderClass = entry.getKey();
+            UniqueDataMetadata metadata = getMetadata(holderClass);
+            List<CachedValueUpdateHandlerWrapper<?, ?>> handlers = entry.getValue();
+            ColumnValuePair[] idColumns = new ColumnValuePair[encodedIdValues.size()];
+            for (int i = 0; i < encodedIdNames.size(); i++) {
+                Class<?> valueType = null;
+                for (ColumnMetadata idColumn : metadata.idColumns()) {
+                    if (idColumn.name().equals(encodedIdNames.get(i))) {
+                        valueType = idColumn.type();
+                        break;
+                    }
+                }
+                Preconditions.checkNotNull(valueType, "Could not find ID column %s for UniqueData class %s", encodedIdNames.get(i), holderClass.getName());
+                Object decodedValue = Primitives.decode(getSerializedType(valueType), encodedIdValues.get(i));
+                Object deserializedValue = deserialize(valueType, decodedValue);
+                idColumns[i] = new ColumnValuePair(encodedIdNames.get(i), deserializedValue);
+            }
+            UniqueData instance = getInstance(holderClass, idColumns);
+            for (CachedValueUpdateHandlerWrapper<?, ?> wrapper : handlers) {
+                Class<?> serializedType = getSerializedType(wrapper.getDataType());
+                Object deserializedOldValue;
+                Object deserializedNewValue;
+
+                if (oldValue == null) {
+                    deserializedOldValue = wrapper.getFallback();
+                } else {
+                    Object decodedOldValue = Primitives.decode(serializedType, oldValue);
+                    deserializedOldValue = deserialize(wrapper.getDataType(), decodedOldValue);
+                }
+
+                if (newValue == null) {
+                    deserializedNewValue = wrapper.getFallback();
+                } else {
+                    Object decodedNewValue = Primitives.decode(serializedType, newValue);
+                    deserializedNewValue = deserialize(wrapper.getDataType(), decodedNewValue);
+                }
+                ThreadUtils.submit(() -> wrapper.unsafeHandle(instance, deserializedOldValue, deserializedNewValue)); //todo: submit somewher based on config
+            }
+        }
+    }
+
+    @ApiStatus.Internal
+    public void registerPersistentValueUpdateHandler(PersistentValueMetadata metadata, Collection<ValueUpdateHandlerWrapper<?, ?>> handlers) {
         if (registeredUpdateHandlersForColumns.add(metadata)) {
             for (ValueUpdateHandlerWrapper<?, ?> handler : handlers) {
                 addUpdateHandler(metadata.getSchema(), metadata.getTable(), metadata.getColumn(), handler);
@@ -144,18 +207,30 @@ public class DataManager {
         }
     }
 
+    @ApiStatus.Internal
+    public void registerCachedValueUpdateHandler(CachedValueMetadata metadata, Collection<CachedValueUpdateHandlerWrapper<?, ?>> handlers) {
+        if (registeredUpdateHandlersForRedis.add(metadata)) {
+            UniqueDataMetadata holderMetadata = getMetadata(metadata.holderClass());
+            String partialKey = RedisUtils.buildPartialRedisKey(metadata.holderSchema(), metadata.holderTable(), metadata.identifier(), holderMetadata.idColumns());
+            for (CachedValueUpdateHandlerWrapper<?, ?> handler : handlers) {
+                addRedisUpdateHandler(partialKey, handler);
+            }
+        }
+    }
+
     public List<ValueUpdateHandlerWrapper<?, ?>> getUpdateHandlers(String schema, String table, String column, Class<? extends UniqueData> holderClass) {
         String key = schema + "." + table + "." + column;
-        if (updateHandlers.containsKey(key) && updateHandlers.get(key).containsKey(holderClass)) {
-            return updateHandlers.get(key).get(holderClass);
+        if (persistentValueUpdateHandlers.containsKey(key) && persistentValueUpdateHandlers.get(key).containsKey(holderClass)) {
+            return persistentValueUpdateHandlers.get(key).get(holderClass);
         }
         return Collections.emptyList();
     }
 
     @SafeVarargs
     public final void load(Class<? extends UniqueData>... classes) {
+        List<UniqueDataMetadata> extracted = new ArrayList<>();
         for (Class<? extends UniqueData> clazz : classes) {
-            extractMetadata(clazz);
+            extracted.add(extractMetadata(clazz));
         }
         List<DDLStatement> defs = new ArrayList<>();
         for (Class<? extends UniqueData> clazz : classes) {
@@ -175,9 +250,17 @@ public class DataManager {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+
+        List<String> partialRedisKeys = new ArrayList<>();
+        for (UniqueDataMetadata metadata : extracted) {
+            for (CachedValueMetadata cachedValueMetadata : metadata.cachedValueMetadata().values()) {
+                partialRedisKeys.add(RedisUtils.buildPartialRedisKey(cachedValueMetadata.holderSchema(), cachedValueMetadata.holderTable(), cachedValueMetadata.identifier(), metadata.idColumns()));
+            }
+        }
+        dataAccessor.discoverRedisKeys(partialRedisKeys);
     }
 
-    public void extractMetadata(Class<? extends UniqueData> clazz) {
+    public UniqueDataMetadata extractMetadata(Class<? extends UniqueData> clazz) {
         Preconditions.checkArgument(!uniqueDataMetadataMap.containsKey(clazz), "UniqueData class %s has already been parsed", clazz.getName());
         Data dataAnnotation = clazz.getAnnotation(Data.class);
         Preconditions.checkNotNull(dataAnnotation, "UniqueData class %s is missing @Data annotation", clazz.getName());
@@ -205,7 +288,16 @@ public class DataManager {
         persistentCollectionMetadataMap.putAll(PersistentOneToManyCollectionImpl.extractMetadata(clazz));
         persistentCollectionMetadataMap.putAll(PersistentManyToManyCollectionImpl.extractMetadata(clazz));
         persistentCollectionMetadataMap.putAll(PersistentOneToManyValueCollectionImpl.extractMetadata(clazz, schema));
-        UniqueDataMetadata metadata = new UniqueDataMetadata(clazz, schema, table, idColumns, PersistentValueImpl.extractMetadata(schema, table, clazz), ReferenceImpl.extractMetadata(clazz), persistentCollectionMetadataMap);
+        UniqueDataMetadata metadata = new UniqueDataMetadata(
+                clazz,
+                schema,
+                table,
+                idColumns,
+                CachedValueImpl.extractMetadata(schema, table, clazz),
+                PersistentValueImpl.extractMetadata(schema, table, clazz),
+                ReferenceImpl.extractMetadata(clazz),
+                persistentCollectionMetadataMap
+        );
         uniqueDataMetadataMap.put(clazz, metadata);
 
         for (Field field : ReflectionUtils.getFields(clazz, Relation.class)) {
@@ -217,6 +309,8 @@ public class DataManager {
                 }
             }
         }
+
+        return metadata;
     }
 
     public UniqueDataMetadata getMetadata(Class<? extends UniqueData> clazz) {
@@ -359,7 +453,7 @@ public class DataManager {
         }
 
         for (ColumnValuePair providedIdColumn : idColumns) {
-            Preconditions.checkNotNull(providedIdColumn.value(), "ID name value for name %s in UniqueData class %s cannot be null", providedIdColumn.column(), clazz.getName());
+            Preconditions.checkNotNull(providedIdColumn.value(), "ID column value for column %s in UniqueData class %s cannot be null", providedIdColumn.column(), clazz.getName());
         }
 
         Preconditions.checkArgument(hasAllIdColumns, "Not all @IdColumn columnsInReferringTable were provided for UniqueData class %s. Required: %s, Provided: %s", clazz.getName(), metadata.idColumns(), idColumns);
@@ -404,6 +498,7 @@ public class DataManager {
         }
 
         PersistentValueImpl.delegate(instance);
+        CachedValueImpl.delegate(instance);
         ReferenceImpl.delegate(instance);
         PersistentOneToManyCollectionImpl.delegate(instance);
         PersistentManyToManyCollectionImpl.delegate(instance);
@@ -415,37 +510,6 @@ public class DataManager {
         logger.trace("Cache miss for UniqueData class {} with ID columnsInReferringTable {}. Created new instance.", clazz.getName(), idColumns);
 
         return instance;
-    }
-
-    /**
-     * Submit a blocking task to the priority task queue.
-     * This method is blocking and will wait for the task to complete before returning.
-     *
-     * @param task The task to submit
-     */
-    @Blocking
-    public void submitBlockingTask(ConnectionConsumer task) {
-        taskQueue.submitTask(task).join();
-    }
-
-    /**
-     * Submit a blocking task to the priority task queue.
-     * This method is blocking and will wait for the task to complete before returning.
-     *
-     * @param task The task to submit
-     */
-    @Blocking
-    public void submitBlockingTask(ConnectionJedisConsumer task) {
-        taskQueue.submitTask(task).join();
-    }
-
-    public void submitAsyncTask(ConnectionConsumer task) {
-        taskQueue.submitTask(task);
-    }
-
-
-    public void submitAsyncTask(ConnectionJedisConsumer task) {
-        taskQueue.submitTask(task);
     }
 
     public void insert(InsertContext insertContext, InsertMode insertMode) {
@@ -757,6 +821,24 @@ public class DataManager {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+    }
+
+
+    public <T> @Nullable T getRedis(String holderSchema, String holderTable, String identifier, ColumnValuePairs icColumns, Class<T> type) {
+        String key = RedisUtils.buildRedisKey(holderSchema, holderTable, identifier, icColumns);
+        String encoded = dataAccessor.getRedisValue(key);
+        if (encoded == null) {
+            return null;
+        }
+        Object serialized = Primitives.decode(getSerializedType(type), encoded);
+        return deserialize(type, serialized);
+    }
+
+    public void setRedis(String holderSchema, String holderTable, String identifier, ColumnValuePairs icColumns, int expireAfterSeconds, @Nullable Object value) {
+        String key = RedisUtils.buildRedisKey(holderSchema, holderTable, identifier, icColumns);
+        Object serialized = serialize(value);
+        String encoded = Primitives.encode(serialized);
+        dataAccessor.setRedisValue(key, encoded, expireAfterSeconds);
     }
 
     private boolean hasCycle(SQLTable table, Map<String, Set<SQLTable>> dependencyGraph, Set<SQLTable> visited, Set<SQLTable> stack) {

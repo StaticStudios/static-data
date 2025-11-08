@@ -1,8 +1,11 @@
-package net.staticstudios.data;
+package net.staticstudios.data.impl;
 
+import net.staticstudios.data.InsertMode;
 import net.staticstudios.data.parse.DDLStatement;
+import net.staticstudios.data.util.SQLTransaction;
 import net.staticstudios.data.util.SQlStatement;
 import org.intellij.lang.annotations.Language;
+import org.jetbrains.annotations.Nullable;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -23,4 +26,10 @@ public interface DataAccessor {
     void runDDL(DDLStatement ddl) throws SQLException;
 
     void postDDL() throws SQLException;
+
+    @Nullable String getRedisValue(String key);
+
+    void setRedisValue(String key, String value, int expirationSeconds);
+
+    void discoverRedisKeys(List<String> partialRedisKeys);
 }

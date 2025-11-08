@@ -2,6 +2,7 @@ package net.staticstudios.data.primative;
 
 import com.google.common.base.Preconditions;
 import net.staticstudios.data.util.PostgresUtils;
+import org.jetbrains.annotations.Nullable;
 
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
@@ -94,7 +95,7 @@ public class Primitives {
         return getPrimitive(type).decode(value);
     }
 
-    public static String encode(Object value) {
+    public static String encode(@Nullable Object value) {
         if (value == null) {
             return null;
         }
