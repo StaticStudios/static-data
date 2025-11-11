@@ -303,5 +303,88 @@ public class PersistentOneToManyCollectionTest extends DataTest {
 
     }
 
-    //todo: test add/remove handlers
+    @Test
+    public void testAddHandlerUpdate() {
+        MockUser user = MockUser.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("handler test user")
+                .insert(InsertMode.SYNC);
+
+        assertEquals(0, user.sessionAdditions.get());
+
+        List<MockUserSession> sessions = createSessions(5);
+        int i = 0;
+        for (MockUserSession session : sessions) {
+            user.sessions.add(session);
+            waitForUpdateHandlers();
+
+            assertEquals(++i, user.sessionAdditions.get());
+        }
+    }
+
+    @Test
+    public void testRemoveHandlerUpdate() {
+        MockUser user = MockUser.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("handler test user")
+                .insert(InsertMode.SYNC);
+
+        List<MockUserSession> sessions = createSessions(5);
+        user.sessions.addAll(sessions);
+        waitForUpdateHandlers();
+
+        assertEquals(5, user.sessions.size());
+        assertEquals(0, user.sessionRemovals.get());
+
+        int i = 0;
+        for (MockUserSession session : sessions) {
+            user.sessions.remove(session);
+            waitForUpdateHandlers();
+
+            assertEquals(++i, user.sessionRemovals.get());
+        }
+    }
+
+    @Test
+    public void testAddHandlerInsert() {
+        MockUser user = MockUser.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("handler test user")
+                .insert(InsertMode.SYNC);
+
+        assertEquals(0, user.sessionAdditions.get());
+        for (int i = 0; i < 5; i++) {
+            MockUserSession.builder(dataManager)
+                    .id(UUID.randomUUID())
+                    .userId(user.id.get())
+                    .timestamp(Timestamp.from(Instant.now()))
+                    .insert(InsertMode.ASYNC);
+            waitForUpdateHandlers();
+
+            assertEquals(i + 1, user.sessionAdditions.get());
+        }
+    }
+
+    @Test
+    public void testRemoveHandlerDelete() {
+        MockUser user = MockUser.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("handler test user")
+                .insert(InsertMode.SYNC);
+
+        List<MockUserSession> sessions = createSessions(5);
+        user.sessions.addAll(sessions);
+        waitForUpdateHandlers();
+
+        assertEquals(5, user.sessions.size());
+        assertEquals(0, user.sessionRemovals.get());
+
+        int i = 0;
+        for (MockUserSession session : sessions) {
+            session.delete();
+            waitForUpdateHandlers();
+
+            assertEquals(++i, user.sessionRemovals.get());
+        }
+    }
 }

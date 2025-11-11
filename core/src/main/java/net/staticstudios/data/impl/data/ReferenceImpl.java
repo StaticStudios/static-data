@@ -86,6 +86,14 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
 
     @Override
     public @Nullable T get() {
+        ColumnValuePairs referencedColumnValuePairs = getReferencedColumnValuePairs();
+        if (referencedColumnValuePairs == null) {
+            return null;
+        }
+        return holder.getDataManager().getInstance(type, referencedColumnValuePairs);
+    }
+
+    public ColumnValuePairs getReferencedColumnValuePairs() {
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot get reference on a deleted UniqueData instance");
         ColumnValuePair[] idColumns = new ColumnValuePair[link.size()];
         int i = 0;
@@ -123,7 +131,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
             throw new RuntimeException(e);
         }
 
-        return holder.getDataManager().getInstance(type, idColumns);
+        return new ColumnValuePairs(idColumns);
     }
 
     @Override

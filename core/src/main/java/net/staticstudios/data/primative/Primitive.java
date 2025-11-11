@@ -9,13 +9,16 @@ public class Primitive<T> {
     private final Class<T> runtimeType;
     private final Function<@NotNull String, @NotNull T> decoder;
     private final Function<@NotNull T, @NotNull String> encoder;
+    private final Function<@NotNull T, @NotNull T> copier;
     private final String h2SQLType;
     private final String pgSQLType;
 
-    public Primitive(Class<T> runtimeType, Function<@NotNull String, @NotNull T> decoder, Function<@NotNull T, @NotNull String> encoder, String h2SQLType, String pgSQLType) {
+    public Primitive(Class<T> runtimeType, Function<@NotNull String, @NotNull T> decoder, Function<@NotNull T, @NotNull String> encoder, Function<@NotNull T, @NotNull T> copier,
+                     String h2SQLType, String pgSQLType) {
         this.runtimeType = runtimeType;
         this.decoder = decoder;
         this.encoder = encoder;
+        this.copier = copier;
         this.h2SQLType = h2SQLType;
         this.pgSQLType = pgSQLType;
     }
@@ -36,6 +39,13 @@ public class Primitive<T> {
             return null;
         }
         return encoder.apply(value);
+    }
+
+    public @Nullable T copy(@Nullable T value) {
+        if (value == null) {
+            return null;
+        }
+        return copier.apply(value);
     }
 
     public String getH2SQLType() {

@@ -539,6 +539,11 @@ public class SQLBuilder {
         if (referencedTable == null) {
             List<ColumnMetadata> idColumns = List.of(new AutoIncrementingIntegerColumnMetadata(referencedSchemaName, referencedTableName, referencedTableName + "_id"));
             referencedTable = new SQLTable(referencedSchema, referencedTableName, idColumns);
+            for (ColumnMetadata idCol : referencedTable.getIdColumns()) {
+                Preconditions.checkState(referencedTable.getColumn(idCol.name()) == null, "ID column name " + idCol.name() + " in referringTable " + referencedTableName + " is duplicated!");
+                SQLColumn sqlColumn = new SQLColumn(referencedTable, idCol.type(), idCol.name(), false, false, true, null);
+                referencedTable.addColumn(sqlColumn);
+            }
             referencedSchema.addTable(referencedTable);
             referencedTable.addColumn(new SQLColumn(referencedTable, genericType, referencedColumnName, oneToMany.nullable(), oneToMany.indexed(), oneToMany.unique(), null));
             for (Link link : parseLinks(oneToMany.link())) {
@@ -653,6 +658,11 @@ public class SQLBuilder {
                 joinTableIdColumns.add(new ColumnMetadata(joinTableSchemaName, joinTableName, referencedTableColumnPrefix + "_" + foundColumn.getName(), foundColumn.getType(), false, false, ""));
             }
             joinTable = new SQLTable(joinSchema, joinTableName, joinTableIdColumns);
+            for (ColumnMetadata idCol : joinTable.getIdColumns()) {
+                Preconditions.checkState(joinTable.getColumn(idCol.name()) == null, "ID column name " + idCol.name() + " in referringTable " + joinTableName + " is duplicated!");
+                SQLColumn sqlColumn = new SQLColumn(joinTable, idCol.type(), idCol.name(), false, false, true, null);
+                joinTable.addColumn(sqlColumn);
+            }
             joinSchema.addTable(joinTable);
         }
 

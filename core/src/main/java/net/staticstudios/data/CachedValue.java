@@ -2,7 +2,7 @@ package net.staticstudios.data;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Supplier;
-import net.staticstudios.data.impl.data.CachedValueImpl;
+import net.staticstudios.data.impl.data.AbstractCachedValue;
 import net.staticstudios.data.util.*;
 import org.jetbrains.annotations.Nullable;
 
@@ -44,7 +44,7 @@ public interface CachedValue<T> extends Value<T> {
             this.dataType = dataType;
         }
 
-        public void setDelegate(CachedValueMetadata metadata, CachedValueImpl<T> delegate) {
+        public void setDelegate(CachedValueMetadata metadata, AbstractCachedValue<T> delegate) {
             Preconditions.checkNotNull(delegate, "Delegate cannot be null");
             Preconditions.checkState(this.delegate == null, "Delegate is already set");
             delegate.setFallback(this.fallback);
@@ -56,7 +56,7 @@ public interface CachedValue<T> extends Value<T> {
                 cachedValueUpdateHandlers.add(asCachedValueHandler(handler));
             }
 
-            holder.getDataManager().registerCachedValueUpdateHandler(metadata, cachedValueUpdateHandlers);
+            holder.getDataManager().registerCachedValueUpdateHandlers(metadata, cachedValueUpdateHandlers);
         }
 
         @Override

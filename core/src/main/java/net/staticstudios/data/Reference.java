@@ -20,6 +20,8 @@ public interface Reference<T extends UniqueData> extends Relation<T> {
 
     void set(@Nullable T value);
 
+    //todo: support update handlers
+
     class ProxyReference<T extends UniqueData> implements Reference<T> {
         private final UniqueData holder;
         private final Class<T> referenceType;

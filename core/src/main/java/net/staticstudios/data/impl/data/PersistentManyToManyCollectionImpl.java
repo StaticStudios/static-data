@@ -21,28 +21,22 @@ import java.util.*;
 public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements PersistentCollection<T> {
     private final UniqueData holder;
     private final Class<T> type;
-    private final String parsedJoinTableSchema;
-    private final String parsedJoinTableName;
-    private final String links; // since we need information about the column prefixes in the join referringTable, we have to compute these at runtime
-    private @Nullable List<Link> cachedJoinTableToDataTableLinks = null;
-    private @Nullable List<Link> cachedJoinTableToReferencedTableLinks = null;
+    private final PersistentManyToManyCollectionMetadata metadata;
 
-    public PersistentManyToManyCollectionImpl(UniqueData holder, Class<T> type, String parsedJoinTableSchema, String parsedJoinTableName, String links) {
+    @SuppressWarnings("unchecked")
+    public PersistentManyToManyCollectionImpl(UniqueData holder, PersistentManyToManyCollectionMetadata metadata) {
         this.holder = holder;
-        this.type = type;
-        this.parsedJoinTableSchema = parsedJoinTableSchema;
-        this.parsedJoinTableName = parsedJoinTableName;
-        this.links = links;
+        this.type = (Class<T>) metadata.getReferencedType();
+        this.metadata = metadata;
     }
 
     public static <T extends UniqueData> void createAndDelegate(ProxyPersistentCollection<T> proxy, PersistentManyToManyCollectionMetadata metadata) {
-        PersistentManyToManyCollectionImpl<T> impl = new PersistentManyToManyCollectionImpl<>(proxy.getHolder(), proxy.getReferenceType(), metadata.getParsedJoinTableSchema(), metadata.getParsedJoinTableName(), metadata.getLinks());
-        proxy.setDelegate(impl);
+        PersistentManyToManyCollectionImpl<T> impl = new PersistentManyToManyCollectionImpl<>(proxy.getHolder(), metadata);
+        proxy.setDelegate(metadata, impl);
     }
 
-    @SuppressWarnings("unchecked")
     public static <T extends UniqueData> PersistentManyToManyCollectionImpl<T> create(UniqueData holder, PersistentManyToManyCollectionMetadata metadata) {
-        return new PersistentManyToManyCollectionImpl<>(holder, (Class<T>) metadata.getDataType(), metadata.getParsedJoinTableSchema(), metadata.getParsedJoinTableName(), metadata.getLinks());
+        return new PersistentManyToManyCollectionImpl<>(holder, metadata);
     }
 
     public static <T extends UniqueData> void delegate(T instance) {
@@ -75,7 +69,7 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
             String parsedJoinTableSchemaName = ValueUtils.parseValue(manyToManyAnnotation.joinTableSchema());
             String parsedJoinTableName = ValueUtils.parseValue(manyToManyAnnotation.joinTable());
             String links = manyToManyAnnotation.link();
-            PersistentManyToManyCollectionMetadata metadata = new PersistentManyToManyCollectionMetadata(referencedClass, parsedJoinTableSchemaName, parsedJoinTableName, links);
+            PersistentManyToManyCollectionMetadata metadata = new PersistentManyToManyCollectionMetadata(clazz, referencedClass, parsedJoinTableSchemaName, parsedJoinTableName, links);
             metadataMap.put(field, metadata);
         }
 
@@ -134,6 +128,16 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
     }
 
     @Override
+    public <U extends UniqueData> PersistentCollection<T> onAdd(Class<U> holderClass, CollectionChangeHandler<U, T> addHandler) {
+        throw new UnsupportedOperationException("Dynamically adding change handlers is not supported for PersistentCollections");
+    }
+
+    @Override
+    public <U extends UniqueData> PersistentCollection<T> onRemove(Class<U> holderClass, CollectionChangeHandler<U, T> removeHandler) {
+        throw new UnsupportedOperationException("Dynamically adding change handlers is not supported for PersistentCollections");
+    }
+
+    @Override
     public UniqueData getHolder() {
         return holder;
     }
@@ -154,15 +158,9 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
             return false;
         }
         T data = type.cast(o);
-        Set<ColumnValuePair[]> ids = getIds();
-        ColumnValuePair[] thatIdColumns = data.getIdColumns().getPairs();
-        for (ColumnValuePair[] idColumns : ids) {
-            if (Arrays.equals(idColumns, thatIdColumns)) {
-                return true;
-            }
-        }
-
-        return false;
+        Set<ColumnValuePairs> ids = getIds();
+        ColumnValuePairs thatIdColumns = data.getIdColumns();
+        return ids.contains(thatIdColumns);
     }
 
     @Override
@@ -172,10 +170,10 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
 
     @Override
     public @NotNull Object @NotNull [] toArray() {
-        Set<ColumnValuePair[]> ids = getIds();
+        Set<ColumnValuePairs> ids = getIds();
         Object[] array = new Object[ids.size()];
         int i = 0;
-        for (ColumnValuePair[] idColumns : ids) {
+        for (ColumnValuePairs idColumns : ids) {
             T instance = holder.getDataManager().getInstance(type, idColumns);
             array[i++] = instance;
         }
@@ -185,12 +183,12 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
     @SuppressWarnings("unchecked")
     @Override
     public @NotNull <T1> T1 @NotNull [] toArray(@NotNull T1 @NotNull [] a) {
-        Set<ColumnValuePair[]> ids = getIds();
+        Set<ColumnValuePairs> ids = getIds();
         if (a.length < ids.size()) {
             a = (T1[]) Array.newInstance(a.getClass().getComponentType(), ids.size());
         }
         int i = 0;
-        for (ColumnValuePair[] idColumns : ids) {
+        for (ColumnValuePairs idColumns : ids) {
             T instance = holder.getDataManager().getInstance(type, idColumns);
             T1 element = (T1) instance;
             a[i++] = element;
@@ -215,21 +213,15 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
                 return false;
             }
         }
-        Set<ColumnValuePair[]> ids = getIds();
+        Set<ColumnValuePairs> ids = getIds();
         for (Object o : c) {
             T data = type.cast(o);
-            ColumnValuePair[] thatIdColumns = data.getIdColumns().getPairs();
-            boolean found = false;
-            for (ColumnValuePair[] idColumns : ids) {
-                if (Arrays.equals(idColumns, thatIdColumns)) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
+            ColumnValuePairs thatIdColumns = data.getIdColumns();
+            if (!ids.contains(thatIdColumns)) {
                 return false;
             }
         }
+
         return true;
     }
 
@@ -244,8 +236,8 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         SQLTransaction.Statement selectDataIdsStatement = buildSelectDataIdsStatement();
         SQLTransaction.Statement selectReferencedIdsStatement = buildSelectReferencedIdsStatement();
         SQLTransaction.Statement updateStatement = buildUpdateStatement();
-        List<Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
-        List<Link> joinTableToReferencedTableLinks = getCachedJoinTableToReferencedTableLinks();
+        List<Link> joinTableToDataTableLinks = metadata.getJoinTableToDataTableLinks(holder.getDataManager());
+        List<Link> joinTableToReferencedTableLinks = metadata.getJoinTableToReferencedTableLinks(holder.getDataManager());
 
         List<Object> holderLinkingValues = new ArrayList<>(joinTableToDataTableLinks.size());
         List<Object> holderIdValues = holder.getIdColumns().stream().map(ColumnValuePair::value).toList();
@@ -300,13 +292,13 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
 
     @Override
     public boolean removeAll(@NotNull Collection<?> c) {
-        List<ColumnValuePair[]> idsToRemove = new ArrayList<>();
+        List<ColumnValuePairs> idsToRemove = new ArrayList<>();
         for (Object o : c) {
             if (!type.isInstance(o)) {
                 continue;
             }
             T data = type.cast(o);
-            ColumnValuePair[] idColumns = data.getIdColumns().getPairs();
+            ColumnValuePairs idColumns = data.getIdColumns();
             idsToRemove.add(idColumns);
         }
         return removeIds(idsToRemove);
@@ -314,27 +306,20 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
 
     @Override
     public boolean retainAll(@NotNull Collection<?> c) {
-        Set<ColumnValuePair[]> currentIds = getIds();
-        Set<ColumnValuePair[]> idsToRetain = new HashSet<>();
+        Set<ColumnValuePairs> currentIds = getIds();
+        Set<ColumnValuePairs> idsToRetain = new HashSet<>();
         for (Object o : c) {
             if (!type.isInstance(o)) {
                 continue;
             }
             T data = type.cast(o);
-            ColumnValuePair[] thatIdColumns = data.getIdColumns().getPairs();
+            ColumnValuePairs thatIdColumns = data.getIdColumns();
             idsToRetain.add(thatIdColumns);
         }
 
-        List<ColumnValuePair[]> idsToRemove = new ArrayList<>();
-        for (ColumnValuePair[] idColumns : currentIds) {
-            boolean found = false;
-            for (ColumnValuePair[] retainIdColumns : idsToRetain) {
-                if (Arrays.equals(idColumns, retainIdColumns)) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
+        List<ColumnValuePairs> idsToRemove = new ArrayList<>();
+        for (ColumnValuePairs idColumns : currentIds) {
+            if (!idsToRetain.contains(idColumns)) {
                 idsToRemove.add(idColumns);
             }
         }
@@ -352,7 +337,7 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         DataAccessor dataAccessor = holder.getDataManager().getDataAccessor();
         SQLTransaction.Statement selectDataIdsStatement = buildSelectDataIdsStatement();
         SQLTransaction.Statement clearStatement = buildClearStatement();
-        List<Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
+        List<Link> joinTableToDataTableLinks = metadata.getJoinTableToDataTableLinks(holder.getDataManager());
 
         List<Object> holderLinkingValues = new ArrayList<>(joinTableToDataTableLinks.size());
         List<Object> holderIdValues = holder.getIdColumns().stream().map(ColumnValuePair::value).toList();
@@ -381,7 +366,7 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
     }
 
 
-    public boolean removeIds(List<ColumnValuePair[]> idsToRemove) {
+    public boolean removeIds(List<ColumnValuePairs> idsToRemove) {
         if (idsToRemove.isEmpty()) { //this operation isn't cheap, so we should avoid it if we can
             return false;
         }
@@ -390,8 +375,8 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         SQLTransaction.Statement selectDataIdsStatement = buildSelectDataIdsStatement();
         SQLTransaction.Statement selectReferencedIdsStatement = buildSelectReferencedIdsStatement();
         SQLTransaction.Statement removeStatement = buildRemoveStatement();
-        List<Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
-        List<Link> joinTableToReferencedTableLinks = getCachedJoinTableToReferencedTableLinks();
+        List<Link> joinTableToDataTableLinks = metadata.getJoinTableToDataTableLinks(holder.getDataManager());
+        List<Link> joinTableToReferencedTableLinks = metadata.getJoinTableToReferencedTableLinks(holder.getDataManager());
 
         List<Object> holderLinkingValues = new ArrayList<>(joinTableToDataTableLinks.size());
         List<Object> holderIdValues = holder.getIdColumns().stream().map(ColumnValuePair::value).toList();
@@ -411,8 +396,8 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         });
 
 
-        for (ColumnValuePair[] idColumns : idsToRemove) {
-            List<Object> referencedIdValues = Arrays.stream(idColumns).map(ColumnValuePair::value).toList();
+        for (ColumnValuePairs idColumns : idsToRemove) {
+            List<Object> referencedIdValues = idColumns.stream().map(ColumnValuePair::value).toList();
             List<Object> referencedLinkingValues = new ArrayList<>(joinTableToReferencedTableLinks.size());
             transaction.query(selectReferencedIdsStatement, () -> referencedIdValues, rs -> {
                 try {
@@ -449,18 +434,18 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
      *
      * @return set of id column value pairs for the referenced type
      */
-    private Set<ColumnValuePair[]> getIds() {
+    public Set<ColumnValuePairs> getIds() {
         //todo: this method is slow, plan to cache this later.
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot get entries on a deleted UniqueData instance");
-        Set<ColumnValuePair[]> ids = new HashSet<>();
+        Set<ColumnValuePairs> ids = new HashSet<>();
         UniqueDataMetadata holderMetadata = holder.getMetadata();
         UniqueDataMetadata target = holder.getDataManager().getMetadata(type);
         DataAccessor dataAccessor = holder.getDataManager().getDataAccessor();
 
-        String joinTableSchema = getJoinTableSchema(parsedJoinTableSchema, holderMetadata.schema());
-        String joinTableName = getJoinTableName(parsedJoinTableName, holderMetadata.table(), target.table());
-        List<Link> joinTableToDataTableLinks = getJoinTableToDataTableLinks(holderMetadata.table(), links);
-        List<Link> joinTableToReferencedTableLinks = getJoinTableToReferencedTableLinks(holderMetadata.table(), target.table(), links);
+        String joinTableSchema = metadata.getJoinTableSchema(holder.getDataManager());
+        String joinTableName = metadata.getJoinTableName(holder.getDataManager());
+        List<Link> joinTableToDataTableLinks = metadata.getJoinTableToDataTableLinks(holder.getDataManager());
+        List<Link> joinTableToReferencedTableLinks = metadata.getJoinTableToReferencedTableLinks(holder.getDataManager());
 
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("SELECT ");
@@ -500,7 +485,7 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
                     Object value = rs.getObject(columnMetadata.name());
                     idColumns[i++] = new ColumnValuePair(columnMetadata.name(), value);
                 }
-                ids.add(idColumns);
+                ids.add(new ColumnValuePairs(idColumns));
             }
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -512,7 +497,7 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
 
     private SQLTransaction.Statement buildSelectDataIdsStatement() {
         UniqueDataMetadata holderMetadata = holder.getMetadata();
-        List<Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
+        List<Link> joinTableToDataTableLinks = metadata.getJoinTableToDataTableLinks(holder.getDataManager());
 
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("SELECT ");
@@ -532,7 +517,7 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
 
     private SQLTransaction.Statement buildSelectReferencedIdsStatement() {
         UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
-        List<Link> joinTableToReferencedTableLinks = getCachedJoinTableToReferencedTableLinks();
+        List<Link> joinTableToReferencedTableLinks = metadata.getJoinTableToReferencedTableLinks(holder.getDataManager());
 
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("SELECT ");
@@ -552,13 +537,11 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
 
 
     private SQLTransaction.Statement buildUpdateStatement() {
-        UniqueDataMetadata holderMetadata = holder.getMetadata();
-        UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
-        List<Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
-        List<Link> joinTableToReferencedTableLinks = getCachedJoinTableToReferencedTableLinks();
+        List<Link> joinTableToDataTableLinks = metadata.getJoinTableToDataTableLinks(holder.getDataManager());
+        List<Link> joinTableToReferencedTableLinks = metadata.getJoinTableToReferencedTableLinks(holder.getDataManager());
 
-        String joinTableSchema = getJoinTableSchema(parsedJoinTableSchema, holderMetadata.schema());
-        String joinTableName = getJoinTableName(parsedJoinTableName, holderMetadata.table(), typeMetadata.table());
+        String joinTableSchema = metadata.getJoinTableSchema(holder.getDataManager());
+        String joinTableName = metadata.getJoinTableName(holder.getDataManager());
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("MERGE INTO \"").append(joinTableSchema).append("\".\"").append(joinTableName).append("\" AS _target USING (VALUES (");
         sqlBuilder.append("?, ".repeat(Math.max(0, joinTableToDataTableLinks.size() + joinTableToReferencedTableLinks.size())));
@@ -627,13 +610,11 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
     }
 
     private SQLTransaction.Statement buildRemoveStatement() {
-        UniqueDataMetadata holderMetadata = holder.getMetadata();
-        UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
-        List<Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
-        List<Link> joinTableToReferencedTableLinks = getCachedJoinTableToReferencedTableLinks();
+        List<Link> joinTableToDataTableLinks = metadata.getJoinTableToDataTableLinks(holder.getDataManager());
+        List<Link> joinTableToReferencedTableLinks = metadata.getJoinTableToReferencedTableLinks(holder.getDataManager());
 
-        String joinTableSchema = getJoinTableSchema(parsedJoinTableSchema, holderMetadata.schema());
-        String joinTableName = getJoinTableName(parsedJoinTableName, holderMetadata.table(), typeMetadata.table());
+        String joinTableSchema = metadata.getJoinTableSchema(holder.getDataManager());
+        String joinTableName = metadata.getJoinTableName(holder.getDataManager());
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("DELETE FROM \"").append(joinTableSchema).append("\".\"").append(joinTableName).append("\" WHERE ");
         for (Link entry : joinTableToDataTableLinks) {
@@ -650,12 +631,10 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
     }
 
     private SQLTransaction.Statement buildClearStatement() {
-        UniqueDataMetadata holderMetadata = holder.getMetadata();
-        UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
-        List<Link> joinTableToDataTableLinks = getCachedJoinTableToDataTableLinks();
+        List<Link> joinTableToDataTableLinks = metadata.getJoinTableToDataTableLinks(holder.getDataManager());
 
-        String joinTableSchema = getJoinTableSchema(parsedJoinTableSchema, holderMetadata.schema());
-        String joinTableName = getJoinTableName(parsedJoinTableName, holderMetadata.table(), typeMetadata.table());
+        String joinTableSchema = metadata.getJoinTableSchema(holder.getDataManager());
+        String joinTableName = metadata.getJoinTableName(holder.getDataManager());
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("DELETE FROM \"").append(joinTableSchema).append("\".\"").append(joinTableName).append("\" WHERE ");
         for (Link entry : joinTableToDataTableLinks) {
@@ -667,79 +646,41 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         return SQLTransaction.Statement.of(sql, sql);
     }
 
-    private List<Link> getCachedJoinTableToDataTableLinks() {
-        if (cachedJoinTableToDataTableLinks == null) {
-            UniqueDataMetadata holderMetadata = holder.getMetadata();
-            cachedJoinTableToDataTableLinks = getJoinTableToDataTableLinks(holderMetadata.table(), links);
-        }
-        return cachedJoinTableToDataTableLinks;
-    }
-
-    private List<Link> getCachedJoinTableToReferencedTableLinks() {
-        if (cachedJoinTableToReferencedTableLinks == null) {
-            UniqueDataMetadata holderMetadata = holder.getMetadata();
-            UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
-            cachedJoinTableToReferencedTableLinks = getJoinTableToReferencedTableLinks(holderMetadata.table(), typeMetadata.table(), links);
-        }
-        return cachedJoinTableToReferencedTableLinks;
-    }
-
     @Override
     public boolean equals(Object obj) {
         if (this == obj) return true;
         if (!(obj instanceof PersistentManyToManyCollectionImpl<?> that)) return false;
-        UniqueDataMetadata holderMetadata = holder.getMetadata();
-        UniqueDataMetadata thatHolderMetadata = that.holder.getMetadata();
-        UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
         boolean equals = Objects.equals(type, that.type) &&
-                Objects.equals(getJoinTableSchema(parsedJoinTableSchema, holderMetadata.schema()),
-                        getJoinTableSchema(that.parsedJoinTableSchema, thatHolderMetadata.schema())) &&
-                Objects.equals(getJoinTableName(parsedJoinTableName, holderMetadata.table(), typeMetadata.table()),
-                        getJoinTableName(that.parsedJoinTableName, thatHolderMetadata.table(), typeMetadata.table())) &&
-                Objects.equals(getJoinTableToDataTableLinks(holderMetadata.table(), links),
-                        getJoinTableToDataTableLinks(thatHolderMetadata.table(), that.links)) &&
-                Objects.equals(getJoinTableToReferencedTableLinks(holderMetadata.table(), typeMetadata.table(), links),
-                        getJoinTableToReferencedTableLinks(thatHolderMetadata.table(), typeMetadata.table(), that.links));
+                Objects.equals(metadata.getJoinTableSchema(holder.getDataManager()),
+                        that.metadata.getJoinTableSchema(that.holder.getDataManager())) &&
+                Objects.equals(metadata.getJoinTableName(holder.getDataManager()),
+                        that.metadata.getJoinTableName(that.holder.getDataManager())) &&
+                Objects.equals(metadata.getJoinTableToDataTableLinks(holder.getDataManager()),
+                        that.metadata.getJoinTableToDataTableLinks(that.holder.getDataManager())) &&
+                Objects.equals(metadata.getJoinTableToReferencedTableLinks(holder.getDataManager()),
+                        that.metadata.getJoinTableToReferencedTableLinks(that.holder.getDataManager()));
 
         if (!equals) {
             return false;
         }
 
-        Set<ColumnValuePair[]> ids = getIds();
-        Set<ColumnValuePair[]> thatIds = that.getIds();
-        if (ids.size() != thatIds.size()) {
-            return false;
-        }
+        Set<ColumnValuePairs> ids = getIds();
+        Set<ColumnValuePairs> thatIds = that.getIds();
 
-        for (ColumnValuePair[] idColumns : ids) {
-            boolean found = false;
-            for (ColumnValuePair[] thatIdColumns : thatIds) {
-                if (Arrays.equals(idColumns, thatIdColumns)) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                return false;
-            }
-        }
-
-        return true;
+        return ids.equals(thatIds);
     }
 
     @Override
     public int hashCode() {
-        UniqueDataMetadata holderMetadata = holder.getMetadata();
-        UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
         int hash = Objects.hash(type,
-                getJoinTableSchema(parsedJoinTableSchema, holderMetadata.schema()),
-                getJoinTableName(parsedJoinTableName, holderMetadata.table(), typeMetadata.table()),
-                getJoinTableToDataTableLinks(holderMetadata.table(), links),
-                getJoinTableToReferencedTableLinks(holderMetadata.table(), typeMetadata.table(), links));
+                metadata.getJoinTableSchema(holder.getDataManager()),
+                metadata.getJoinTableName(holder.getDataManager()),
+                metadata.getJoinTableToDataTableLinks(holder.getDataManager()),
+                metadata.getJoinTableToReferencedTableLinks(holder.getDataManager()));
 
         int arrayHash = 0; // the ids will not always be in the same order, so ensure this is commutative
-        for (ColumnValuePair[] idColumns : getIds()) {
-            arrayHash += Arrays.hashCode(idColumns);
+        for (ColumnValuePairs idColumns : getIds()) {
+            arrayHash += idColumns.hashCode();
         }
 
         hash = 31 * hash + arrayHash;
@@ -761,10 +702,10 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
     }
 
     class IteratorImpl implements Iterator<T> {
-        private final List<ColumnValuePair[]> ids;
+        private final List<ColumnValuePairs> ids;
         private int index = 0;
 
-        public IteratorImpl(Set<ColumnValuePair[]> ids) {
+        public IteratorImpl(Set<ColumnValuePairs> ids) {
             this.ids = new ArrayList<>(ids);
         }
 
@@ -778,7 +719,7 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
             if (!hasNext()) {
                 throw new NoSuchElementException();
             }
-            ColumnValuePair[] idColumns = ids.get(index++);
+            ColumnValuePairs idColumns = ids.get(index++);
             return holder.getDataManager().getInstance(type, idColumns);
         }
 

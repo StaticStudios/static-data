@@ -11,15 +11,18 @@ import org.jetbrains.annotations.ApiStatus;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public abstract class UniqueData {
     private ColumnValuePairs idColumns;
     private DataManager dataManager;
     private volatile boolean isDeleted = false;
+    private boolean isSnapshot = false;
 
     @ApiStatus.Internal
-    protected final void setDataManager(DataManager dataManager) {
+    protected final void setDataManager(DataManager dataManager, boolean isSnapshot) {
         this.dataManager = dataManager;
+        this.isSnapshot = isSnapshot;
     }
 
     @ApiStatus.Internal
@@ -67,6 +70,10 @@ public abstract class UniqueData {
         }
     }
 
+    public final boolean isSnapshot() {
+        return isSnapshot;
+    }
+
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
@@ -79,6 +86,9 @@ public abstract class UniqueData {
         if (isDeleted) {
             sb.append("deleted=true, ");
         }
+        if (isSnapshot) {
+            sb.append("snapshot=true, ");
+        }
         sb.append("dataManager=").append(dataManager);
         sb.append("}");
         return sb.toString();
@@ -86,7 +96,7 @@ public abstract class UniqueData {
 
     @Override
     public final int hashCode() {
-        return idColumns.hashCode();
+        return Objects.hash(dataManager, idColumns);
     }
 
     @Override

@@ -43,7 +43,7 @@ public interface PersistentValue<T> extends Value<T> {
             Preconditions.checkNotNull(delegate, "Delegate cannot be null");
             Preconditions.checkState(this.delegate == null, "Delegate is already set");
             this.delegate = delegate;
-            holder.getDataManager().registerPersistentValueUpdateHandler(metadata, updateHandlers);
+            holder.getDataManager().registerPersistentValueUpdateHandlers(metadata, updateHandlers);
         }
 
         @Override

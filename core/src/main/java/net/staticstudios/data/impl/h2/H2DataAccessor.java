@@ -552,7 +552,16 @@ public class H2DataAccessor implements DataAccessor {
                 if (!knownTables.contains(schema + "." + table)) {
                     logger.trace("Discovered new referringTable {}.{}", schema, table);
                     UUID randomId = UUID.randomUUID();
-                    @Language("SQL") String sql = "CREATE TRIGGER IF NOT EXISTS \"trg_%s_%s\" AFTER INSERT, UPDATE, DELETE ON \"%s\".\"%s\" FOR EACH ROW CALL '%s'";
+                    @Language("SQL") String sql = "CREATE TRIGGER IF NOT EXISTS \"insert_update_trg_%s_%s\" AFTER INSERT, UPDATE ON \"%s\".\"%s\" FOR EACH ROW CALL '%s'";
+
+                    try (Statement createTrigger = connection.createStatement()) {
+                        String formatted = sql.formatted(table, randomId.toString().replace('-', '_'), schema, table, H2UpdateHandlerTrigger.class.getName());
+                        logger.trace("[H2] {}", formatted);
+                        H2UpdateHandlerTrigger.registerDataManager(randomId, dataManager);
+                        createTrigger.execute(formatted);
+                    }
+
+                    sql = "CREATE TRIGGER IF NOT EXISTS \"delete_trg_%s_%s\" BEFORE DELETE ON \"%s\".\"%s\" FOR EACH ROW CALL '%s'";
 
                     try (Statement createTrigger = connection.createStatement()) {
                         String formatted = sql.formatted(table, randomId.toString().replace('-', '_'), schema, table, H2UpdateHandlerTrigger.class.getName());

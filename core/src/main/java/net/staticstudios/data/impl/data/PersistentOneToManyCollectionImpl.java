@@ -1,6 +1,7 @@
 package net.staticstudios.data.impl.data;
 
 import com.google.common.base.Preconditions;
+import net.staticstudios.data.DataManager;
 import net.staticstudios.data.OneToMany;
 import net.staticstudios.data.PersistentCollection;
 import net.staticstudios.data.UniqueData;
@@ -29,13 +30,13 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         this.link = link;
     }
 
-    public static <T extends UniqueData> void createAndDelegate(PersistentCollection.ProxyPersistentCollection<T> proxy, List<Link> link) {
+    public static <T extends UniqueData> void createAndDelegate(PersistentCollection.ProxyPersistentCollection<T> proxy, List<Link> link, PersistentOneToManyCollectionMetadata metadata) {
         PersistentOneToManyCollectionImpl<T> delegate = new PersistentOneToManyCollectionImpl<>(
                 proxy.getHolder(),
-                proxy.getReferenceType(),
+                proxy.getDataType(),
                 link
         );
-        proxy.setDelegate(delegate);
+        proxy.setDelegate(metadata, delegate);
     }
 
     public static <T extends UniqueData> PersistentOneToManyCollectionImpl<T> create(UniqueData holder, Class<T> type, List<Link> link) {
@@ -49,11 +50,11 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
             if (!(collectionMetadata instanceof PersistentOneToManyCollectionMetadata oneToManyMetadata)) continue;
 
             if (pair.instance() instanceof PersistentCollection.ProxyPersistentCollection<?> proxyCollection) {
-                createAndDelegate((PersistentCollection.ProxyPersistentCollection<? extends UniqueData>) proxyCollection, oneToManyMetadata.getLinks());
+                createAndDelegate((PersistentCollection.ProxyPersistentCollection<? extends UniqueData>) proxyCollection, oneToManyMetadata.getLinks(), oneToManyMetadata);
             } else {
                 pair.field().setAccessible(true);
                 try {
-                    pair.field().set(instance, create(instance, oneToManyMetadata.getDataType(), oneToManyMetadata.getLinks()));
+                    pair.field().set(instance, create(instance, oneToManyMetadata.getReferencedType(), oneToManyMetadata.getLinks()));
                 } catch (IllegalAccessException e) {
                     throw new RuntimeException(e);
                 }
@@ -61,7 +62,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         }
     }
 
-    public static <T extends UniqueData> Map<Field, PersistentOneToManyCollectionMetadata> extractMetadata(Class<T> clazz) {
+    public static <T extends UniqueData> Map<Field, PersistentOneToManyCollectionMetadata> extractMetadata(DataManager dataManager, Class<T> clazz) {
         Map<Field, PersistentOneToManyCollectionMetadata> metadataMap = new HashMap<>();
         for (Field field : ReflectionUtils.getFields(clazz, PersistentCollection.class)) {
             OneToMany oneToManyAnnotation = field.getAnnotation(OneToMany.class);
@@ -69,12 +70,21 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
             Class<?> genericType = ReflectionUtils.getGenericType(field);
             if (genericType == null || !UniqueData.class.isAssignableFrom(genericType)) continue;
             Class<? extends UniqueData> referencedClass = genericType.asSubclass(UniqueData.class);
-            metadataMap.put(field, new PersistentOneToManyCollectionMetadata(referencedClass, SQLBuilder.parseLinks(oneToManyAnnotation.link())));
+            metadataMap.put(field, new PersistentOneToManyCollectionMetadata(dataManager, clazz, referencedClass, SQLBuilder.parseLinks(oneToManyAnnotation.link())));
         }
 
         return metadataMap;
     }
 
+    @Override
+    public <U extends UniqueData> PersistentCollection<T> onAdd(Class<U> holderClass, CollectionChangeHandler<U, T> addHandler) {
+        throw new UnsupportedOperationException("Dynamically adding change handlers is not supported for PersistentCollections");
+    }
+
+    @Override
+    public <U extends UniqueData> PersistentCollection<T> onRemove(Class<U> holderClass, CollectionChangeHandler<U, T> removeHandler) {
+        throw new UnsupportedOperationException("Dynamically adding change handlers is not supported for PersistentCollections");
+    }
 
     @Override
     public UniqueData getHolder() {
@@ -97,15 +107,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
             return false;
         }
         T data = type.cast(o);
-        Set<ColumnValuePair[]> ids = getIds();
-        ColumnValuePair[] thatIdColumns = data.getIdColumns().getPairs();
-        for (ColumnValuePair[] idColumns : ids) {
-            if (Arrays.equals(idColumns, thatIdColumns)) {
-                return true;
-            }
-        }
-
-        return false;
+        return getIds().contains(data.getIdColumns());
     }
 
     @Override
@@ -115,10 +117,10 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
 
     @Override
     public @NotNull Object @NotNull [] toArray() {
-        Set<ColumnValuePair[]> ids = getIds();
+        Set<ColumnValuePairs> ids = getIds();
         Object[] array = new Object[ids.size()];
         int i = 0;
-        for (ColumnValuePair[] idColumns : ids) {
+        for (ColumnValuePairs idColumns : ids) {
             T instance = holder.getDataManager().getInstance(type, idColumns);
             array[i++] = instance;
         }
@@ -128,12 +130,12 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
     @SuppressWarnings("unchecked")
     @Override
     public @NotNull <T1> T1 @NotNull [] toArray(@NotNull T1 @NotNull [] a) {
-        Set<ColumnValuePair[]> ids = getIds();
+        Set<ColumnValuePairs> ids = getIds();
         if (a.length < ids.size()) {
             a = (T1[]) Array.newInstance(a.getClass().getComponentType(), ids.size());
         }
         int i = 0;
-        for (ColumnValuePair[] idColumns : ids) {
+        for (ColumnValuePairs idColumns : ids) {
             T instance = holder.getDataManager().getInstance(type, idColumns);
             T1 element = (T1) instance;
             a[i++] = element;
@@ -158,18 +160,10 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
                 return false;
             }
         }
-        Set<ColumnValuePair[]> ids = getIds();
+        Set<ColumnValuePairs> ids = getIds();
         for (Object o : c) {
             T data = type.cast(o);
-            ColumnValuePair[] thatIdColumns = data.getIdColumns().getPairs();
-            boolean found = false;
-            for (ColumnValuePair[] idColumns : ids) {
-                if (Arrays.equals(idColumns, thatIdColumns)) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
+            if (!ids.contains(data.getIdColumns())) {
                 return false;
             }
         }
@@ -225,13 +219,13 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
 
     @Override
     public boolean removeAll(@NotNull Collection<?> c) {
-        List<ColumnValuePair[]> ids = new ArrayList<>();
+        List<ColumnValuePairs> ids = new ArrayList<>();
         for (Object o : c) {
             if (!type.isInstance(o)) {
                 continue;
             }
             T data = type.cast(o);
-            ColumnValuePair[] thatIdColumns = data.getIdColumns().getPairs();
+            ColumnValuePairs thatIdColumns = data.getIdColumns();
             ids.add(thatIdColumns);
         }
         removeIds(ids);
@@ -241,27 +235,20 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
 
     @Override
     public boolean retainAll(@NotNull Collection<?> c) {
-        Set<ColumnValuePair[]> currentIds = getIds();
-        Set<ColumnValuePair[]> idsToRetain = new HashSet<>();
+        Set<ColumnValuePairs> currentIds = getIds();
+        Set<ColumnValuePairs> idsToRetain = new HashSet<>();
         for (Object o : c) {
             if (!type.isInstance(o)) {
                 continue;
             }
             T data = type.cast(o);
-            ColumnValuePair[] thatIdColumns = data.getIdColumns().getPairs();
+            ColumnValuePairs thatIdColumns = data.getIdColumns();
             idsToRetain.add(thatIdColumns);
         }
 
-        List<ColumnValuePair[]> idsToRemove = new ArrayList<>();
-        for (ColumnValuePair[] idColumns : currentIds) {
-            boolean found = false;
-            for (ColumnValuePair[] retainIdColumns : idsToRetain) {
-                if (Arrays.equals(idColumns, retainIdColumns)) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
+        List<ColumnValuePairs> idsToRemove = new ArrayList<>();
+        for (ColumnValuePairs idColumns : currentIds) {
+            if (!idsToRetain.contains(idColumns)) {
                 idsToRemove.add(idColumns);
             }
         }
@@ -308,7 +295,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         }
     }
 
-    private void removeIds(List<ColumnValuePair[]> ids) {
+    private void removeIds(List<ColumnValuePairs> ids) {
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot set entries on a deleted UniqueData instance");
         if (ids.isEmpty()) {
             return;
@@ -337,7 +324,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
             }
         });
 
-        for (ColumnValuePair[] idColumns : ids) {
+        for (ColumnValuePairs idColumns : ids) {
             transaction.update(updateStatement, () -> {
                 List<Object> values = new ArrayList<>();
                 for (Object holderLinkingValue : holderLinkingValues) { //set them to null
@@ -414,10 +401,10 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         return SQLTransaction.Statement.of(sql, sql);
     }
 
-    private Set<ColumnValuePair[]> getIds() {
+    public Set<ColumnValuePairs> getIds() {
         // note: we need the join since we support linking on non-id columnsInReferringTable
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot get entries on a deleted UniqueData instance");
-        Set<ColumnValuePair[]> ids = new HashSet<>();
+        Set<ColumnValuePairs> ids = new HashSet<>();
         UniqueDataMetadata holderMetadata = holder.getMetadata();
         UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
         DataAccessor dataAccessor = holder.getDataManager().getDataAccessor();
@@ -458,7 +445,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
                     Object value = rs.getObject(columnMetadata.name());
                     idColumns[i++] = new ColumnValuePair(columnMetadata.name(), value);
                 }
-                ids.add(idColumns);
+                ids.add(new ColumnValuePairs(idColumns));
             }
         } catch (SQLException e) {
             throw new RuntimeException(e);
@@ -497,10 +484,10 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
     }
 
     class IteratorImpl implements Iterator<T> {
-        private final List<ColumnValuePair[]> ids;
+        private final List<ColumnValuePairs> ids;
         private int index = 0;
 
-        public IteratorImpl(Set<ColumnValuePair[]> ids) {
+        public IteratorImpl(Set<ColumnValuePairs> ids) {
             this.ids = new ArrayList<>(ids);
         }
 
@@ -514,7 +501,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
             if (!hasNext()) {
                 throw new NoSuchElementException();
             }
-            ColumnValuePair[] idColumns = ids.get(index++);
+            ColumnValuePairs idColumns = ids.get(index++);
             return holder.getDataManager().getInstance(type, idColumns);
         }
 

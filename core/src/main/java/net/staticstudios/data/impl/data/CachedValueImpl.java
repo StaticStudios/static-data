@@ -14,11 +14,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-public class CachedValueImpl<T> implements CachedValue<T> {
+public class CachedValueImpl<T> extends AbstractCachedValue<T> {
     private final UniqueData holder;
     private final Class<T> dataType;
     private final CachedValueMetadata metadata;
-    private Supplier<T> fallback;
 
     private CachedValueImpl(UniqueData holder, Class<T> dataType, CachedValueMetadata metadata) {
         this.holder = holder;
@@ -80,9 +79,6 @@ public class CachedValueImpl<T> implements CachedValue<T> {
         return new CachedValueMetadata(clazz, holderSchema, holderTable, ValueUtils.parseValue(identifierAnnotation.value()), expireAfterSeconds);
     }
 
-    public void setFallback(Supplier<T> fallback) {
-        this.fallback = fallback;
-    }
 
     @Override
     public UniqueData getHolder() {
@@ -109,7 +105,7 @@ public class CachedValueImpl<T> implements CachedValue<T> {
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot get value from a deleted UniqueData instance");
         T value = holder.getDataManager().getRedis(metadata.holderSchema(), metadata.holderTable(), metadata.identifier(), holder.getIdColumns(), dataType);
         if (value == null) {
-            return fallback.get();
+            return getFallback();
         }
         return value;
     }
@@ -117,7 +113,7 @@ public class CachedValueImpl<T> implements CachedValue<T> {
     @Override
     public void set(@Nullable T value) {
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot set value on a deleted UniqueData instance");
-        T fallback = this.fallback.get();
+        T fallback = getFallback();
         T toSet;
         if (Objects.equals(fallback, value)) {
             toSet = null;

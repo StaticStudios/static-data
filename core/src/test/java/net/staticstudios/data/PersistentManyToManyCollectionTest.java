@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -307,5 +308,100 @@ public class PersistentManyToManyCollectionTest extends DataTest {
         anotherUser.friends.addAll(friends);
         assertEquals(mockUser.friends, anotherUser.friends);
         assertEquals(mockUser.friends.hashCode(), anotherUser.friends.hashCode());
+    }
+
+    @Test
+    public void testAddHandlerUpdate() throws SQLException {
+        MockUser user = MockUser.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("handler test user")
+                .insert(InsertMode.SYNC);
+        List<MockUser> friends = createFriends(5);
+        user.friends.addAll(friends);
+        waitForDataPropagation();
+        assertEquals(5, user.friendAdditions.get());
+
+        List<MockUser> otherFriends = createFriends(5);
+
+        Connection pgConnection = getConnection();
+        int i = 0;
+        for (MockUser friend : friends) {
+            try (PreparedStatement preparedStatement = pgConnection.prepareStatement(
+                    "UPDATE \"public\".\"user_friends\" SET \"users_ref_id\" = ? WHERE \"users_id\" = ? AND \"users_ref_id\" = ?")) {
+                preparedStatement.setObject(1, otherFriends.get(i).id.get());
+                preparedStatement.setObject(2, user.id.get());
+                preparedStatement.setObject(3, friend.id.get());
+                preparedStatement.executeUpdate();
+            }
+            waitForDataPropagation();
+            assertEquals(5 + (++i), user.friendAdditions.get());
+        }
+    }
+
+    @Test
+    public void testRemoveHandlerUpdate() throws SQLException {
+        MockUser user = MockUser.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("handler test user")
+                .insert(InsertMode.SYNC);
+        List<MockUser> friends = createFriends(5);
+        user.friends.addAll(friends);
+        waitForDataPropagation();
+        assertEquals(5, user.friendAdditions.get());
+
+        Connection pgConnection = getConnection();
+        int i = 0;
+        for (MockUser friend : friends) {
+            try (PreparedStatement preparedStatement = pgConnection.prepareStatement(
+                    "DELETE FROM \"public\".\"user_friends\" WHERE \"users_id\" = ? AND \"users_ref_id\" = ?")) {
+                preparedStatement.setObject(1, user.id.get());
+                preparedStatement.setObject(2, friend.id.get());
+                preparedStatement.executeUpdate();
+            }
+            waitForDataPropagation();
+            assertEquals(++i, user.friendRemovals.get());
+        }
+    }
+
+    @Test
+    public void testAddHandlerInsert() {
+        MockUser user = MockUser.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("handler test user")
+                .insert(InsertMode.SYNC);
+
+        assertEquals(0, user.friendAdditions.get());
+
+        List<MockUser> friends = createFriends(5);
+        int i = 0;
+        for (MockUser friend : friends) {
+            user.friends.add(friend);
+            waitForUpdateHandlers();
+
+            assertEquals(++i, user.friendAdditions.get());
+        }
+    }
+
+    @Test
+    public void testRemoveHandlerDelete() {
+        MockUser user = MockUser.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("handler test user")
+                .insert(InsertMode.SYNC);
+
+        List<MockUser> friends = createFriends(5);
+        user.friends.addAll(friends);
+        waitForUpdateHandlers();
+
+        assertEquals(5, user.friends.size());
+        assertEquals(0, user.friendRemovals.get());
+
+        int i = 0;
+        for (MockUser friend : friends) {
+            user.friends.remove(friend);
+            waitForUpdateHandlers();
+
+            assertEquals(++i, user.friendRemovals.get());
+        }
     }
 }

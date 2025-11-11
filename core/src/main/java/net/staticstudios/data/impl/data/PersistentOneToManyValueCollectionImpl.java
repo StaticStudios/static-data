@@ -34,16 +34,16 @@ public class PersistentOneToManyValueCollectionImpl<T> implements PersistentColl
         this.link = link;
     }
 
-    public static <T> void createAndDelegate(ProxyPersistentCollection<T> proxy, String dataSchema, String dataTable, String dataColumn, List<Link> link) {
+    public static <T> void createAndDelegate(ProxyPersistentCollection<T> proxy, String dataSchema, String dataTable, String dataColumn, List<Link> link, PersistentOneToManyValueCollectionMetadata metadata) {
         PersistentOneToManyValueCollectionImpl<T> delegate = new PersistentOneToManyValueCollectionImpl<>(
                 proxy.getHolder(),
-                proxy.getReferenceType(),
+                proxy.getDataType(),
                 dataSchema,
                 dataTable,
                 dataColumn,
                 link
         );
-        proxy.setDelegate(delegate);
+        proxy.setDelegate(metadata, delegate);
     }
 
     public static <T> PersistentOneToManyValueCollectionImpl<T> create(UniqueData holder, Class<T> type, String dataSchema, String dataTable, String dataColumn, List<Link> link) {
@@ -62,7 +62,8 @@ public class PersistentOneToManyValueCollectionImpl<T> implements PersistentColl
                         oneToManyValueMetadata.getDataSchema(),
                         oneToManyValueMetadata.getDataTable(),
                         oneToManyValueMetadata.getDataColumn(),
-                        oneToManyValueMetadata.getLinks()
+                        oneToManyValueMetadata.getLinks(),
+                        oneToManyValueMetadata
                 );
             } else {
                 pair.field().setAccessible(true);
@@ -97,12 +98,21 @@ public class PersistentOneToManyValueCollectionImpl<T> implements PersistentColl
             String column = ValueUtils.parseValue(oneToManyAnnotation.column());
             Preconditions.checkArgument(!schema.isEmpty(), "OneToMany PersistentCollection field %s in class %s must specify a schema name since the data type %s does not extend UniqueData", field.getName(), clazz.getName(), genericType.getName());
             Preconditions.checkArgument(!table.isEmpty(), "OneToMany PersistentCollection field %s in class %s must specify a table name since the data type %s does not extend UniqueData", field.getName(), clazz.getName(), genericType.getName());
-            metadataMap.put(field, new PersistentOneToManyValueCollectionMetadata(genericType, schema, table, column, SQLBuilder.parseLinks(oneToManyAnnotation.link())));
+            metadataMap.put(field, new PersistentOneToManyValueCollectionMetadata(clazz, genericType, schema, table, column, SQLBuilder.parseLinks(oneToManyAnnotation.link())));
         }
 
         return metadataMap;
     }
 
+    @Override
+    public <U extends UniqueData> PersistentCollection<T> onAdd(Class<U> holderClass, CollectionChangeHandler<U, T> addHandler) {
+        throw new UnsupportedOperationException("Dynamically adding change handlers is not supported for PersistentCollections");
+    }
+
+    @Override
+    public <U extends UniqueData> PersistentCollection<T> onRemove(Class<U> holderClass, CollectionChangeHandler<U, T> removeHandler) {
+        throw new UnsupportedOperationException("Dynamically adding change handlers is not supported for PersistentCollections");
+    }
 
     @Override
     public UniqueData getHolder() {

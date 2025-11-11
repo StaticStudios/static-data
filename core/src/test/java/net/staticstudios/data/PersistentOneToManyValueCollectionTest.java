@@ -293,6 +293,128 @@ public class PersistentOneToManyValueCollectionTest extends DataTest {
                 .insert(InsertMode.SYNC);
         assertTrue(mockUser.favoriteNumbers.equals(mockUser.favoriteNumbers));
         assertFalse(mockUser.favoriteNumbers.equals(anotherMockUser.favoriteNumbers));
+    }
 
+    @Test
+    public void testAddHandlerUpdate() {
+        MockUser user = MockUser.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("handler test user")
+                .insert(InsertMode.SYNC);
+
+        MockUser user2 = MockUser.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("handler test user")
+                .insert(InsertMode.SYNC);
+
+        assertEquals(0, user.favoriteNumberAdditions.get());
+
+        Connection pgConnection = getConnection();
+        List<Integer> numbers = createNumbers(5);
+        int i = 0;
+        for (Integer number : numbers) {
+            try (PreparedStatement preparedStatement = pgConnection.prepareStatement(
+                    "INSERT INTO \"public\".\"favorite_numbers\" (\"favorite_numbers_id\", \"user_id\", \"number\") VALUES (?, ?, ?)"
+            )) {
+                preparedStatement.setObject(1, number);
+                preparedStatement.setObject(2, user2.id.get());
+                preparedStatement.setInt(3, number);
+                preparedStatement.executeUpdate();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+            try (PreparedStatement preparedStatement = pgConnection.prepareStatement(
+                    "UPDATE \"public\".\"favorite_numbers\" SET \"user_id\" = ? WHERE \"favorite_numbers_id\" = ?"
+            )) {
+                preparedStatement.setObject(1, user.id.get());
+                preparedStatement.setInt(2, number);
+                preparedStatement.executeUpdate();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+            waitForDataPropagation();
+
+            assertEquals(++i, user.favoriteNumberAdditions.get());
+        }
+    }
+
+    @Test
+    public void testRemoveHandlerUpdate() {
+        MockUser user = MockUser.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("handler test user")
+                .insert(InsertMode.SYNC);
+        MockUser user2 = MockUser.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("handler test user")
+                .insert(InsertMode.SYNC);
+
+        Connection pgConnection = getConnection();
+        List<Integer> numbers = createNumbers(5);
+        int i = 0;
+        for (Integer number : numbers) {
+            try (PreparedStatement preparedStatement = pgConnection.prepareStatement(
+                    "INSERT INTO \"public\".\"favorite_numbers\" (\"favorite_numbers_id\", \"user_id\", \"number\") VALUES (?, ?, ?)"
+            )) {
+                preparedStatement.setObject(1, number);
+                preparedStatement.setObject(2, user.id.get());
+                preparedStatement.setInt(3, number);
+                preparedStatement.executeUpdate();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+            try (PreparedStatement preparedStatement = pgConnection.prepareStatement(
+                    "UPDATE \"public\".\"favorite_numbers\" SET \"user_id\" = ? WHERE \"favorite_numbers_id\" = ?"
+            )) {
+                preparedStatement.setObject(1, user2.id.get());
+                preparedStatement.setInt(2, number);
+                preparedStatement.executeUpdate();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+            waitForDataPropagation();
+
+            assertEquals(++i, user.favoriteNumberRemovals.get());
+        }
+    }
+
+    @Test
+    public void testAddHandlerInsert() {
+        MockUser user = MockUser.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("handler test user")
+                .insert(InsertMode.SYNC);
+
+        assertEquals(0, user.favoriteNumberAdditions.get());
+
+        List<Integer> numbers = createNumbers(5);
+        user.favoriteNumbers.addAll(numbers);
+        waitForDataPropagation();
+        waitForUpdateHandlers();
+        assertEquals(5, user.favoriteNumberAdditions.get());
+    }
+
+    @Test
+    public void testRemoveHandlerDelete() {
+        MockUser user = MockUser.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("handler test user")
+                .insert(InsertMode.SYNC);
+
+        List<Integer> numbers = createNumbers(5);
+        user.favoriteNumbers.addAll(numbers);
+        waitForDataPropagation();
+        waitForUpdateHandlers();
+
+        assertEquals(5, user.favoriteNumbers.size());
+        assertEquals(0, user.favoriteNumberRemovals.get());
+
+        int i = 0;
+        for (Integer number : numbers) {
+            user.favoriteNumbers.remove(number);
+            waitForUpdateHandlers();
+
+            assertEquals(++i, user.favoriteNumberRemovals.get());
+        }
     }
 }

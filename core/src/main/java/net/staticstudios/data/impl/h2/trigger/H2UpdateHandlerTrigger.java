@@ -1,6 +1,7 @@
 package net.staticstudios.data.impl.h2.trigger;
 
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.util.TriggerCause;
 import org.h2.api.Trigger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,6 +69,7 @@ public class H2UpdateHandlerTrigger implements Trigger {
     }
 
     private void handleInsert(Object[] newRow) {
+        dataManager.callCollectionChangeHandlers(columnNames, schema, table, columnNames, new Object[newRow.length], newRow, TriggerCause.INSERT);
     }
 
     private void handleUpdate(Object[] oldRow, Object[] newRow) {
@@ -87,9 +89,13 @@ public class H2UpdateHandlerTrigger implements Trigger {
         for (String changedColumn : changedColumns) {
             dataManager.callPersistentValueUpdateHandlers(columnNames, schema, table, changedColumn, oldRow, newRow);
         }
+
+        dataManager.callCollectionChangeHandlers(columnNames, schema, table, changedColumns, oldRow, newRow, TriggerCause.UPDATE);
     }
 
     private void handleDelete(Object[] oldRow) {
+        dataManager.callCollectionChangeHandlers(columnNames, schema, table, columnNames, oldRow, new Object[oldRow.length], TriggerCause.DELETE);
+
         dataManager.handleDelete(columnNames, schema, table, oldRow);
     }
 }
