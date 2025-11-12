@@ -1,10 +1,10 @@
 package net.staticstudios.data.misc;
 
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.util.DataSourceConfig;
+import net.staticstudios.data.StaticDataConfig;
 
 public record MockEnvironment(
-        DataSourceConfig dataSourceConfig,
+        StaticDataConfig config,
         DataManager dataManager
 ) {
 }

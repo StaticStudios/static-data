@@ -2,8 +2,8 @@ package net.staticstudios.data.misc;
 
 import com.redis.testcontainers.RedisContainer;
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.StaticDataConfig;
 import net.staticstudios.data.impl.h2.H2DataAccessor;
-import net.staticstudios.data.util.DataSourceConfig;
 import net.staticstudios.utils.ThreadUtils;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -31,7 +31,7 @@ public class DataTest {
             .withPassword("password")
             .withUsername("postgres")
             .withDatabaseName("postgres");
-    public static DataSourceConfig dataSourceConfig;
+    public static StaticDataConfig config;
     private static Connection connection;
     private static Jedis jedis;
     private List<MockEnvironment> mockEnvironments;
@@ -44,15 +44,16 @@ public class DataTest {
 
         redis.execInContainer("redis-cli", "config", "set", "notify-keyspace-events", "KEA");
 
-        dataSourceConfig = new DataSourceConfig(
-                postgres.getHost(),
-                postgres.getFirstMappedPort(),
-                postgres.getDatabaseName(),
-                postgres.getUsername(),
-                postgres.getPassword(),
-                redis.getHost(),
-                redis.getRedisPort()
-        );
+        config = StaticDataConfig.builder()
+                .postgresHost(postgres.getHost())
+                .postgresPort(postgres.getFirstMappedPort())
+                .postgresDatabase(postgres.getDatabaseName())
+                .postgresUsername(postgres.getUsername())
+                .postgresPassword(postgres.getPassword())
+                .redisHost(redis.getHost())
+                .redisPort(redis.getFirstMappedPort())
+                .updateHandlerExecutor(ThreadUtils::submit)
+                .build();
 
         connection = DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
         jedis = new Jedis(redis.getHost(), redis.getRedisPort());
@@ -82,9 +83,9 @@ public class DataTest {
     }
 
     protected MockEnvironment createMockEnvironment() {
-        DataManager dataManager = new DataManager(dataSourceConfig, false);
+        DataManager dataManager = new DataManager(config, false);
 
-        MockEnvironment mockEnvironment = new MockEnvironment(dataSourceConfig, dataManager);
+        MockEnvironment mockEnvironment = new MockEnvironment(config, dataManager);
         mockEnvironments.add(mockEnvironment);
         return mockEnvironment;
     }

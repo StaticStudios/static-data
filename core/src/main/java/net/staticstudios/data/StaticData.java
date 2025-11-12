@@ -1,10 +1,62 @@
 package net.staticstudios.data;
 
-public class StaticData {
+import com.google.common.base.Preconditions;
+import net.staticstudios.data.insert.InsertContext;
 
-    public static void init() {
-        //TODO: this should be the entry point for static-data. consumers should be able to pass in some sort of datasource config to this method.
-        // a global dm will then be initialized. also loading and any other public methods would be cool to have here. basically a consumer will never touch the datamanager directly,
-        // they will only need to use static methods here
+/**
+ * Entry point for initializing and interacting with the StaticData system.
+ */
+public class StaticData {
+    private static boolean initialized = false;
+
+    /**
+     * Initializes the StaticData system with the provided configuration.
+     *
+     * @param config the configuration to use for initialization
+     */
+    public static void init(StaticDataConfig config) {
+        initialized = true;
+        new DataManager(config, true);
+    }
+
+    /**
+     * Loads the specified UniqueData classes into the StaticData system.
+     * Loading a class does two main things:<br>
+     * 1. It extracts the class's metadata to prepare for subsequent operations. This process is done recursively, so any referenced classes will also be loaded automatically. They do not need to be specified here.<br>
+     * 2. It pulls all existing records of the specified classes from the database into memory, making them readily accessible for future operations.
+     *
+     * @param classes the UniqueData classes to load
+     */
+    public static void load(Class<? extends UniqueData>... classes) {
+        assertInit();
+        DataManager.getInstance().load(classes);
+    }
+
+    /**
+     * Create an InsertContext for batching multiple insert operations together.
+     *
+     * @return a new InsertContext instance
+     */
+    public static InsertContext createInsertContext() {
+        assertInit();
+        return DataManager.getInstance().createInsertContext();
+    }
+
+    private static void assertInit() {
+        Preconditions.checkState(initialized, "StaticData has not been initialized! Please call StaticData.init(...) before using any other methods.");
+    }
+
+    /**
+     * Creates a snapshot of the given UniqueData instance.
+     * The snapshot instance will have the same ID columns as the original instance,
+     * but it's values will be read-only and represent the state of the data at the time of snapshot creation.
+     *
+     * @param instance the UniqueData instance to create a snapshot of
+     * @param <T>      the type of UniqueData
+     * @return a snapshot UniqueData instance
+     */
+    public <T extends UniqueData> T createSnapshot(T instance) {
+        assertInit();
+        return DataManager.getInstance().createSnapshot(instance);
     }
 }

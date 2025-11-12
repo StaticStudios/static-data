@@ -13,7 +13,6 @@ import net.staticstudios.data.primative.Primitives;
 import net.staticstudios.data.util.*;
 import net.staticstudios.data.util.TaskQueue;
 import net.staticstudios.data.utils.Link;
-import net.staticstudios.utils.ThreadUtils;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
@@ -28,6 +27,7 @@ import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 
 public class DataManager {
     private static Boolean useGlobal = null;
@@ -49,13 +49,21 @@ public class DataManager {
     private final Set<PersistentCollectionMetadata> registeredChangeHandlersForCollection = ConcurrentHashMap.newKeySet();
 
     private final List<ValueSerializer<?, ?>> valueSerializers = new CopyOnWriteArrayList<>();
+    private final Consumer<Runnable> updateHandlerExecurtor;
     //todo: custom types are serialized and deserialized all the time currently, we should have a cache for these. caffeine with time based eviction sounds good.
 
-    public DataManager(DataSourceConfig dataSourceConfig) {
-        this(dataSourceConfig, true);
-    }
+    public DataManager(StaticDataConfig config, boolean setGlobal) {
+        DataSourceConfig dataSourceConfig = new DataSourceConfig(
+                config.postgresHost(),
+                config.postgresPort(),
+                config.postgresDatabase(),
+                config.postgresUsername(),
+                config.postgresPassword(),
+                config.redisHost(),
+                config.redisPort()
+        );
+        this.updateHandlerExecurtor = config.updateHandlerExecutor();
 
-    public DataManager(DataSourceConfig dataSourceConfig, boolean setGlobal) {
         if (setGlobal) {
             if (Boolean.FALSE.equals(DataManager.useGlobal)) {
                 throw new IllegalStateException("DataManager global instance has been disabled");
@@ -95,7 +103,7 @@ public class DataManager {
         return new InsertContext(this);
     }
 
-    public void addUpdateHandler(String schema, String table, String column, ValueUpdateHandlerWrapper<?, ?> handler) {//todo: allow us to specify what data type to convert the data to. this is useful when this method is called externally
+    public void addUpdateHandler(String schema, String table, String column, ValueUpdateHandlerWrapper<?, ?> handler) {
         String key = schema + "." + table + "." + column;
         persistentValueUpdateHandlers.computeIfAbsent(key, k -> new ConcurrentHashMap<>())
                 .computeIfAbsent(handler.getHolderClass(), k -> new CopyOnWriteArrayList<>())
@@ -514,7 +522,7 @@ public class DataManager {
     }
 
     private void submitUpdateHandler(Runnable runnable) {
-        ThreadUtils.submit(runnable); //todo: submit somewhere based on config
+        updateHandlerExecurtor.accept(runnable);
     }
 
     @ApiStatus.Internal
