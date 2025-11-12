@@ -1,8 +1,16 @@
 # static-data
 
-`static-data` is an ORM (Object-Relational Mapping) library originally designed for Minecraft servers. It provides a
-robust solution for managing database operations in distributed applications while avoiding blocking the main thread.
-This is what makes it different from other ORMs, read and write speed is the main focus.
+`static-data` is an ORM library originally designed for Minecraft servers. It provides a
+robust solution for managing database operations in distributed applications while avoiding blocking operations at
+runtime.
+Minecraft servers are generally single threaded, so this library was built to avoid blocking the main thread during
+database operations.
+The main idea is simple: keep an in-memory cache of relevant database tables, and update that cache whenever the source
+database changes.
+As for the implementation, the in-memory cache is built using an in-memory H2 database, while PostgreSQL is used as the
+source database. The source database is limited to PostgreSQL due to its support for the `LISTEN / NOTIFY` commands,
+which
+allow `static-data` to receive notifications whenever a change is made to the database.
 
 ## Key Features
 
@@ -72,6 +80,11 @@ The goal is to make the developer experience as seamless as possible.
 - `@Column(name = "...", nullable = true/false, index = true/false)`: Define a column in the current table.
 - `@ForeignColumn(name = "...", table = "...", link = "...")`: Define a column in another table, and create a foreign
   key accordingly.
+- `@Identifier([identifier])`: Specifies the identifier to use for `CachedValue<T>` fields. This is used in conjunction
+  with the `UniqueData` instance's IDs to create a unique key in Redis.
+- `@ExpireAfter([seconds])`: Used on `CachedValue<T>` fields to specify the expiration time in seconds. A value of 0
+  means no expiration. When a value has expired, subsequent calls to `get()` will return `null`, or the fallback value
+  if one is specified.
 - `@OneToOne(link = "...")`: Defines a one-to-one relationship for `Reference<T>` fields. A foreign key constraint is
   created accordingly.
 - `@OneToMany(link = "...")`: Defines a one-to-many relationship for `PersistentCollection<T>` fields. A foreign key
@@ -81,11 +94,12 @@ The goal is to make the developer experience as seamless as possible.
 - `@DefaultValue("...")`: Sets a default value for a column. Note that this is a database-level default, not a
   Java-level default. Only Strings are supported, and they must be valid SQL literals. For example, for an integer
   column, you would use `@DefaultValue("0")`.
-- `@Insert(InsertStrategy.PREFER_EXISTING/OVERWRITE_EXISTING)`: Controls insert behavior for `Reference<T>` and foreign
+- `@Insert([InsertStrategy.PREFER_EXISTING/OVERWRITE_EXISTING])`: Controls insert behavior for `Reference<T>` and
+  foreign
   columns.
-- `@Delete(DeleteStrategy.CASCADE/NO_ACTION)`: Controls delete behavior. This has different behavior depending on the
+- `@Delete([DeleteStrategy.CASCADE/NO_ACTION])`: Controls delete behavior. This has different behavior depending on the
   relationship type, refer to the javadoc on each `DeleteStrategy` enum value for more information.
-- `@UpdateInterval(milliseconds)`: Used on `PersistentValue<T>` fields to control how often changes are flushed to the
+- `@UpdateInterval([milliseconds])`: Used on `PersistentValue<T>` fields to control how often changes are flushed to the
   source database. The default is 0 milliseconds. Since a FIFO queue (one connection to the source database) is used to
   dispatch updates, frequent updates may clog up the queue. When the update interval is set to a non-zero value, only
   the latest change within the interval is queued for writing to the source database.
@@ -94,44 +108,43 @@ The goal is to make the developer experience as seamless as possible.
 
 - `PersistentValue<T>`: References a column in a table. Requires one of the annotations: `@IdColumn`, `@Column`, or
   `@ForeignColumn`.
+- `CachedValue<T>`: References a value in redis, "linked" to a specific UniqueData instance. Requires `@Identifier`
+  annotation.
 - `Reference<T>`: References another data object (one-to-one relationship). Requires the `@OneToOne` annotation.
-- `PersistentCollection<T>`: Represents a collection relationship (one-to-many or many-to-many). Requires either the
-  `@OneToMany` or
-  `@ManyToMany` annotation.
+- `PersistentCollection<T>`: Represents a collection relationship (one-to-many or many-to-many). One to many
+  collections support value types that do not extend `UniqueData`, such as `PersistentCollection<String>`. Requires
+  either the`@OneToMany` or`@ManyToMany` annotation.
 
 ### Compile-time Generated Classes
 
 For each data class, `static-data` generates two helper classes at compile time, for typesafe operations:
 
-1. **Factory**: Provides a builder pattern for creating and inserting instances
+1. **Builder**: Provides a builder pattern for creating and inserting instances
    ```
    // Example: Creating and inserting a new user
-   User user = UserFactory.builder(dataManager)
+   User user = User.builder()
        .id(UUID.randomUUID())
        .name("John Doe")
        .age(30)
-       .insert(InsertMode.SYNC);
+       .insert(InsertMode.ASYNC);
    ```
-
-Note: The factory can use the global singleton DataManager instance if not explicitly provided.
-In the above example, `UserFactory.builder(dataManager)` can be replaced with `UserFactory.builder()` if the global
-instance is set.
 
 2. **Query Builder**: Provides a fluent API for querying instances
    ```
    // Example: Finding users by criteria
-   List<User> users = UserQuery.where(dataManager)
-       .nameIsLike("John%")
-       .and()
-       .ageIsGreaterThan(25)
-       .orderByName(Order.ASC)
+   List<User> users = User.query()
+       .where(w -> w
+           .nameIsLike("John%")
+           .and()
+           .ageIsGreaterThan(25)
+       )
+       .orderByName(Order.ASCENDING)
        .limit(10)
-       .list();
+       .findAll();
    ```
 
-Note: The query builder can use the global singleton DataManager instance if not explicitly provided.
-In the above example, `UserQuery.where(dataManager)` can be replaced with `UserQuery.where()` if the global instance
-is set.
+Note: Currently only support for Intellij IDEA is available for IDE integration. You should install the appropriate
+plugin for your IDE.
 
 ## Data Types
 
@@ -154,128 +167,251 @@ This flexibility allows all primitive types to be nullable when needed, while st
 
 [//]: # (TODO: validate the create method calls and ensure theyre correct, i did thie from memory)
 
-```java
+[//]: # ()
 
-@Data(schema = "my_app", table = "users")
-public class User extends UniqueData {
-    @IdColumn(name = "id")
-    private PersistentValue<Integer> id;
+[//]: # (```java)
 
-    @OneToOne(link = "id=user_id")
-    private Reference<UserMetadata> metadata;
+[//]: # ()
 
-    @Column(name = "name", index = true, nullable = false)
-    private PersistentValue<String> name;
+[//]: # (@Data&#40;schema = "my_app", table = "users"&#41;)
 
-    @ManyToMany(link = "id=id", joinTable = "user_friends")
-    private PersistentCollection<User> friends;
+[//]: # (public class User extends UniqueData {)
 
-    /**
-     * Create a new user and their metadata in one transaction.
-     * @param id the user ID
-     * @return the created user
-     */
-    public static User create(int id) {
-        InsertContext ctx = DataManager.getInstance().createInsertContext();
-        UserMetadataFactory.builder()
-                .id(UUID.randomUUID())
-                .userId(id)
-                .createdAt(new Timestamp(System.currentTimeMillis()))
-                .insert(InsertMode.SYNC, ctx);
-        UserFactory factory = UserFactory.builder()
-                .id(id)
-                .name("User #" + id)
-                .insert(InsertMode.SYNC, ctx);
+[//]: # (    @IdColumn&#40;name = "id"&#41;)
 
-        ctx.insert();
-        return factory.get(User.class);
-    }
+[//]: # (    private PersistentValue<Integer> id;)
 
-    public int getId() {
-        return id.get();
-    }
+[//]: # ()
 
-    public void setId(int id) {
-        this.id.set(id);
-    }
+[//]: # (    @OneToOne&#40;link = "id=user_id"&#41;)
 
-    public String getName() {
-        return name.get();
-    }
+[//]: # (    private Reference<UserMetadata> metadata;)
 
-    public void setName(String name) {
-        this.name.set(name);
-    }
+[//]: # ()
 
-    public UserMetadata getMetadata() {
-        return metadata.get();
-    }
+[//]: # (    @Column&#40;name = "name", index = true, nullable = false&#41;)
 
-    public void setMetadata(UserMetadata metadata) {
-        this.metadata.set(metadata);
-    }
+[//]: # (    private PersistentValue<String> name;)
 
-    public Collection<User> getFriends() {
-        return friends.get();
-    }
+[//]: # ()
 
-    public void addFriend(User friend) {
-        this.friends.add(friend);
-    }
+[//]: # (    @ManyToMany&#40;link = "id=id", joinTable = "user_friends"&#41;)
 
-    public void removeFriend(User friend) {
-        this.friends.remove(friend);
-    }
-}
+[//]: # (    private PersistentCollection<User> friends;)
 
-@Data(schema = "my_app", table = "user_metadata")
-public class UserMetadata extends UniqueData {
-    @IdColumn(name = "id")
-    private PersistentValue<UUID> id;
+[//]: # ()
 
-    @OneToOne(link = "id=id")
-    private Reference<User> user;
+[//]: # (    /**)
 
-    @Column(name = "user_id", index = true, nullable = false)
-    private PersistentValue<Integer> userId;
+[//]: # (     * Create a new user and their metadata in one transaction.)
 
-    @Column(name = "created_at", nullable = false)
-    private PersistentValue<Timestamp> createdAt;
+[//]: # (     * @param id the user ID)
 
-    public UUID getId() {
-        return id.get();
-    }
+[//]: # (     * @return the created user)
 
-    public void setId(UUID id) {
-        this.id.set(id);
-    }
+[//]: # (     */)
 
-    public User getUser() {
-        return user.get();
-    }
+[//]: # (    public static User create&#40;int id&#41; {)
 
-    public void setUser(User user) {
-        this.user.set(user);
-    }
+[//]: # (        InsertContext ctx = DataManager.getInstance&#40;&#41;.createInsertContext&#40;&#41;;)
 
-    public int getUserId() {
-        return userId.get();
-    }
+[//]: # (        UserMetadataFactory.builder&#40;&#41;)
 
-    public void setUserId(int userId) {
-        this.userId.set(userId);
-    }
+[//]: # (                .id&#40;UUID.randomUUID&#40;&#41;&#41;)
 
-    public Timestamp getCreatedAt() {
-        return createdAt.get();
-    }
+[//]: # (                .userId&#40;id&#41;)
 
-    public void setCreatedAt(Timestamp createdAt) {
-        this.createdAt.set(createdAt);
-    }
-}
+[//]: # (                .createdAt&#40;new Timestamp&#40;System.currentTimeMillis&#40;&#41;&#41;&#41;)
 
-```
+[//]: # (                .insert&#40;InsertMode.SYNC, ctx&#41;;)
+
+[//]: # (        UserFactory factory = UserFactory.builder&#40;&#41;)
+
+[//]: # (                .id&#40;id&#41;)
+
+[//]: # (                .name&#40;"User #" + id&#41;)
+
+[//]: # (                .insert&#40;InsertMode.SYNC, ctx&#41;;)
+
+[//]: # ()
+
+[//]: # (        ctx.insert&#40;&#41;;)
+
+[//]: # (        return factory.get&#40;User.class&#41;;)
+
+[//]: # (    })
+
+[//]: # ()
+
+[//]: # (    public int getId&#40;&#41; {)
+
+[//]: # (        return id.get&#40;&#41;;)
+
+[//]: # (    })
+
+[//]: # ()
+
+[//]: # (    public void setId&#40;int id&#41; {)
+
+[//]: # (        this.id.set&#40;id&#41;;)
+
+[//]: # (    })
+
+[//]: # ()
+
+[//]: # (    public String getName&#40;&#41; {)
+
+[//]: # (        return name.get&#40;&#41;;)
+
+[//]: # (    })
+
+[//]: # ()
+
+[//]: # (    public void setName&#40;String name&#41; {)
+
+[//]: # (        this.name.set&#40;name&#41;;)
+
+[//]: # (    })
+
+[//]: # ()
+
+[//]: # (    public UserMetadata getMetadata&#40;&#41; {)
+
+[//]: # (        return metadata.get&#40;&#41;;)
+
+[//]: # (    })
+
+[//]: # ()
+
+[//]: # (    public void setMetadata&#40;UserMetadata metadata&#41; {)
+
+[//]: # (        this.metadata.set&#40;metadata&#41;;)
+
+[//]: # (    })
+
+[//]: # ()
+
+[//]: # (    public Collection<User> getFriends&#40;&#41; {)
+
+[//]: # (        return friends.get&#40;&#41;;)
+
+[//]: # (    })
+
+[//]: # ()
+
+[//]: # (    public void addFriend&#40;User friend&#41; {)
+
+[//]: # (        this.friends.add&#40;friend&#41;;)
+
+[//]: # (    })
+
+[//]: # ()
+
+[//]: # (    public void removeFriend&#40;User friend&#41; {)
+
+[//]: # (        this.friends.remove&#40;friend&#41;;)
+
+[//]: # (    })
+
+[//]: # (})
+
+[//]: # ()
+
+[//]: # (@Data&#40;schema = "my_app", table = "user_metadata"&#41;)
+
+[//]: # (public class UserMetadata extends UniqueData {)
+
+[//]: # (    @IdColumn&#40;name = "id"&#41;)
+
+[//]: # (    private PersistentValue<UUID> id;)
+
+[//]: # ()
+
+[//]: # (    @OneToOne&#40;link = "id=id"&#41;)
+
+[//]: # (    private Reference<User> user;)
+
+[//]: # ()
+
+[//]: # (    @Column&#40;name = "user_id", index = true, nullable = false&#41;)
+
+[//]: # (    private PersistentValue<Integer> userId;)
+
+[//]: # ()
+
+[//]: # (    @Column&#40;name = "created_at", nullable = false&#41;)
+
+[//]: # (    private PersistentValue<Timestamp> createdAt;)
+
+[//]: # ()
+
+[//]: # (    public UUID getId&#40;&#41; {)
+
+[//]: # (        return id.get&#40;&#41;;)
+
+[//]: # (    })
+
+[//]: # ()
+
+[//]: # (    public void setId&#40;UUID id&#41; {)
+
+[//]: # (        this.id.set&#40;id&#41;;)
+
+[//]: # (    })
+
+[//]: # ()
+
+[//]: # (    public User getUser&#40;&#41; {)
+
+[//]: # (        return user.get&#40;&#41;;)
+
+[//]: # (    })
+
+[//]: # ()
+
+[//]: # (    public void setUser&#40;User user&#41; {)
+
+[//]: # (        this.user.set&#40;user&#41;;)
+
+[//]: # (    })
+
+[//]: # ()
+
+[//]: # (    public int getUserId&#40;&#41; {)
+
+[//]: # (        return userId.get&#40;&#41;;)
+
+[//]: # (    })
+
+[//]: # ()
+
+[//]: # (    public void setUserId&#40;int userId&#41; {)
+
+[//]: # (        this.userId.set&#40;userId&#41;;)
+
+[//]: # (    })
+
+[//]: # ()
+
+[//]: # (    public Timestamp getCreatedAt&#40;&#41; {)
+
+[//]: # (        return createdAt.get&#40;&#41;;)
+
+[//]: # (    })
+
+[//]: # ()
+
+[//]: # (    public void setCreatedAt&#40;Timestamp createdAt&#41; {)
+
+[//]: # (        this.createdAt.set&#40;createdAt&#41;;)
+
+[//]: # (    })
+
+[//]: # (})
+
+[//]: # ()
+
+[//]: # (```)
 
 ## Current Limitations
 
@@ -291,7 +427,13 @@ public class UserMetadata extends UniqueData {
 - **Disk-based cache**: Plans are in place to add support for a disk-based cache option (using H2 on disk instead of in
   memory) to reduce memory consumption while still maintaining the benefits of the caching architecture.
 
-## Getting Started
+## Miscellaneous
+
+- Anywhere a schema, table, or column name can be specified, environment variables can be used via the syntax
+  `${ENV_VAR_NAME}`.
+  This allows for dynamic configuration based on the deployment environment.
+
+[//]: # (## Getting Started)
 
 [//]: # (TODO: this section is incomplete since the impl isnt finished. update this later)
 
