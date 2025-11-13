@@ -3,7 +3,7 @@ rootProject.name = 'static-data'
 
 include 'benchmark'
 include 'core'
-include 'javac-plugin'
+include 'processor'
 include 'intellij-plugin'
 include 'utils'
 include 'annotations'

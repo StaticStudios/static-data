@@ -16,8 +16,8 @@ dependencies {
     implementation("org.openjdk.jmh:jmh-generator-annprocess:1.37")
     implementation(project(":core"))
     implementation(project(":utils"))
-    compileOnly project(':javac-plugin')
-    jmhAnnotationProcessor project(':javac-plugin')
+    compileOnly project(':processor')
+    jmhAnnotationProcessor project(':processor')
 
     implementation 'net.staticstudios:static-utils:1.0.6-SNAPSHOT'
     implementation("org.testcontainers:postgresql:1.19.8")
