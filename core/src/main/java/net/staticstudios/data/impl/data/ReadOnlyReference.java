@@ -20,14 +20,14 @@ public class ReadOnlyReference<T extends UniqueData> implements Reference<T> {
         ReadOnlyReference<T> delegate = new ReadOnlyReference<>(
                 proxy.getHolder(),
                 proxy.getReferenceType(),
-                ReferenceImpl.create(proxy.getHolder(), proxy.getReferenceType(), metadata.getLinks()).getReferencedColumnValuePairs()
+                ReferenceImpl.create(proxy.getHolder(), proxy.getReferenceType(), metadata.links()).getReferencedColumnValuePairs()
         );
 
-        proxy.setDelegate(delegate);
+        proxy.setDelegate(metadata, delegate);
     }
 
     private static <T extends UniqueData> Reference<T> create(UniqueData holder, Class<T> referenceType, ReferenceMetadata metadata) {
-        return new ReadOnlyReference<>(holder, referenceType, ReferenceImpl.create(holder, referenceType, metadata.getLinks()).getReferencedColumnValuePairs());
+        return new ReadOnlyReference<>(holder, referenceType, ReferenceImpl.create(holder, referenceType, metadata.links()).getReferencedColumnValuePairs());
     }
 
     public static <U extends UniqueData> void delegate(U instance) {
@@ -39,7 +39,7 @@ public class ReadOnlyReference<T extends UniqueData> implements Reference<T> {
             } else {
                 pair.field().setAccessible(true);
                 try {
-                    pair.field().set(instance, create(instance, refMetadata.getReferencedClass(), refMetadata));
+                    pair.field().set(instance, create(instance, refMetadata.referencedClass(), refMetadata));
                 } catch (IllegalAccessException e) {
                     throw new RuntimeException(e);
                 }
@@ -55,6 +55,11 @@ public class ReadOnlyReference<T extends UniqueData> implements Reference<T> {
     @Override
     public Class<T> getReferenceType() {
         return referenceType;
+    }
+
+    @Override
+    public <U extends UniqueData> Reference<T> onUpdate(Class<U> holderClass, ReferenceUpdateHandler<U, T> updateHandler) {
+        throw new UnsupportedOperationException("Read-only value cannot have update handlers");
     }
 
     @Override

@@ -1,10 +1,15 @@
 package net.staticstudios.data;
 
 import com.google.common.base.Preconditions;
+import net.staticstudios.data.util.ReferenceMetadata;
+import net.staticstudios.data.util.ReferenceUpdateHandler;
+import net.staticstudios.data.util.ReferenceUpdateHandlerWrapper;
 import net.staticstudios.data.util.Relation;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.AccessFlag;
+import java.util.ArrayList;
+import java.util.List;
 
 public interface Reference<T extends UniqueData> extends Relation<T> {
 
@@ -20,11 +25,12 @@ public interface Reference<T extends UniqueData> extends Relation<T> {
 
     void set(@Nullable T value);
 
-    //todo: support update handlers
+    <U extends UniqueData> Reference<T> onUpdate(Class<U> holderClass, ReferenceUpdateHandler<U, T> updateHandler);
 
     class ProxyReference<T extends UniqueData> implements Reference<T> {
         private final UniqueData holder;
         private final Class<T> referenceType;
+        private final List<ReferenceUpdateHandlerWrapper<?, ?>> updateHandlers = new ArrayList<>();
         private @Nullable Reference<T> delegate;
 
         public ProxyReference(UniqueData holder, Class<T> referenceType) {
@@ -44,6 +50,14 @@ public interface Reference<T extends UniqueData> extends Relation<T> {
         }
 
         @Override
+        public <U extends UniqueData> Reference<T> onUpdate(Class<U> holderClass, ReferenceUpdateHandler<U, T> updateHandler) {
+            Preconditions.checkArgument(delegate == null, "Cannot dynamically add an update handler after the holder has been initialized!");
+            ReferenceUpdateHandlerWrapper<U, T> wrapper = new ReferenceUpdateHandlerWrapper<>(updateHandler);
+            this.updateHandlers.add(wrapper);
+            return this;
+        }
+
+        @Override
         public T get() {
             Preconditions.checkState(delegate != null, "Reference has not been initialized yet");
             return delegate.get();
@@ -55,9 +69,10 @@ public interface Reference<T extends UniqueData> extends Relation<T> {
             delegate.set(value);
         }
 
-        public void setDelegate(Reference<T> delegate) {
+        public void setDelegate(ReferenceMetadata metadata, Reference<T> delegate) {
             Preconditions.checkState(this.delegate == null, "Delegate has already been set");
             this.delegate = delegate;
+            holder.getDataManager().registerReferenceUpdateHandlers(metadata, updateHandlers);
         }
     }
 }

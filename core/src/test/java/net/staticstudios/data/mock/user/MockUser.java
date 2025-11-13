@@ -23,9 +23,14 @@ public class MockUser extends UniqueData {
     @ForeignColumn(name = "fav_color", table = "user_preferences", nullable = true, link = "id=user_id")
     public PersistentValue<String> favoriteColor;
 
+    @Identifier("settings_updates")
+    public CachedValue<Integer> settingsUpdates = CachedValue.of(this, Integer.class)
+            .withFallback(0);
+
     @Delete(DeleteStrategy.CASCADE)
     @OneToOne(link = "settings_id=user_id")
-    public Reference<MockUserSettings> settings;
+    public Reference<MockUserSettings> settings = Reference.of(this, MockUserSettings.class)
+            .onUpdate(MockUser.class, (user, update) -> user.settingsUpdates.set(user.settingsUpdates.get() + 1));
 
     @Insert(InsertStrategy.OVERWRITE_EXISTING)
     @Delete(DeleteStrategy.NO_ACTION)
@@ -36,9 +41,7 @@ public class MockUser extends UniqueData {
     @DefaultValue("Unknown")
     @Column(name = "name", index = true)
     public PersistentValue<String> name = PersistentValue.of(this, String.class)
-            .onUpdate(MockUser.class, (user, update) -> {
-                user.nameUpdates.set(user.getNameUpdates() + 1);
-            });
+            .onUpdate(MockUser.class, (user, update) -> user.nameUpdates.set(user.getNameUpdates() + 1));
 
     @UpdateInterval(5000)
     @Column(name = "views", nullable = true)
@@ -88,9 +91,7 @@ public class MockUser extends UniqueData {
     @Identifier("on_cooldown")
     @ExpireAfter(5)
     public CachedValue<Boolean> onCooldown = CachedValue.of(this, Boolean.class)
-            .onUpdate(MockUser.class, (user, update) -> {
-                user.cooldownUpdates.set(user.cooldownUpdates.get() + 1);
-            })
+            .onUpdate(MockUser.class, (user, update) -> user.cooldownUpdates.set(user.cooldownUpdates.get() + 1))
             .withFallback(false);
 
     public int getNameUpdates() {

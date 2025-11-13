@@ -27,6 +27,7 @@ public class StaticData {
      *
      * @param classes the UniqueData classes to load
      */
+    @SafeVarargs
     public static void load(Class<? extends UniqueData>... classes) {
         assertInit();
         DataManager.getInstance().load(classes);

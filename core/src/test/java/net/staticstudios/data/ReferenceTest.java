@@ -166,4 +166,50 @@ public class ReferenceTest extends DataTest {
         }
     }
 
+    @Test
+    public void testUpdateHandlerUpdate() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+
+        MockUser user = MockUser.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("name")
+                .insert(InsertMode.SYNC);
+
+        MockUserSettings settings = MockUserSettings.builder(dataManager)
+                .id(UUID.randomUUID())
+                .insert(InsertMode.SYNC);
+
+        assertEquals(0, user.settingsUpdates.get());
+
+        user.settings.set(settings);
+        waitForUpdateHandlers();
+
+        assertEquals(1, user.settingsUpdates.get());
+
+        user.settings.set(settings);
+        waitForUpdateHandlers();
+
+        assertEquals(1, user.settingsUpdates.get());
+
+        user.settings.set(null);
+        waitForUpdateHandlers();
+
+        assertEquals(2, user.settingsUpdates.get());
+
+        user.settings.set(settings);
+        waitForUpdateHandlers();
+
+        assertEquals(3, user.settingsUpdates.get());
+
+        MockUserSettings settings2 = MockUserSettings.builder(dataManager)
+                .id(UUID.randomUUID())
+                .insert(InsertMode.SYNC);
+
+        user.settings.set(settings2);
+        waitForUpdateHandlers();
+
+        assertEquals(4, user.settingsUpdates.get());
+    }
+
 }

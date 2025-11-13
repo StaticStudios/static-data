@@ -30,13 +30,13 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
         this.link = link;
     }
 
-    public static <T extends UniqueData> void createAndDelegate(Reference.ProxyReference<T> proxy, List<Link> link) {
+    public static <T extends UniqueData> void createAndDelegate(Reference.ProxyReference<T> proxy, ReferenceMetadata metadata) {
         ReferenceImpl<T> delegate = new ReferenceImpl<>(
                 proxy.getHolder(),
                 proxy.getReferenceType(),
-                link
+                metadata.links()
         );
-        proxy.setDelegate(delegate);
+        proxy.setDelegate(metadata, delegate);
     }
 
     public static <T extends UniqueData> ReferenceImpl<T> create(UniqueData holder, Class<T> type, List<Link> link) {
@@ -49,11 +49,11 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
             ReferenceMetadata refMetadata = metadata.referenceMetadata().get(pair.field());
 
             if (pair.instance() instanceof Reference.ProxyReference<?> proxyRef) {
-                createAndDelegate(proxyRef, refMetadata.getLinks());
+                createAndDelegate(proxyRef, refMetadata);
             } else {
                 pair.field().setAccessible(true);
                 try {
-                    pair.field().set(instance, create(instance, refMetadata.getReferencedClass(), refMetadata.getLinks()));
+                    pair.field().set(instance, create(instance, refMetadata.referencedClass(), refMetadata.links()));
                 } catch (IllegalAccessException e) {
                     throw new RuntimeException(e);
                 }
@@ -68,7 +68,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
             Preconditions.checkNotNull(oneToOneAnnotation, "Field %s in class %s is missing @OneToOne annotation".formatted(field.getName(), clazz.getName()));
             Class<?> referencedClass = ReflectionUtils.getGenericType(field);
             Preconditions.checkNotNull(referencedClass, "Field %s in class %s is not parameterized".formatted(field.getName(), clazz.getName()));
-            metadataMap.put(field, new ReferenceMetadata((Class<? extends UniqueData>) referencedClass, SQLBuilder.parseLinks(oneToOneAnnotation.link())));
+            metadataMap.put(field, new ReferenceMetadata(clazz, (Class<? extends UniqueData>) referencedClass, SQLBuilder.parseLinks(oneToOneAnnotation.link())));
         }
 
         return metadataMap;
@@ -82,6 +82,11 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
     @Override
     public Class<T> getReferenceType() {
         return type;
+    }
+
+    @Override
+    public <U extends UniqueData> Reference<T> onUpdate(Class<U> holderClass, ReferenceUpdateHandler<U, T> updateHandler) {
+        throw new UnsupportedOperationException("Dynamically adding update handlers is not supported");
     }
 
     @Override

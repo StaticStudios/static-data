@@ -91,6 +91,7 @@ public class H2UpdateHandlerTrigger implements Trigger {
         }
 
         dataManager.callCollectionChangeHandlers(columnNames, schema, table, changedColumns, oldRow, newRow, TriggerCause.UPDATE);
+        dataManager.callReferenceUpdateHandlers(columnNames, schema, table, changedColumns, oldRow, newRow);
     }
 
     private void handleDelete(Object[] oldRow) {
