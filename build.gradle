@@ -2,12 +2,55 @@ plugins {
     id 'java'
 }
 
-group = 'net.staticstudios'
-version = '3.0.0-SNAPSHOT'
+allprojects {
+    group = 'net.staticstudios'
+    version = '3.0.0-alpha.0-SNAPSHOT'
 
-
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+    repositories {
+        mavenCentral()
+        maven {
+            name = "StaticStudios"
+            url = "https://repo.staticstudios.net/snapshots/"
+        }
     }
+
+    java {
+        targetCompatibility = JavaVersion.VERSION_21
+        sourceCompatibility = JavaVersion.VERSION_21
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(21)
+        }
+    }
+}
+
+subprojects {
+    plugins.withId('maven-publish') {
+        publishing {
+            repositories {
+                maven {
+                    name = "StaticStudios"
+                    url = "https://repo.staticstudios.net/private/"
+                    credentials(org.gradle.api.credentials.PasswordCredentials)
+                }
+            }
+        }
+
+        rootProject.tasks.named("publish").configure {
+            dependsOn(tasks.named("publish"))
+        }
+
+        rootProject.tasks.named("publishToMavenLocal").configure {
+            dependsOn(tasks.named("publishToMavenLocal"))
+        }
+    }
+}
+
+tasks.register("publish") {
+    group = "publishing"
+    description = "Publishes all modules to the StaticStudios Maven repository."
+}
+
+tasks.register("publishToMavenLocal") {
+    group = "publishing"
+    description = "Publishes all modules to Maven Local."
 }

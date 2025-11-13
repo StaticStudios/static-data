@@ -4,17 +4,6 @@ plugins {
     id 'com.gradleup.shadow' version '8.3.3'
 }
 
-group = 'net.staticstudios'
-version = '3.0.0-SNAPSHOT'
-
-repositories {
-    mavenCentral()
-    maven {
-        name = "StaticStudios"
-        url = 'https://repo.staticstudios.net/snapshots/'
-    }
-}
-
 dependencies {
     implementation(project(":utils"))
     implementation(project(":annotations"))
@@ -62,6 +51,14 @@ javadoc {
     options.tags = ["implSpec", "apiNote", "implNote"]
 }
 
+shadowJar {
+    archiveClassifier.set('all')
+
+    dependencies {
+        include(project(":annotations"))
+    }
+}
+
 publishing {
     repositories {
         maven {
@@ -72,7 +69,10 @@ publishing {
     }
     publications {
         maven(MavenPublication) {
-            from components.java
+            artifactId = 'static-data'
+            artifact(shadowJar) {
+                classifier = null
+            }
             pom {
                 name = 'Static Data'
                 description = 'Data library used by StaticStudios.'
@@ -92,12 +92,4 @@ publishing {
             }
         }
     }
-}
-
-def targetJavaVersion = 21
-java {
-    def javaVersion = JavaVersion.toVersion(targetJavaVersion)
-    sourceCompatibility = javaVersion
-    targetCompatibility = javaVersion
-    toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
 }
