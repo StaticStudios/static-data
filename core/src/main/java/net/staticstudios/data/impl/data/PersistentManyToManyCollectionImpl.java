@@ -1,6 +1,7 @@
 package net.staticstudios.data.impl.data;
 
 import com.google.common.base.Preconditions;
+import net.staticstudios.data.DataManager;
 import net.staticstudios.data.ManyToMany;
 import net.staticstudios.data.PersistentCollection;
 import net.staticstudios.data.UniqueData;
@@ -127,6 +128,79 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         return joinTableToReferencedTableLinks;
     }
 
+    public static SQLTransaction.Statement buildUpdateStatement(DataManager dataManager, PersistentManyToManyCollectionMetadata metadata) {
+        List<Link> joinTableToDataTableLinks = metadata.getJoinTableToDataTableLinks(dataManager);
+        List<Link> joinTableToReferencedTableLinks = metadata.getJoinTableToReferencedTableLinks(dataManager);
+
+        String joinTableSchema = metadata.getJoinTableSchema(dataManager);
+        String joinTableName = metadata.getJoinTableName(dataManager);
+        StringBuilder sqlBuilder = new StringBuilder();
+        sqlBuilder.append("MERGE INTO \"").append(joinTableSchema).append("\".\"").append(joinTableName).append("\" AS _target USING (VALUES (");
+        sqlBuilder.append("?, ".repeat(Math.max(0, joinTableToDataTableLinks.size() + joinTableToReferencedTableLinks.size())));
+        sqlBuilder.setLength(sqlBuilder.length() - 2);
+        sqlBuilder.append(")) AS _source (");
+        for (Link entry : joinTableToDataTableLinks) {
+            String joinColumn = entry.columnInReferringTable();
+            sqlBuilder.append("\"").append(joinColumn).append("\", ");
+        }
+        for (Link entry : joinTableToReferencedTableLinks) {
+            String joinColumn = entry.columnInReferringTable();
+            sqlBuilder.append("\"").append(joinColumn).append("\", ");
+        }
+        sqlBuilder.setLength(sqlBuilder.length() - 2);
+        sqlBuilder.append(") ON ");
+        for (Link entry : joinTableToDataTableLinks) {
+            String joinColumn = entry.columnInReferringTable();
+            sqlBuilder.append("_target.\"").append(joinColumn).append("\" = _source.\"").append(joinColumn).append("\" AND ");
+        }
+        for (Link entry : joinTableToReferencedTableLinks) {
+            String joinColumn = entry.columnInReferringTable();
+            sqlBuilder.append("_target.\"").append(joinColumn).append("\" = _source.\"").append(joinColumn).append("\" AND ");
+        }
+        sqlBuilder.setLength(sqlBuilder.length() - 5);
+        sqlBuilder.append(" WHEN NOT MATCHED THEN INSERT (");
+        for (Link entry : joinTableToDataTableLinks) {
+            String joinColumn = entry.columnInReferringTable();
+            sqlBuilder.append("\"").append(joinColumn).append("\", ");
+        }
+        for (Link entry : joinTableToReferencedTableLinks) {
+            String joinColumn = entry.columnInReferringTable();
+            sqlBuilder.append("\"").append(joinColumn).append("\", ");
+        }
+        sqlBuilder.setLength(sqlBuilder.length() - 2);
+        sqlBuilder.append(") VALUES (");
+        for (Link entry : joinTableToDataTableLinks) {
+            String joinColumn = entry.columnInReferringTable();
+            sqlBuilder.append("_source.\"").append(joinColumn).append("\", ");
+        }
+        for (Link entry : joinTableToReferencedTableLinks) {
+            String joinColumn = entry.columnInReferringTable();
+            sqlBuilder.append("_source.\"").append(joinColumn).append("\", ");
+        }
+        sqlBuilder.setLength(sqlBuilder.length() - 2);
+        sqlBuilder.append(")");
+        @Language("SQL") String h2MergeSql = sqlBuilder.toString();
+
+        sqlBuilder.setLength(0);
+        sqlBuilder.append("INSERT INTO \"").append(joinTableSchema).append("\".\"").append(joinTableName).append("\" (");
+        for (Link entry : joinTableToDataTableLinks) {
+            String joinColumn = entry.columnInReferringTable();
+            sqlBuilder.append("\"").append(joinColumn).append("\", ");
+        }
+        for (Link entry : joinTableToReferencedTableLinks) {
+            String joinColumn = entry.columnInReferringTable();
+            sqlBuilder.append("\"").append(joinColumn).append("\", ");
+        }
+        sqlBuilder.setLength(sqlBuilder.length() - 2);
+        sqlBuilder.append(") VALUES (");
+        sqlBuilder.append("?, ".repeat(Math.max(0, joinTableToDataTableLinks.size() + joinTableToReferencedTableLinks.size())));
+        sqlBuilder.setLength(sqlBuilder.length() - 2);
+        sqlBuilder.append(") ON CONFLICT DO NOTHING");
+        @Language("SQL") String pgInsertSql = sqlBuilder.toString();
+
+        return SQLTransaction.Statement.of(h2MergeSql, pgInsertSql);
+    }
+
     @Override
     public <U extends UniqueData> PersistentCollection<T> onAdd(Class<U> holderClass, CollectionChangeHandler<U, T> addHandler) {
         throw new UnsupportedOperationException("Dynamically adding change handlers is not supported for PersistentCollections");
@@ -135,6 +209,10 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
     @Override
     public <U extends UniqueData> PersistentCollection<T> onRemove(Class<U> holderClass, CollectionChangeHandler<U, T> removeHandler) {
         throw new UnsupportedOperationException("Dynamically adding change handlers is not supported for PersistentCollections");
+    }
+
+    public PersistentManyToManyCollectionMetadata getMetadata() {
+        return this.metadata;
     }
 
     @Override
@@ -365,7 +443,6 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         }
     }
 
-
     public boolean removeIds(List<ColumnValuePairs> idsToRemove) {
         if (idsToRemove.isEmpty()) { //this operation isn't cheap, so we should avoid it if we can
             return false;
@@ -494,7 +571,6 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         return ids;
     }
 
-
     private SQLTransaction.Statement buildSelectDataIdsStatement() {
         UniqueDataMetadata holderMetadata = holder.getMetadata();
         List<Link> joinTableToDataTableLinks = metadata.getJoinTableToDataTableLinks(holder.getDataManager());
@@ -535,78 +611,8 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         return SQLTransaction.Statement.of(sql, sql);
     }
 
-
     private SQLTransaction.Statement buildUpdateStatement() {
-        List<Link> joinTableToDataTableLinks = metadata.getJoinTableToDataTableLinks(holder.getDataManager());
-        List<Link> joinTableToReferencedTableLinks = metadata.getJoinTableToReferencedTableLinks(holder.getDataManager());
-
-        String joinTableSchema = metadata.getJoinTableSchema(holder.getDataManager());
-        String joinTableName = metadata.getJoinTableName(holder.getDataManager());
-        StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append("MERGE INTO \"").append(joinTableSchema).append("\".\"").append(joinTableName).append("\" AS _target USING (VALUES (");
-        sqlBuilder.append("?, ".repeat(Math.max(0, joinTableToDataTableLinks.size() + joinTableToReferencedTableLinks.size())));
-        sqlBuilder.setLength(sqlBuilder.length() - 2);
-        sqlBuilder.append(")) AS _source (");
-        for (Link entry : joinTableToDataTableLinks) {
-            String joinColumn = entry.columnInReferringTable();
-            sqlBuilder.append("\"").append(joinColumn).append("\", ");
-        }
-        for (Link entry : joinTableToReferencedTableLinks) {
-            String joinColumn = entry.columnInReferringTable();
-            sqlBuilder.append("\"").append(joinColumn).append("\", ");
-        }
-        sqlBuilder.setLength(sqlBuilder.length() - 2);
-        sqlBuilder.append(") ON ");
-        for (Link entry : joinTableToDataTableLinks) {
-            String joinColumn = entry.columnInReferringTable();
-            sqlBuilder.append("_target.\"").append(joinColumn).append("\" = _source.\"").append(joinColumn).append("\" AND ");
-        }
-        for (Link entry : joinTableToReferencedTableLinks) {
-            String joinColumn = entry.columnInReferringTable();
-            sqlBuilder.append("_target.\"").append(joinColumn).append("\" = _source.\"").append(joinColumn).append("\" AND ");
-        }
-        sqlBuilder.setLength(sqlBuilder.length() - 5);
-        sqlBuilder.append(" WHEN NOT MATCHED THEN INSERT (");
-        for (Link entry : joinTableToDataTableLinks) {
-            String joinColumn = entry.columnInReferringTable();
-            sqlBuilder.append("\"").append(joinColumn).append("\", ");
-        }
-        for (Link entry : joinTableToReferencedTableLinks) {
-            String joinColumn = entry.columnInReferringTable();
-            sqlBuilder.append("\"").append(joinColumn).append("\", ");
-        }
-        sqlBuilder.setLength(sqlBuilder.length() - 2);
-        sqlBuilder.append(") VALUES (");
-        for (Link entry : joinTableToDataTableLinks) {
-            String joinColumn = entry.columnInReferringTable();
-            sqlBuilder.append("_source.\"").append(joinColumn).append("\", ");
-        }
-        for (Link entry : joinTableToReferencedTableLinks) {
-            String joinColumn = entry.columnInReferringTable();
-            sqlBuilder.append("_source.\"").append(joinColumn).append("\", ");
-        }
-        sqlBuilder.setLength(sqlBuilder.length() - 2);
-        sqlBuilder.append(")");
-        @Language("SQL") String h2MergeSql = sqlBuilder.toString();
-
-        sqlBuilder.setLength(0);
-        sqlBuilder.append("INSERT INTO \"").append(joinTableSchema).append("\".\"").append(joinTableName).append("\" (");
-        for (Link entry : joinTableToDataTableLinks) {
-            String joinColumn = entry.columnInReferringTable();
-            sqlBuilder.append("\"").append(joinColumn).append("\", ");
-        }
-        for (Link entry : joinTableToReferencedTableLinks) {
-            String joinColumn = entry.columnInReferringTable();
-            sqlBuilder.append("\"").append(joinColumn).append("\", ");
-        }
-        sqlBuilder.setLength(sqlBuilder.length() - 2);
-        sqlBuilder.append(") VALUES (");
-        sqlBuilder.append("?, ".repeat(Math.max(0, joinTableToDataTableLinks.size() + joinTableToReferencedTableLinks.size())));
-        sqlBuilder.setLength(sqlBuilder.length() - 2);
-        sqlBuilder.append(") ON CONFLICT DO NOTHING");
-        @Language("SQL") String pgInsertSql = sqlBuilder.toString();
-
-        return SQLTransaction.Statement.of(h2MergeSql, pgInsertSql);
+        return buildUpdateStatement(holder.getDataManager(), metadata);
     }
 
     private SQLTransaction.Statement buildRemoveStatement() {

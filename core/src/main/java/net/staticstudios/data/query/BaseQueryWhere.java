@@ -2,6 +2,7 @@ package net.staticstudios.data.query;
 
 import com.google.common.base.Preconditions;
 import net.staticstudios.data.query.clause.*;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashSet;
@@ -95,6 +96,15 @@ public abstract class BaseQueryWhere {
         setValueClause(new NotEqualsClause(schema, table, column, o));
     }
 
+    //todo: add IJ and processor support for equalsIgnoreCaseClause and notEqualsIgnoreCaseClause
+    protected void equalsIgnoreCaseClause(String schema, String table, String column, @NotNull String eq) {
+        setValueClause(new EqualsIngoreCaseClause(schema, table, column, eq));
+    }
+
+    protected void notEqualsIgnoreCaseClause(String schema, String table, String column, @NotNull String neq) {
+        setValueClause(new NotEqualsIngoreCaseClause(schema, table, column, neq));
+    }
+
     protected void nullClause(String schema, String table, String column) {
         setValueClause(new NullClause(schema, table, column));
     }
@@ -107,16 +117,16 @@ public abstract class BaseQueryWhere {
         setValueClause(new LikeClause(schema, table, column, format));
     }
 
+    protected void notLikeClause(String schema, String table, String column, String format) {
+        setValueClause(new NotLikeClause(schema, table, column, format));
+    }
+
     protected void inClause(String referringSchema, String referringTable, String column, Object[] in) {
         setValueClause(new InClause(referringSchema, referringTable, column, in));
     }
 
     protected void notInClause(String referringSchema, String referringTable, String column, Object[] in) {
         setValueClause(new NotInClause(referringSchema, referringTable, column, in));
-    }
-
-    protected void notLikeClause(String schema, String table, String column, String format) {
-        setValueClause(new NotLikeClause(schema, table, column, format));
     }
 
     protected void betweenClause(String schema, String table, String column, Object min, Object max) {

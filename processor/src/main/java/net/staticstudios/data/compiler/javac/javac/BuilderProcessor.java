@@ -38,6 +38,7 @@ public class BuilderProcessor extends AbstractBuilderProcessor {
 
         makeInsertContextMethod(persistentValues, references);
         makeInsertModeMethod();
+        makeInsertBatchMethod();
     }
 
 
@@ -242,6 +243,136 @@ public class BuilderProcessor extends AbstractBuilderProcessor {
                 )),
                 null
         ), builderClassDecl);
+    }
+
+    private void makeInsertBatchMethod() {
+        createMethod(MethodDef(
+                Modifiers(Flags.PUBLIC | Flags.FINAL),
+                names.fromString("insert"),
+                TypeApply(
+                        chainDots("java", "util", "concurrent", "CompletableFuture"),
+                        List.of(
+                                Ident(dataClassDecl.name)
+                        )
+                ),
+                List.nil(),
+                List.of(
+                        VarDef(
+                                Modifiers(Flags.PARAMETER),
+                                names.fromString("batch"),
+                                chainDots("net", "staticstudios", "data", "insert", "BatchInsert"),
+                                null
+                        )
+                ),
+                List.nil(),
+                Block(0, List.of(
+                        VarDef(
+                                Modifiers(0),
+                                names.fromString("___$cf"),
+                                TypeApply(
+                                        chainDots("java", "util", "concurrent", "CompletableFuture"),
+                                        List.of(
+                                                Ident(dataClassDecl.name)
+                                        )
+                                ),
+                                NewClass(
+                                        null,
+                                        List.nil(),
+                                        chainDots("java", "util", "concurrent", "CompletableFuture"),
+                                        List.nil(),
+                                        null
+                                )
+                        ),
+                        VarDef(
+                                Modifiers(0),
+                                names.fromString("___$ctx"),
+                                chainDots("net", "staticstudios", "data", "insert", "InsertContext"),
+                                Apply(
+                                        List.nil(),
+                                        Select(
+                                                Ident(names.fromString("dataManager")),
+                                                names.fromString("createInsertContext")
+                                        ),
+                                        List.nil()
+                                )
+                        ), Exec(
+                                Apply(
+                                        List.nil(),
+                                        Select(
+                                                Ident(names.fromString("this")),
+                                                names.fromString("insert")
+                                        ),
+                                        List.of(Ident(names.fromString("___$ctx")))
+                                )
+                        ),
+                        Exec(
+                                Apply(
+                                        List.nil(),
+                                        Select(
+                                                Ident(names.fromString("batch")),
+                                                names.fromString("add")
+                                        ),
+                                        List.of(Ident(names.fromString("___$ctx")))
+                                )
+                        ),
+                        Exec(
+                                Apply(
+                                        List.nil(),
+                                        Select(
+                                                Ident(names.fromString("___$ctx")),
+                                                names.fromString("addPostInsertAction")
+                                        ),
+                                        List.of(
+                                                Lambda(
+                                                        List.of(
+                                                                VarDef(
+                                                                        Modifiers(0),
+                                                                        names.fromString("___$inserted"),
+                                                                        chainDots("net", "staticstudios", "data", "insert", "InsertContext"),
+                                                                        null
+                                                                )
+                                                        ),
+                                                        Block(0, List.of(
+                                                                Exec(
+                                                                        Apply(
+                                                                                List.nil(),
+                                                                                Select(
+                                                                                        Ident(names.fromString("___$cf")),
+                                                                                        names.fromString("complete")
+                                                                                ),
+                                                                                List.of(
+                                                                                        Apply(
+                                                                                                List.nil(),
+                                                                                                Select(
+                                                                                                        Ident(names.fromString("___$inserted")),
+                                                                                                        names.fromString("get")
+                                                                                                ),
+                                                                                                List.of(
+                                                                                                        Select(
+                                                                                                                Ident(dataClassDecl.name),
+                                                                                                                names.fromString("class")
+                                                                                                        )
+                                                                                                )
+                                                                                        )
+                                                                                )
+                                                                        )
+                                                                )
+                                                        ))
+                                                )
+                                        )
+                                )
+                        ),
+                        Return(
+                                Ident(names.fromString("___$cf"))
+                        )
+                )),
+                null
+        ), builderClassDecl);
+
+        //declare CF,
+        // create context
+        // call insert(ctx)
+        // add post action to complete the cf
     }
 
     private void makeInsertContextMethod(Collection<ParsedPersistentValue> parsedPersistentValues, Collection<ParsedReference> parsedReferences) {

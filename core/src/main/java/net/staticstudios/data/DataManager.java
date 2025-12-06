@@ -7,7 +7,9 @@ import net.staticstudios.data.impl.data.*;
 import net.staticstudios.data.impl.h2.H2DataAccessor;
 import net.staticstudios.data.impl.pg.PostgresListener;
 import net.staticstudios.data.impl.redis.RedisListener;
+import net.staticstudios.data.insert.BatchInsert;
 import net.staticstudios.data.insert.InsertContext;
+import net.staticstudios.data.insert.PostInsertAction;
 import net.staticstudios.data.parse.*;
 import net.staticstudios.data.primative.Primitives;
 import net.staticstudios.data.util.*;
@@ -1078,7 +1080,41 @@ public class DataManager {
         return instance;
     }
 
-    public void insert(InsertContext insertContext, InsertMode insertMode) {
+    public BatchInsert createBatchInsert() {
+        return new BatchInsert(this);
+    }
+
+    public void insert(InsertContext context, InsertMode insertMode) {
+        BatchInsert batch = createBatchInsert();
+
+        batch.add(context);
+        insert(batch, insertMode);
+    }
+
+    public void insert(BatchInsert batch, InsertMode insertMode) {
+        List<SQlStatement> statements = new ArrayList<>();
+
+        for (InsertContext context : batch.getInsertContexts()) {
+            statements.addAll(generateStatements(context));
+        }
+
+        for (PostInsertAction action : batch.getPostInsertActions()) {
+            statements.addAll(action.getStatements());
+        }
+
+        try {
+            dataAccessor.insert(statements, insertMode);
+
+            for (InsertContext context : batch.getInsertContexts()) {
+                context.markInserted();
+                context.runPostInsertActions();
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private List<SQlStatement> generateStatements(InsertContext insertContext) {
         //todo: when inserting validate all id and required values are present - this will be enforced by h2, but we should do it here for better logging/errors.
         Set<SQLTable> tables = new HashSet<>();
         insertContext.getEntries().forEach((simpleColumnMetadata, o) -> {
@@ -1264,12 +1300,7 @@ public class DataManager {
             sqlStatements.add(new SQlStatement(h2Sql, pgSql, values));
         }
 
-        try {
-            insertContext.markInserted();
-            dataAccessor.insert(sqlStatements, insertMode);
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
+        return sqlStatements;
     }
 
     public <T> T get(String schema, String table, String column, ColumnValuePairs idColumns, List<Link> idColumnLinks, Class<T> dataType) {

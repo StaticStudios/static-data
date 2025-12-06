@@ -11,18 +11,20 @@ import net.staticstudios.data.parse.SQLTable;
 import net.staticstudios.data.util.ColumnValuePair;
 import net.staticstudios.data.util.SimpleColumnMetadata;
 import net.staticstudios.data.util.UniqueDataMetadata;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
+@ApiStatus.Internal
 public class InsertContext {
     private final AtomicBoolean inserted = new AtomicBoolean(false);
     private final DataManager dataManager;
     private final Map<SimpleColumnMetadata, Object> entries = new HashMap<>();
     private final Map<SimpleColumnMetadata, InsertStrategy> insertStrategies = new HashMap<>();
+    private final List<Consumer<InsertContext>> callbacks = new ArrayList<>();
 
     public InsertContext(DataManager dataManager) {
         this.dataManager = dataManager;
@@ -72,6 +74,10 @@ public class InsertContext {
         inserted.set(true);
     }
 
+    public boolean isInserted() {
+        return inserted.get();
+    }
+
     public InsertContext insert(InsertMode insertMode) {
         dataManager.insert(this, insertMode);
         return this;
@@ -103,5 +109,16 @@ public class InsertContext {
             idColumnValues[i] = new ColumnValuePair(metadata.idColumns().get(i).name(), entries.get(new SimpleColumnMetadata(metadata.idColumns().get(i))));
         }
         return dataManager.getInstance(holderClass, idColumnValues);
+    }
+
+    public void addPostInsertAction(Consumer<InsertContext> callback) {
+        Preconditions.checkState(!inserted.get(), "Cannot modify InsertContext after it has been inserted");
+        callbacks.add(callback);
+    }
+
+    public void runPostInsertActions() {
+        for (Consumer<InsertContext> callback : callbacks) {
+            callback.accept(this);
+        }
     }
 }

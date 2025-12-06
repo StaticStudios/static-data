@@ -1,6 +1,5 @@
 package net.staticstudios.data.query;
 
-import com.google.common.base.Preconditions;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.Order;
 import net.staticstudios.data.UniqueData;
@@ -59,23 +58,24 @@ public abstract class BaseQueryBuilder<T extends UniqueData, W extends BaseQuery
 
 
     private ComputedClause compute() {
-        Preconditions.checkState(!where.isEmpty(), "No clause defined");
         StringBuilder sb = new StringBuilder();
-        for (InnerJoin join : where.getInnerJoins()) {
-            sb.append("INNER JOIN \"").append(join.referencedSchema()).append("\".\"").append(join.referencedTable()).append("\" ON ");
-            for (int i = 0; i < join.columnsInReferringTable().length; i++) {
-                sb.append("\"").append(join.referringSchema()).append("\".\"").append(join.referringTable()).append("\".\"").append(join.columnsInReferringTable()[i]).append("\" = \"")
-                        .append(join.referencedSchema()).append("\".\"").append(join.referencedTable()).append("\".\"").append(join.columnsInReferencedTable()[i]).append("\"");
-                if (i < join.columnsInReferringTable().length - 1) {
-                    sb.append(" AND ");
-                }
-            }
-            sb.append(" ");
-        }
-        sb.append("WHERE ");
-
         List<Object> parameters = new ArrayList<>();
-        where.buildWhereClause(sb, parameters);
+        if (!where.isEmpty()) {
+            for (InnerJoin join : where.getInnerJoins()) {
+                sb.append("INNER JOIN \"").append(join.referencedSchema()).append("\".\"").append(join.referencedTable()).append("\" ON ");
+                for (int i = 0; i < join.columnsInReferringTable().length; i++) {
+                    sb.append("\"").append(join.referringSchema()).append("\".\"").append(join.referringTable()).append("\".\"").append(join.columnsInReferringTable()[i]).append("\" = \"")
+                            .append(join.referencedSchema()).append("\".\"").append(join.referencedTable()).append("\".\"").append(join.columnsInReferencedTable()[i]).append("\"");
+                    if (i < join.columnsInReferringTable().length - 1) {
+                        sb.append(" AND ");
+                    }
+                }
+                sb.append(" ");
+            }
+            sb.append("WHERE ");
+
+            where.buildWhereClause(sb, parameters);
+        }
         if (limit > 0) {
             sb.append(" LIMIT ").append(limit);
         }

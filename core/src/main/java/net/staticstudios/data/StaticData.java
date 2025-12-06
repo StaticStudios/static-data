@@ -1,7 +1,8 @@
 package net.staticstudios.data;
 
 import com.google.common.base.Preconditions;
-import net.staticstudios.data.insert.InsertContext;
+import net.staticstudios.data.insert.BatchInsert;
+import net.staticstudios.data.query.QueryBuilder;
 
 /**
  * Entry point for initializing and interacting with the StaticData system.
@@ -34,13 +35,13 @@ public class StaticData {
     }
 
     /**
-     * Create an InsertContext for batching multiple insert operations together.
+     * Create an BatchInsert for batching multiple insert operations together.
      *
-     * @return a new InsertContext instance
+     * @return a new BatchInsert instance
      */
-    public static InsertContext createInsertContext() {
+    public static BatchInsert createBatchInsert() {
         assertInit();
-        return DataManager.getInstance().createInsertContext();
+        return DataManager.getInstance().createBatchInsert();
     }
 
     private static void assertInit() {
@@ -56,8 +57,18 @@ public class StaticData {
      * @param <T>      the type of UniqueData
      * @return a snapshot UniqueData instance
      */
-    public <T extends UniqueData> T createSnapshot(T instance) {
+    public static <T extends UniqueData> T createSnapshot(T instance) {
         assertInit();
         return DataManager.getInstance().createSnapshot(instance);
+    }
+
+    public static void registerValueSerializer(ValueSerializer<?, ?> serializer) {
+        assertInit();
+        DataManager.getInstance().registerValueSerializer(serializer);
+    }
+
+    public static <U extends UniqueData> QueryBuilder<U> query(Class<U> type) {
+        assertInit();
+        return new QueryBuilder<>(DataManager.getInstance(), type);
     }
 }

@@ -1,6 +1,6 @@
 package net.staticstudios.data;
 
-import net.staticstudios.data.insert.InsertContext;
+import net.staticstudios.data.insert.BatchInsert;
 import net.staticstudios.data.misc.DataTest;
 import net.staticstudios.data.mock.user.MockUser;
 import net.staticstudios.data.mock.user.MockUserSettings;
@@ -11,6 +11,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -54,20 +55,20 @@ public class ReferenceTest extends DataTest {
         dataManager.load(MockUser.class);
 
         UUID settingsId = UUID.randomUUID();
-        InsertContext ctx = dataManager.createInsertContext();
-        MockUserSettings.builder(dataManager)
+        BatchInsert batch = dataManager.createBatchInsert();
+        CompletableFuture<MockUserSettings> settingsCf = MockUserSettings.builder(dataManager)
                 .id(settingsId)
-                .insert(ctx);
+                .insert(batch);
 
-        MockUser.builder(dataManager)
+        CompletableFuture<MockUser> userCf = MockUser.builder(dataManager)
                 .id(UUID.randomUUID())
                 .name("test user")
                 .settingsId(settingsId)
-                .insert(ctx);
+                .insert(batch);
 
-        ctx.insert(InsertMode.SYNC);
-        MockUserSettings settings = ctx.get(MockUserSettings.class);
-        MockUser user = ctx.get(MockUser.class);
+        batch.insert(InsertMode.SYNC);
+        MockUserSettings settings = settingsCf.join();
+        MockUser user = userCf.join();
 
         assertNotNull(settings);
         assertNotNull(user);

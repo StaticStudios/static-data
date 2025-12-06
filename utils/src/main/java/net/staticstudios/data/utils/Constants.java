@@ -17,5 +17,6 @@ public class Constants {
     public static final String INSERT_STRATEGY_FQN = "net.staticstudios.data.InsertStrategy";
     public static final String INSERT_MODE_FQN = "net.staticstudios.data.InsertMode";
     public static final String INSERT_CONTEXT_FQN = "net.staticstudios.data.insert.InsertContext";
+    public static final String BATCH_INSERT_FQN = "net.staticstudios.data.insert.BatchInsert";
 
 }

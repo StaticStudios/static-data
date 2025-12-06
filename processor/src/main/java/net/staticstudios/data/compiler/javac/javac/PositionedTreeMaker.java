@@ -178,4 +178,8 @@ public class PositionedTreeMaker {
         return treeMaker.at(pos).TypeUnion(alternatives);
     }
 
+    public JCTree.JCLambda Lambda(List<JCTree.JCVariableDecl> params, JCTree body) {
+        return treeMaker.at(pos).Lambda(params, body);
+    }
+
 }

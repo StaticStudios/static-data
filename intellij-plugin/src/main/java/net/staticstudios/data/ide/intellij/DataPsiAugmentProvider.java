@@ -197,13 +197,15 @@ public class DataPsiAugmentProvider extends PsiAugmentProvider {
         insertModeMethod.addModifier(PsiModifier.FINAL);
         builderClass.addMethod(insertModeMethod);
 
-        SyntheticMethod insertContextMethod = new SyntheticMethod(parentClass, builderClass, "insert", null);
-        PsiType insertContextType = JavaPsiFacade.getElementFactory(parentClass.getProject())
-                .createTypeFromText(Constants.INSERT_CONTEXT_FQN, parentClass);
-        insertContextMethod.addParameter("ctx", insertContextType);
-        insertContextMethod.addModifier(PsiModifier.PUBLIC);
-        insertContextMethod.addModifier(PsiModifier.FINAL);
-        builderClass.addMethod(insertContextMethod);
+        PsiType completableFutureType = JavaPsiFacade.getElementFactory(parentClass.getProject())
+                .createTypeFromText("java.util.concurrent.CompletableFuture<" + parentClass.getName() + ">", parentClass);
+        SyntheticMethod insertBatchMethod = new SyntheticMethod(parentClass, builderClass, "insert", completableFutureType);
+        PsiType batchInsertType = JavaPsiFacade.getElementFactory(parentClass.getProject())
+                .createTypeFromText(Constants.BATCH_INSERT_FQN, parentClass);
+        insertBatchMethod.addParameter("batch", batchInsertType);
+        insertBatchMethod.addModifier(PsiModifier.PUBLIC);
+        insertBatchMethod.addModifier(PsiModifier.FINAL);
+        builderClass.addMethod(insertBatchMethod);
 
         return builderClass;
     }

@@ -38,6 +38,10 @@ public interface PersistentCollection<T> extends Collection<T>, Relation<T> {
             this.referenceType = referenceType;
         }
 
+        public @Nullable PersistentCollection<T> getDelegate() {
+            return delegate;
+        }
+
         @Override
         public <U extends UniqueData> PersistentCollection<T> onAdd(Class<U> holderClass, CollectionChangeHandler<U, T> addHandler) {
             changeHandlers.add(new CollectionChangeHandlerWrapper<>(addHandler, referenceType, holder.getClass(), CollectionChangeHandlerWrapper.Type.ADD));
