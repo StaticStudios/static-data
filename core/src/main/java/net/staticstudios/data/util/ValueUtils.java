@@ -11,6 +11,10 @@ public class ValueUtils {
     @VisibleForTesting
     public static EnvironmentVariableAccessor ENVIRONMENT_VARIABLE_ACCESSOR = new EnvironmentVariableAccessor();
 
+    public static void setValue(String key, String value) {
+        ENVIRONMENT_VARIABLE_ACCESSOR.set(key, value);
+    }
+
     public static String parseValue(String encoded) {
         Preconditions.checkNotNull(encoded, "Encoded value cannot be null");
         Matcher matcher = ENVIRONMENT_VARIABLE_PATTERN.matcher(encoded);
