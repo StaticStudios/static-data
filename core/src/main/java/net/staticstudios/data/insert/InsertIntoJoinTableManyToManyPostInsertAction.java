@@ -73,22 +73,22 @@ public class InsertIntoJoinTableManyToManyPostInsertAction<T extends UniqueData>
         }
 
         public Builder joinTableSchema(String joinTableSchema) {
-            this.joinTableSchema = joinTableSchema;
+            this.joinTableSchema = ValueUtils.parseValue(joinTableSchema);
             return this;
         }
 
         public Builder joinTableName(String joinTableName) {
-            this.joinTableName = joinTableName;
+            this.joinTableName = ValueUtils.parseValue(joinTableName);
             return this;
         }
 
         public Builder referringId(String column, Object value) {
-            this.referringIds.add(new ColumnValuePair(column, value));
+            this.referringIds.add(new ColumnValuePair(ValueUtils.parseValue(column), value));
             return this;
         }
 
         public Builder referencedId(String column, Object value) {
-            this.referencedIds.add(new ColumnValuePair(column, value));
+            this.referencedIds.add(new ColumnValuePair(ValueUtils.parseValue(column), value));
             return this;
         }
 
