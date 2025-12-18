@@ -15,7 +15,7 @@ public class ValueUtils {
         ENVIRONMENT_VARIABLE_ACCESSOR.set(key, value);
     }
 
-    public static String parseValue(String encoded) {
+    public static String parseValue(String encoded) { //TODO: we should cache parsed values
         Preconditions.checkNotNull(encoded, "Encoded value cannot be null");
         Matcher matcher = ENVIRONMENT_VARIABLE_PATTERN.matcher(encoded);
         StringBuilder sb = new StringBuilder();

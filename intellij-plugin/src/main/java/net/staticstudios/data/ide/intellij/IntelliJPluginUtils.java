@@ -37,6 +37,11 @@ public class IntelliJPluginUtils {
                 extendsClass = true;
                 break;
             }
+            PsiClass superClass = superType.resolve();
+            if (superClass != null && extendsClass(superClass, classFqn)) {
+                extendsClass = true;
+                break;
+            }
         }
 
         return extendsClass;
