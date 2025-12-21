@@ -30,6 +30,9 @@ public class QueryBuilderUtils {
         pvClauses.add(new IsLikeClause());
         pvClauses.add(new IsNotLikeClause());
 
+        pvClauses.add(new IsIgnoreCaseClause());
+        pvClauses.add(new IsNotIgnoreCaseClause());
+
         pvClauses.add(new IsGreaterThanClause());
         pvClauses.add(new IsLessThanClause());
         pvClauses.add(new IsGreaterThanOrEqualToClause());

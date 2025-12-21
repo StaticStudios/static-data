@@ -96,7 +96,6 @@ public abstract class BaseQueryWhere {
         setValueClause(new NotEqualsClause(schema, table, column, o));
     }
 
-    //todo: add IJ and processor support for equalsIgnoreCaseClause and notEqualsIgnoreCaseClause
     protected void equalsIgnoreCaseClause(String schema, String table, String column, @NotNull String eq) {
         setValueClause(new EqualsIngoreCaseClause(schema, table, column, eq));
     }

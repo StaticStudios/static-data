@@ -273,9 +273,7 @@ public class QueryBuilderProcessor extends AbstractBuilderProcessor {
             String tableFieldName = storeTable(pv.getFieldName(), pv.getTable());
             String columnFieldName = storeColumn(pv.getFieldName(), pv.getColumn());
 
-            ParsedForeignPersistentValue fpv = null;
-            if (pv instanceof ParsedForeignPersistentValue _fpv) {
-                fpv = _fpv;
+            if (pv instanceof ParsedForeignPersistentValue fpv) {
                 storeLinks(fpv.getFieldName(), fpv.getLinks());
             }
 
@@ -295,6 +293,9 @@ public class QueryBuilderProcessor extends AbstractBuilderProcessor {
             if (typeUtils.isType(pv.getType(), String.class)) {
                 addIsLikeMethod(pv, schemaFieldName, tableFieldName, columnFieldName);
                 addIsNotLikeMethod(pv, schemaFieldName, tableFieldName, columnFieldName);
+
+                addIsIgnoreCaseMethod(pv, schemaFieldName, tableFieldName, columnFieldName);
+                addIsNotIgnoreCaseMethod(pv, schemaFieldName, tableFieldName, columnFieldName);
             }
 
             if (typeUtils.isNumericType(pv.getType()) || typeUtils.isType(pv.getType(), Timestamp.class)) {
@@ -981,6 +982,85 @@ public class QueryBuilderProcessor extends AbstractBuilderProcessor {
                                                     Ident(names.fromString(columnFieldName)),
                                                     Ident(names.fromString("min")),
                                                     Ident(names.fromString("max"))
+                                            )
+                                    )
+                            ),
+                            Return(
+                                    Ident(names.fromString("this"))
+                            )
+                    )),
+                    null
+            ), builderClassDecl);
+        }
+
+        private void addIsIgnoreCaseMethod(ParsedPersistentValue pv, String schemaFieldName, String tableFieldName, String columnFieldName) {
+            createMethod(MethodDef(
+                    Modifiers(Flags.PUBLIC | Flags.FINAL),
+                    names.fromString(pv.getFieldName() + "IsIgnoreCase"),
+                    Ident(names.fromString(getBuilderClassName())),
+                    List.nil(),
+                    List.of(
+                            VarDef(
+                                    Modifiers(Flags.PARAMETER),
+                                    names.fromString("value"),
+                                    Ident(names.fromString("String")),
+                                    null
+                            )
+                    ),
+                    List.nil(),
+                    Block(0, clause(pv,
+                            Exec(
+                                    Apply(
+                                            List.nil(),
+                                            Select(
+                                                    Ident(names.fromString("super")),
+                                                    names.fromString("equalsIgnoreCaseClause")
+                                            ),
+                                            List.of(
+                                                    Ident(names.fromString(schemaFieldName)),
+                                                    Ident(names.fromString(tableFieldName)),
+                                                    Ident(names.fromString(columnFieldName)),
+                                                    Ident(names.fromString("value"))
+                                            )
+                                    )
+                            ),
+                            Return(
+                                    Ident(names.fromString("this"))
+                            )
+                    )),
+                    null
+            ), builderClassDecl);
+        }
+
+
+        private void addIsNotIgnoreCaseMethod(ParsedPersistentValue pv, String schemaFieldName, String tableFieldName, String columnFieldName) {
+            createMethod(MethodDef(
+                    Modifiers(Flags.PUBLIC | Flags.FINAL),
+                    names.fromString(pv.getFieldName() + "IsNotIgnoreCase"),
+                    Ident(names.fromString(getBuilderClassName())),
+                    List.nil(),
+                    List.of(
+                            VarDef(
+                                    Modifiers(Flags.PARAMETER),
+                                    names.fromString("value"),
+                                    Ident(names.fromString("String")),
+                                    null
+                            )
+                    ),
+                    List.nil(),
+                    Block(0, clause(pv,
+                            Exec(
+                                    Apply(
+                                            List.nil(),
+                                            Select(
+                                                    Ident(names.fromString("super")),
+                                                    names.fromString("notEqualsIgnoreCaseClause")
+                                            ),
+                                            List.of(
+                                                    Ident(names.fromString(schemaFieldName)),
+                                                    Ident(names.fromString(tableFieldName)),
+                                                    Ident(names.fromString(columnFieldName)),
+                                                    Ident(names.fromString("value"))
                                             )
                                     )
                             ),
