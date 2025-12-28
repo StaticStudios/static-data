@@ -34,6 +34,12 @@ public class MockUser extends UniqueData {
     public Reference<MockUserSettings> settings = Reference.of(this, MockUserSettings.class)
             .onUpdate(MockUser.class, (user, update) -> user.settingsUpdates.set(user.settingsUpdates.get() + 1));
 
+    @Column(name = "best_buddy_id", nullable = true, unique = true)
+    public PersistentValue<UUID> bestBuddyId;
+
+    @OneToOne(link = "best_buddy_id=id", fkey = false)
+    public Reference<MockUser> bestBuddy;
+
     @Insert(InsertStrategy.OVERWRITE_EXISTING)
     @Delete(DeleteStrategy.NO_ACTION)
     @DefaultValue("0")

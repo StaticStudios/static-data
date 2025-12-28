@@ -6,5 +6,5 @@ import net.staticstudios.data.utils.Link;
 import java.util.List;
 
 public record ReferenceMetadata(Class<? extends UniqueData> holderClass, Class<? extends UniqueData> referencedClass,
-                                List<Link> links) {
+                                List<Link> links, boolean generateFkey) {
 }

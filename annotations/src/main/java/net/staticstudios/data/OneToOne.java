@@ -19,4 +19,11 @@ public @interface OneToOne {
 
     //todo: option to force not null?
 
+    /**
+     * Should a foreign key constraint be created for this relation?
+     *
+     * @return Whether to create a foreign key constraint
+     */
+    boolean fkey() default true;
+
 }

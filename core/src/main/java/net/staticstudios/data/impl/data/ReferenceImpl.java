@@ -68,7 +68,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
             Preconditions.checkNotNull(oneToOneAnnotation, "Field %s in class %s is missing @OneToOne annotation".formatted(field.getName(), clazz.getName()));
             Class<?> referencedClass = ReflectionUtils.getGenericType(field);
             Preconditions.checkNotNull(referencedClass, "Field %s in class %s is not parameterized".formatted(field.getName(), clazz.getName()));
-            metadataMap.put(field, new ReferenceMetadata(clazz, (Class<? extends UniqueData>) referencedClass, SQLBuilder.parseLinks(oneToOneAnnotation.link())));
+            metadataMap.put(field, new ReferenceMetadata(clazz, (Class<? extends UniqueData>) referencedClass, SQLBuilder.parseLinks(oneToOneAnnotation.link()), oneToOneAnnotation.fkey()));
         }
 
         return metadataMap;

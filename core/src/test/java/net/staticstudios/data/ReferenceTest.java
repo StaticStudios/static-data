@@ -213,4 +213,33 @@ public class ReferenceTest extends DataTest {
         assertEquals(4, user.settingsUpdates.get());
     }
 
+    @Test
+    public void testReferenceNoFkey() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+
+        UUID bestBuddyId = UUID.randomUUID();
+
+        MockUser user = MockUser.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("test user")
+                .bestBuddyId(bestBuddyId)
+                .insert(InsertMode.SYNC);
+
+        assertNotNull(user);
+        assertNull(user.bestBuddy.get());
+        assertEquals(bestBuddyId, user.bestBuddyId.get());
+
+        MockUser bestBuddy = MockUser.builder(dataManager)
+                .id(bestBuddyId)
+                .name("best buddy")
+                .insert(InsertMode.SYNC);
+
+        assertSame(bestBuddy, user.bestBuddy.get());
+        bestBuddy.delete();
+
+        assertNull(user.bestBuddy.get());
+        assertEquals(bestBuddyId, user.bestBuddyId.get());
+    }
+
 }

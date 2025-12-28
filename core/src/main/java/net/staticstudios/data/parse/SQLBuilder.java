@@ -482,6 +482,10 @@ public class SQLBuilder {
             schema.addTable(table);
         }
 
+        if (!oneToOne.fkey()) {
+            return;
+        }
+
         SQLSchema referencedSchema = Objects.requireNonNull(schemas.get(referencedMetadata.schema()));
         SQLTable referencedTable = Objects.requireNonNull(referencedSchema.getTable(referencedMetadata.table()));
 
