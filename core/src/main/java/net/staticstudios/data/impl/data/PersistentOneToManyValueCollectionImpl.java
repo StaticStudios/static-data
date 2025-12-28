@@ -426,25 +426,25 @@ public class PersistentOneToManyValueCollectionImpl<T> implements PersistentColl
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("SELECT ").append("\"").append(dataColumn).append("\", ");
         for (ColumnMetadata columnMetadata : holderMetadata.idColumns()) {
-            sqlBuilder.append("_source.\"").append(columnMetadata.name()).append("\", ");
+            sqlBuilder.append("\"").append(columnMetadata.schema()).append("\".\"").append(columnMetadata.table()).append("\".\"").append(columnMetadata.name()).append("\", ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 2);
         sqlBuilder.append(" FROM \"").append(dataSchema).append("\".\"").append(dataTable).append("\" ");
-        sqlBuilder.append("INNER JOIN \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\" AS _source ON ");
+        sqlBuilder.append("INNER JOIN \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\" ON ");
         for (Link entry : link) {
             String myColumn = entry.columnInReferringTable();
             String theirColumn = entry.columnInReferencedTable();
-            sqlBuilder.append("\"").append(dataSchema).append("\".\"").append(dataTable).append("\".\"").append(theirColumn).append("\" = _source.\"").append(myColumn).append("\" AND ");
+            sqlBuilder.append("\"").append(dataSchema).append("\".\"").append(dataTable).append("\".\"").append(theirColumn).append("\" = \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\".\"").append(myColumn).append("\" AND ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 5);
         sqlBuilder.append(" WHERE ");
 
         for (Link entry : link) {
             String theirColumn = entry.columnInReferencedTable();
-            sqlBuilder.append("\"").append(theirColumn).append("\" = _source.\"").append(entry.columnInReferringTable()).append("\" AND ");
+            sqlBuilder.append("\"").append(theirColumn).append("\" = \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\".\"").append(entry.columnInReferringTable()).append("\" AND ");
         }
         for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
-            sqlBuilder.append("_source.\"").append(columnValuePair.column()).append("\" = ? AND ");
+            sqlBuilder.append("\"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\".\"").append(columnValuePair.column()).append("\" = ? AND ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 5);
 
