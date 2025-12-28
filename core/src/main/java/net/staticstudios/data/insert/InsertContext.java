@@ -62,12 +62,23 @@ public class InsertContext {
         return this;
     }
 
+    @SuppressWarnings("unused") // Used in generated code
+    public Object getValue(String schema, String table, String column) {
+        return entries.entrySet().stream()
+                .filter(entry -> entry.getKey().schema().equals(schema)
+                        && entry.getKey().table().equals(table)
+                        && entry.getKey().name().equals(column))
+                .map(Map.Entry::getValue)
+                .findFirst()
+                .orElse(null);
+    }
+
     public Map<SimpleColumnMetadata, Object> getEntries() {
         return entries;
     }
 
-    public Map<SimpleColumnMetadata, InsertStrategy> getInsertStrategies() {
-        return insertStrategies;
+    public InsertStrategy getInsertStrategy(SimpleColumnMetadata columnMetadata) {
+        return insertStrategies.get(columnMetadata);
     }
 
     public void markInserted() {

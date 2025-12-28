@@ -14,21 +14,18 @@ import javax.lang.model.type.TypeMirror;
 import java.util.ArrayList;
 import java.util.Collection;
 
-public class ParsedPersistentValue {
-    private final String fieldName;
+public class ParsedPersistentValue extends ParsedValue {
     private final String schema;
     private final String table;
     private final String column;
     private final boolean nullable;
-    private final TypeElement type;
 
     public ParsedPersistentValue(String fieldName, String schema, String table, String column, boolean nullable, TypeElement type) {
-        this.fieldName = fieldName;
+        super(fieldName, type);
         this.schema = schema;
         this.table = table;
         this.column = column;
         this.nullable = nullable;
-        this.type = type;
     }
 
     public static Collection<ParsedPersistentValue> extractPersistentValues(@NotNull TypeElement dataClass,
@@ -111,10 +108,6 @@ public class ParsedPersistentValue {
         return persistentValues;
     }
 
-    public String getFieldName() {
-        return fieldName;
-    }
-
     public String getSchema() {
         return schema;
     }
@@ -131,9 +124,6 @@ public class ParsedPersistentValue {
         return nullable;
     }
 
-    public TypeElement getType() {
-        return type;
-    }
 
     public String[] getTypeFQNParts() {
         return type.getQualifiedName().toString().split("\\.");

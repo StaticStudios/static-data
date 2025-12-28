@@ -6,6 +6,7 @@ import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.util.List;
 import net.staticstudios.data.InsertStrategy;
 import net.staticstudios.data.compiler.javac.ProcessorContext;
+import net.staticstudios.data.utils.Link;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -84,6 +85,11 @@ public class BuilderProcessor extends AbstractBuilderProcessor {
                 )),
                 null
         ), builderClassDecl);
+
+
+        if (pv instanceof ParsedForeignPersistentValue fpv) {
+            processFpv(fpv);
+        }
     }
 
     private void processReference(ParsedReference ref) {
@@ -245,6 +251,84 @@ public class BuilderProcessor extends AbstractBuilderProcessor {
         ), builderClassDecl);
     }
 
+    private void processFpv(ParsedForeignPersistentValue fpv) {
+
+
+        String linkingColumnReferredBySchemaFieldName = fpv.getFieldName() + "$_referredBySchema";
+        String linkingColumnReferredByTableFieldName = fpv.getFieldName() + "$_referredByTable";
+
+        createField(VarDef(
+                Modifiers(Flags.PRIVATE),
+                names.fromString(linkingColumnReferredBySchemaFieldName),
+                Ident(names.fromString("String")),
+                Apply(
+                        List.nil(),
+                        Select(
+                                chainDots("net", "staticstudios", "data", "util", "ValueUtils"),
+                                names.fromString("parseValue")
+                        ),
+                        List.of(
+                                Literal(dataAnnotation.schema())
+                        )
+                )
+        ), builderClassDecl);
+
+        createField(VarDef(
+                Modifiers(Flags.PRIVATE),
+                names.fromString(linkingColumnReferredByTableFieldName),
+                Ident(names.fromString("String")),
+                Apply(
+                        List.nil(),
+                        Select(
+                                chainDots("net", "staticstudios", "data", "util", "ValueUtils"),
+                                names.fromString("parseValue")
+                        ),
+                        List.of(
+                                Literal(dataAnnotation.table())
+                        )
+                )
+        ), builderClassDecl);
+
+        for (Link link : fpv.getLinks()) {
+            String linkingColumnReferencesFieldName = fpv.getFieldName() + "$" + link.columnInReferringTable() + "_references";
+            String linkingColumnReferredByColumnFieldName = fpv.getFieldName() + "$" + link.columnInReferringTable() + "_referredByColumn";
+
+
+            createField(VarDef(
+                    Modifiers(Flags.PRIVATE),
+                    names.fromString(linkingColumnReferencesFieldName),
+                    Ident(names.fromString("String")),
+                    Apply(
+                            List.nil(),
+                            Select(
+                                    chainDots("net", "staticstudios", "data", "util", "ValueUtils"),
+                                    names.fromString("parseValue")
+                            ),
+                            List.of(
+                                    Literal(link.columnInReferencedTable())
+                            )
+                    )
+            ), builderClassDecl);
+
+
+            createField(VarDef(
+                    Modifiers(Flags.PRIVATE),
+                    names.fromString(linkingColumnReferredByColumnFieldName),
+                    Ident(names.fromString("String")),
+                    Apply(
+                            List.nil(),
+                            Select(
+                                    chainDots("net", "staticstudios", "data", "util", "ValueUtils"),
+                                    names.fromString("parseValue")
+                            ),
+                            List.of(
+                                    Literal(link.columnInReferringTable())
+                            )
+                    )
+            ), builderClassDecl);
+        }
+    }
+
     private void makeInsertBatchMethod() {
         createMethod(MethodDef(
                 Modifiers(Flags.PUBLIC | Flags.FINAL),
@@ -404,17 +488,75 @@ public class BuilderProcessor extends AbstractBuilderProcessor {
                             tableFieldAccess,
                             columnFieldAccess,
                             fieldAccess,
-                            insertStrategy != null ?
-                                    Select(
-                                            chainDots("net", "staticstudios", "data", "InsertStrategy"),
-                                            names.fromString(insertStrategy.name())
-                                    )
-                                    :
-                                    Literal(TypeTag.BOT, null)
+                            Select(
+                                    chainDots("net", "staticstudios", "data", "InsertStrategy"),
+                                    names.fromString(insertStrategy != null ? insertStrategy.name() : InsertStrategy.PREFER_EXISTING.name())
+                            )
                     )
             );
 
             bodyStatements.add(Exec(insertStatement));
+        }
+
+        for (ParsedPersistentValue pv : parsedPersistentValues) {
+            if (!(pv instanceof ParsedForeignPersistentValue fpv)) {
+                continue;
+            }
+
+
+            bodyStatements.add(
+                    If(
+                            Binary(
+                                    JCTree.Tag.NE,
+                                    Ident(names.fromString(pv.getFieldName())),
+                                    Literal(TypeTag.BOT, null)
+                            ),
+                            Block(0,
+                                    List.from(
+                                            fpv.getLinks().stream().map(link -> {
+                                                String linkingColumnReferencesFieldName = fpv.getFieldName() + "$" + link.columnInReferringTable() + "_references";
+                                                String linkingColumnReferredBySchemaFieldName = fpv.getFieldName() + "$_referredBySchema";
+                                                String linkingColumnReferredByTableFieldName = fpv.getFieldName() + "$_referredByTable";
+                                                String linkingColumnReferredByColumnFieldName = fpv.getFieldName() + "$" + link.columnInReferringTable() + "_referredByColumn";
+
+
+                                                return Exec(
+                                                        Apply(
+                                                                List.nil(),
+                                                                Select(
+                                                                        Ident(names.fromString("ctx")),
+                                                                        names.fromString("set")
+                                                                ),
+                                                                List.of(
+                                                                        Ident(names.fromString(pv.getFieldName() + "$schema")),
+                                                                        Ident(names.fromString(pv.getFieldName() + "$table")),
+                                                                        Ident(names.fromString(linkingColumnReferencesFieldName)),
+                                                                        Apply(
+                                                                                List.nil(),
+                                                                                Select(
+                                                                                        Ident(names.fromString("ctx")),
+                                                                                        names.fromString("getValue")
+                                                                                ),
+                                                                                List.of(
+                                                                                        Ident(names.fromString(linkingColumnReferredBySchemaFieldName)),
+                                                                                        Ident(names.fromString(linkingColumnReferredByTableFieldName)),
+                                                                                        Ident(names.fromString(linkingColumnReferredByColumnFieldName))
+
+                                                                                )
+                                                                        ),
+                                                                        Select(
+                                                                                chainDots("net", "staticstudios", "data", "InsertStrategy"),
+                                                                                names.fromString("PREFER_EXISTING")
+                                                                        )
+                                                                )
+                                                        )
+                                                );
+                                            }).toList()
+                                    )
+                            ),
+                            null
+                    )
+            );
         }
 
         for (ParsedReference ref : parsedReferences) {

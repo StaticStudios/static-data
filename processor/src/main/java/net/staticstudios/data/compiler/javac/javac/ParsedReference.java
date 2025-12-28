@@ -16,15 +16,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-public class ParsedReference {
-    private final String fieldName;
+public class ParsedReference extends ParsedValue implements ParsedRelation {
     private final List<Link> links;
-    private final TypeElement type;
 
     public ParsedReference(String fieldName, List<Link> links, TypeElement type) {
-        this.fieldName = fieldName;
+        super(fieldName, type);
         this.links = links;
-        this.type = type;
     }
 
     public static Collection<ParsedReference> extractReferences(@NotNull TypeElement dataClass,
@@ -54,16 +51,8 @@ public class ParsedReference {
         return references;
     }
 
-    public String getFieldName() {
-        return fieldName;
-    }
-
     public List<Link> getLinks() {
         return links;
-    }
-
-    public TypeElement getType() {
-        return type;
     }
 
     public String[] getTypeFQNParts() {

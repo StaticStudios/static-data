@@ -28,6 +28,9 @@ dependencies {
     testAnnotationProcessor project(':processor')
 }
 
+shadowJar {
+    archiveClassifier.set('')
+}
 
 tasks.named('build') {
     dependsOn(shadowJar)
@@ -51,19 +54,15 @@ javadoc {
 }
 
 publishing {
-    repositories {
-        maven {
-            credentials(org.gradle.api.credentials.PasswordCredentials.class)
-            name = "StaticStudios"
-            setUrl("https://repo.staticstudios.net/private/")
-        }
-    }
     publications {
         maven(MavenPublication) {
             artifactId = 'static-data'
-            artifact(shadowJar) {
-                classifier = null
-            }
+
+            from components.shadow
+
+            artifact sourcesJar
+            artifact javadocJar
+
             pom {
                 name = 'Static Data'
                 description = 'Data library used by StaticStudios.'

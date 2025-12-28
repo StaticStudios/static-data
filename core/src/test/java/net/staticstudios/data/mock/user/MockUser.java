@@ -61,7 +61,6 @@ public class MockUser extends UniqueData {
             .onAdd(MockUser.class, (user, added) -> user.sessionAdditions.set(user.sessionAdditions.get() + 1))
             .onRemove(MockUser.class, (user, removed) -> user.sessionRemovals.set(user.sessionRemovals.get() + 1));
 
-
     @Identifier("friend_additions")
     public CachedValue<Integer> friendAdditions = CachedValue.of(this, Integer.class)
             .withFallback(0);

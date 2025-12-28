@@ -6,7 +6,7 @@ import net.staticstudios.data.utils.Link;
 import javax.lang.model.element.TypeElement;
 import java.util.List;
 
-class ParsedForeignPersistentValue extends ParsedPersistentValue {
+class ParsedForeignPersistentValue extends ParsedPersistentValue implements ParsedRelation {
     private final InsertStrategy insertStrategy;
     private final List<Link> links;
 

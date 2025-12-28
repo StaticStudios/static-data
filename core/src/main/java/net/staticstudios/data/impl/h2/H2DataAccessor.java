@@ -373,7 +373,7 @@ public class H2DataAccessor implements DataAccessor {
                     for (Object value : sqlStatement.getValues()) {
                         preparedStatement.setObject(i++, value);
                     }
-                    logger.debug("[H2] {}", sqlStatement.getH2Sql());
+                    logger.trace("[H2] {}", sqlStatement.getH2Sql());
                     preparedStatement.executeUpdate();
                 }
             }
@@ -425,7 +425,7 @@ public class H2DataAccessor implements DataAccessor {
         for (int i = 0; i < values.size(); i++) {
             cachePreparedStatement.setObject(i + 1, values.get(i));
         }
-        logger.debug("[H2] {}", sql);
+        logger.trace("[H2] {}", sql);
         return cachePreparedStatement.executeQuery();
     }
 
@@ -444,7 +444,7 @@ public class H2DataAccessor implements DataAccessor {
                 for (Object value : values) {
                     cachePreparedStatement.setObject(++i, value);
                 }
-                logger.debug("[H2] {}", h2Sql);
+                logger.trace("[H2] {}", h2Sql);
                 Consumer<ResultSet> resultHandler = operation.getResultHandler();
                 if (resultHandler == null) {
                     cachePreparedStatement.executeUpdate();
@@ -557,7 +557,7 @@ public class H2DataAccessor implements DataAccessor {
                 currentTables.add(schema + "." + table);
 
                 if (!knownTables.contains(schema + "." + table)) {
-                    logger.trace("Discovered new referringTable {}.{}", schema, table);
+                    logger.debug("Discovered new referringTable {}.{}", schema, table);
                     UUID randomId = UUID.randomUUID();
                     @Language("SQL") String sql = "CREATE TRIGGER IF NOT EXISTS \"insert_update_trg_%s_%s\" AFTER INSERT, UPDATE ON \"%s\".\"%s\" FOR EACH ROW CALL '%s'";
 

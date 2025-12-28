@@ -10,7 +10,10 @@ import net.staticstudios.data.impl.redis.RedisListener;
 import net.staticstudios.data.insert.BatchInsert;
 import net.staticstudios.data.insert.InsertContext;
 import net.staticstudios.data.insert.PostInsertAction;
-import net.staticstudios.data.parse.*;
+import net.staticstudios.data.parse.DDLStatement;
+import net.staticstudios.data.parse.SQLBuilder;
+import net.staticstudios.data.parse.SQLColumn;
+import net.staticstudios.data.parse.SQLTable;
 import net.staticstudios.data.primative.Primitives;
 import net.staticstudios.data.util.*;
 import net.staticstudios.data.util.TaskQueue;
@@ -1115,10 +1118,24 @@ public class DataManager {
     }
 
     public void insert(BatchInsert batch, InsertMode insertMode) {
-        List<SQlStatement> statements = new ArrayList<>();
 
+        List<InsertStatement> insertStatements = new LinkedList<>();
         for (InsertContext context : batch.getInsertContexts()) {
-            statements.addAll(generateStatements(context));
+            insertStatements.addAll(generateInsertStatements(context));
+        }
+
+        for (InsertStatement insertStatement : List.copyOf(insertStatements)) {
+            insertStatement.calculateRequiredDependencies();
+            insertStatements.addAll(insertStatement.createUnmetDependencyStatements(insertStatements));
+        }
+
+        InsertStatement.checkForCycles(insertStatements);
+
+        insertStatements = InsertStatement.sort(insertStatements);
+
+        List<SQlStatement> statements = new ArrayList<>();
+        for (InsertStatement insertStatement : insertStatements) {
+            statements.add(insertStatement.asStatement());
         }
 
         for (PostInsertAction action : batch.getPostInsertActions()) {
@@ -1137,193 +1154,40 @@ public class DataManager {
         }
     }
 
-    private List<SQlStatement> generateStatements(InsertContext insertContext) {
-        //todo: when inserting validate all id and required values are present - this will be enforced by h2, but we should do it here for better logging/errors.
-        Set<SQLTable> tables = new HashSet<>();
+    private List<InsertStatement> generateInsertStatements(InsertContext insertContext) {
+        List<InsertStatement> insertStatements = new LinkedList<>();
+
+        Map<SQLTable, List<SimpleColumnMetadata>> tableColumnsMap = new HashMap<>();
         insertContext.getEntries().forEach((simpleColumnMetadata, o) -> {
             SQLTable table = Objects.requireNonNull(sqlBuilder.getSchema(simpleColumnMetadata.schema())).getTable(simpleColumnMetadata.table());
-            tables.add(table);
+            tableColumnsMap.computeIfAbsent(table, k -> new LinkedList<>())
+                    .add(simpleColumnMetadata);
         });
 
-        // handle foreign keys. for each foreign key, if we have a value for the local column, we need to set the value for the foreign column. this consists of linking ids mostly.
-        for (SQLTable table : tables) {
-            for (ForeignKey fKey : table.getForeignKeys()) {
-                SQLSchema referencedSchema = Objects.requireNonNull(sqlBuilder.getSchema(fKey.getReferencedSchema()));
-                SQLTable referencedTable = Objects.requireNonNull(referencedSchema.getTable(fKey.getReferencedTable()));
-                for (Link link : fKey.getLinkingColumns()) {
-                    String myColumnName = link.columnInReferringTable();
-                    String otherColumnName = link.columnInReferencedTable();
-                    SQLColumn otherColumn = Objects.requireNonNull(referencedTable.getColumn(otherColumnName));
+        for (SQLTable table : tableColumnsMap.keySet()) {
+            List<ColumnValuePair> idColumns = new ArrayList<>();
+            Map<SimpleColumnMetadata, Object> otherColumnValues = new HashMap<>();
+            List<SimpleColumnMetadata> columns = tableColumnsMap.get(table);
+            for (SimpleColumnMetadata column : columns) {
+                Object value = insertContext.getEntries().get(column);
 
-                    // if its nullable and we don't have a value, skip it.
-                    if (otherColumn.isNullable()) {
-                        continue;
-                    }
-
-                    insertContext.set(fKey.getReferencedSchema(), fKey.getReferencedTable(), otherColumn.getName(), insertContext.getEntries().get(new SimpleColumnMetadata(fKey.getReferringSchema(), fKey.getReferringTable(), myColumnName, otherColumn.getType())), InsertStrategy.PREFER_EXISTING);
-                }
-            }
-        }
-
-        tables.clear(); // rebuild the referringTable set in case we added any new tables from foreign keys
-        insertContext.getEntries().forEach((simpleColumnMetadata, o) -> {
-            SQLTable table = Objects.requireNonNull(sqlBuilder.getSchema(simpleColumnMetadata.schema())).getTable(simpleColumnMetadata.table());
-            tables.add(table);
-        });
-
-        // Build dependency graph: referringTable -> set of tables it depends on
-        Map<String, Set<SQLTable>> dependencyGraph = new HashMap<>();
-        for (SQLTable table : tables) {
-            Set<SQLTable> dependsOn = new HashSet<>();
-            for (ForeignKey fKey : table.getForeignKeys()) {
-                SQLSchema referencedSchema = Objects.requireNonNull(sqlBuilder.getSchema(fKey.getReferencedSchema()));
-                SQLTable referencedTable = Objects.requireNonNull(referencedSchema.getTable(fKey.getReferencedTable()));
-
-                boolean addDependency = true;
-                // if one of the linking columnsInReferringTable is not present in the insert context, we can't add the dependency
-                for (Link link : fKey.getLinkingColumns()) {
-                    Object value = insertContext.getEntries().entrySet().stream()
-                            .filter(entry -> {
-                                SimpleColumnMetadata key = entry.getKey();
-                                return key.schema().equals(fKey.getReferencedSchema()) &&
-                                        key.table().equals(fKey.getReferencedTable()) &&
-                                        key.name().equals(link.columnInReferencedTable());
-                            })
-                            .findFirst()
-                            .orElse(null);
-
-                    if (value == null) {
-                        addDependency = false;
-                        break;
-                    }
-                }
-
-                if (addDependency) {
-                    dependsOn.add(referencedTable);
-                }
-            }
-            if (!dependsOn.isEmpty()) {
-                dependencyGraph.put(table.getName(), dependsOn);
-            }
-        }
-
-        // DFS to detect cycles
-        Set<SQLTable> visited = new HashSet<>();
-        Set<SQLTable> stack = new HashSet<>();
-        for (SQLTable table : tables) {
-            if (hasCycle(table, dependencyGraph, visited, stack)) {
-                throw new IllegalStateException(String.format("Cycle detected in foreign key dependencies involving referringTable %s.%s", table.getSchema().getName(), table.getName()));
-            }
-        }
-
-        // Topological sort for insert order
-        List<SQLTable> orderedTables = new ArrayList<>();
-        visited.clear();
-        for (SQLTable table : tables) {
-            topoSort(table, dependencyGraph, visited, orderedTables);
-        }
-
-        List<SQlStatement> sqlStatements = new ArrayList<>();
-
-        Map<String, List<SimpleColumnMetadata>> columnsToInsert = new HashMap<>();
-        for (Map.Entry<SimpleColumnMetadata, Object> entry : insertContext.getEntries().entrySet()) {
-            SimpleColumnMetadata column = entry.getKey();
-            columnsToInsert.computeIfAbsent(column.table(), k -> new ArrayList<>())
-                    .add(column);
-        }
-
-        for (SQLTable table : orderedTables) {
-            String schemaName = table.getSchema().getName();
-            String tableName = table.getName();
-            List<SimpleColumnMetadata> columnsInTable = columnsToInsert.get(tableName);
-
-
-            StringBuilder h2SqlBuilder = new StringBuilder("MERGE INTO \"");
-            h2SqlBuilder.append(schemaName).append("\".\"").append(tableName).append("\" AS target USING (VALUES (");
-            Map<SimpleColumnMetadata, InsertStrategy> conflicts = new HashMap<>();
-            h2SqlBuilder.append("?, ".repeat(columnsInTable.size()));
-            h2SqlBuilder.setLength(h2SqlBuilder.length() - 2);
-            h2SqlBuilder.append(")) AS source (");
-            for (SimpleColumnMetadata column : columnsInTable) {
-                h2SqlBuilder.append("\"").append(column.name()).append("\", ");
-                InsertStrategy strategy = insertContext.getInsertStrategies().get(column);
-                if (strategy != null) {
-                    conflicts.put(column, strategy);
-                }
-            }
-            h2SqlBuilder.setLength(h2SqlBuilder.length() - 2);
-            h2SqlBuilder.append(") ON ");
-            for (ColumnMetadata idColumn : table.getIdColumns()) {
-                h2SqlBuilder.append("target.\"").append(idColumn.name()).append("\" = source.\"").append(idColumn.name()).append("\" AND ");
-            }
-            h2SqlBuilder.setLength(h2SqlBuilder.length() - 5);
-            h2SqlBuilder.append(" WHEN NOT MATCHED THEN INSERT (");
-            for (SimpleColumnMetadata column : columnsInTable) {
-                h2SqlBuilder.append("\"").append(column.name()).append("\", ");
-            }
-            h2SqlBuilder.setLength(h2SqlBuilder.length() - 2);
-            h2SqlBuilder.append(") VALUES (");
-            for (SimpleColumnMetadata column : columnsInTable) {
-                h2SqlBuilder.append("source.\"").append(column.name()).append("\", ");
-            }
-            h2SqlBuilder.setLength(h2SqlBuilder.length() - 2);
-            h2SqlBuilder.append(")");
-
-            List<SimpleColumnMetadata> overwriteExisting = new ArrayList<>();
-            for (Map.Entry<SimpleColumnMetadata, InsertStrategy> entry : conflicts.entrySet()) {
-                if (entry.getValue() == InsertStrategy.OVERWRITE_EXISTING) {
-                    overwriteExisting.add(entry.getKey());
-                }
-            }
-            if (!overwriteExisting.isEmpty()) {
-                h2SqlBuilder.append(" WHEN MATCHED THEN UPDATE SET ");
-                for (SimpleColumnMetadata column : overwriteExisting) {
-                    h2SqlBuilder.append("\"").append(column.name()).append("\" = source.\"").append(column.name()).append("\", ");
-                }
-                h2SqlBuilder.setLength(h2SqlBuilder.length() - 2);
-            }
-
-            StringBuilder pgSqlBuilder = new StringBuilder("INSERT INTO \"");
-            pgSqlBuilder.append(schemaName).append("\".\"").append(tableName).append("\" (");
-            for (SimpleColumnMetadata column : columnsInTable) {
-                pgSqlBuilder.append("\"").append(column.name()).append("\", ");
-            }
-            pgSqlBuilder.setLength(pgSqlBuilder.length() - 2);
-            pgSqlBuilder.append(") VALUES (");
-            pgSqlBuilder.append("?, ".repeat(columnsInTable.size()));
-            pgSqlBuilder.setLength(pgSqlBuilder.length() - 2);
-            pgSqlBuilder.append(")");
-
-            if (!conflicts.isEmpty()) {
-                pgSqlBuilder.append(" ON CONFLICT (");
-                for (ColumnMetadata idColumn : table.getIdColumns()) {
-                    pgSqlBuilder.append("\"").append(idColumn.name()).append("\", ");
-                }
-                pgSqlBuilder.setLength(pgSqlBuilder.length() - 2);
-                pgSqlBuilder.append(") DO ");
-                if (!overwriteExisting.isEmpty()) {
-                    pgSqlBuilder.append("UPDATE SET ");
-                    for (SimpleColumnMetadata column : overwriteExisting) {
-                        pgSqlBuilder.append("\"").append(column.name()).append("\" = EXCLUDED.\"").append(column.name()).append("\", ");
-                    }
-                    pgSqlBuilder.setLength(pgSqlBuilder.length() - 2);
+                if (table.getIdColumns().stream().anyMatch(c -> c.name().equals(column.name()))) {
+                    idColumns.add(new ColumnValuePair(column.name(), value));
                 } else {
-                    pgSqlBuilder.append("NOTHING");
+                    otherColumnValues.put(column, value);
                 }
             }
+            InsertStatement statement = new InsertStatement(this, table, new ColumnValuePairs(idColumns.toArray(new ColumnValuePair[0])));
 
-            String h2Sql = h2SqlBuilder.toString();
-            String pgSql = pgSqlBuilder.toString();
-            List<Object> values = new ArrayList<>();
-            for (SimpleColumnMetadata column : columnsInTable) {
-                Object deserializedValue = insertContext.getEntries().get(column);
-                Object serializedValue = serialize(deserializedValue);
-                values.add(serializedValue);
-            }
-            sqlStatements.add(new SQlStatement(h2Sql, pgSql, values));
+            otherColumnValues.forEach((column, value) -> {
+                InsertStrategy strategy = insertContext.getInsertStrategy(column);
+                statement.set(column.name(), strategy, value);
+            });
+
+            insertStatements.add(statement);
         }
 
-        return sqlStatements;
+        return insertStatements;
     }
 
     public <T> T get(String schema, String table, String column, ColumnValuePairs idColumns, List<Link> idColumnLinks, Class<T> dataType) {
