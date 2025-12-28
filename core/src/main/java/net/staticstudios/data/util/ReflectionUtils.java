@@ -66,7 +66,9 @@ public class ReflectionUtils {
         if (field.getGenericType() instanceof Class<?>) {
             return (Class<?>) field.getGenericType();
         } else if (field.getGenericType() instanceof java.lang.reflect.ParameterizedType parameterizedType) {
-            return (Class<?>) parameterizedType.getActualTypeArguments()[0];
+            if (parameterizedType.getActualTypeArguments()[0] instanceof Class<?>) {
+                return (Class<?>) parameterizedType.getActualTypeArguments()[0];
+            }
         }
         return null;
     }

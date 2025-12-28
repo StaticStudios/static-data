@@ -3,6 +3,7 @@ package net.staticstudios.data;
 import com.google.common.base.Preconditions;
 import net.staticstudios.data.insert.BatchInsert;
 import net.staticstudios.data.query.QueryBuilder;
+import org.jetbrains.annotations.Blocking;
 
 /**
  * Entry point for initializing and interacting with the StaticData system.
@@ -70,5 +71,14 @@ public class StaticData {
     public static <U extends UniqueData> QueryBuilder<U> query(Class<U> type) {
         assertInit();
         return new QueryBuilder<>(DataManager.getInstance(), type);
+    }
+
+    /**
+     * Block the calling thread until all previously enqueued tasks have been completed
+     */
+    @Blocking
+    public static void flushTaskQueue() {
+        assertInit();
+        DataManager.getInstance().flushTaskQueue();
     }
 }

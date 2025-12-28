@@ -5,13 +5,13 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 
 public class SQLColumn {
-    private final SQLTable table;
     private final Class<?> type;
     private final String name;
     private final boolean nullable;
     private final boolean indexed;
     private final boolean unique;
     private final @Nullable String defaultValue;
+    private SQLTable table;
 
     public SQLColumn(SQLTable table, Class<?> type, String name, boolean nullable, boolean indexed, boolean unique, @Nullable String defaultValue) {
         this.table = table;
@@ -21,6 +21,10 @@ public class SQLColumn {
         this.indexed = indexed;
         this.unique = unique;
         this.defaultValue = defaultValue;
+    }
+
+    public void setTable(SQLTable table) {
+        this.table = table;
     }
 
     public SQLTable getTable() {

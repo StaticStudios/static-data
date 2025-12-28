@@ -31,7 +31,6 @@ dependencies {
 
 tasks.named('build') {
     dependsOn(shadowJar)
-
 }
 
 tasks.named("publish") {
@@ -49,14 +48,6 @@ java {
 
 javadoc {
     options.tags = ["implSpec", "apiNote", "implNote"]
-}
-
-shadowJar {
-    archiveClassifier.set('all')
-
-    dependencies {
-        include(project(":annotations"))
-    }
 }
 
 publishing {

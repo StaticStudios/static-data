@@ -101,7 +101,7 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         if (dataTable.equals(referencedTable)) {
             return referencedTable + "_ref";
         }
-        return "";
+        return referencedTable;
     }
 
     public static List<Link> getJoinTableToDataTableLinks(String dataTable, String links) {

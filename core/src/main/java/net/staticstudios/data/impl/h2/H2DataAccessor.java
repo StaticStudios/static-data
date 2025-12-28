@@ -64,6 +64,13 @@ public class H2DataAccessor implements DataAccessor {
     private final Set<String> knownRedisPartialKeys = ConcurrentHashMap.newKeySet();
 
     public H2DataAccessor(DataManager dataManager, PostgresListener postgresListener, RedisListener redisListener, TaskQueue taskQueue) {
+
+        try {
+            Class.forName("org.h2.Driver");
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("Failed to load H2 Driver", e);
+        }
+
         this.taskQueue = taskQueue;
         this.postgresListener = postgresListener;
         this.redisListener = redisListener;

@@ -7,12 +7,12 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 
 public class SQLTable {
-    private final SQLSchema schema;
     private final String name;
     private final List<ColumnMetadata> idColumns;
     private final Map<String, SQLColumn> columns;
     private final Set<ForeignKey> foreignKeys;
     private final Set<SQLTrigger> triggers;
+    private SQLSchema schema;
 
     public SQLTable(SQLSchema schema, String name, List<ColumnMetadata> idColumns) {
         this.schema = schema;
@@ -21,6 +21,10 @@ public class SQLTable {
         this.columns = new HashMap<>();
         this.foreignKeys = new HashSet<>();
         this.triggers = new HashSet<>();
+    }
+
+    public void setSchema(SQLSchema schema) {
+        this.schema = schema;
     }
 
     public SQLSchema getSchema() {

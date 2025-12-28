@@ -17,6 +17,7 @@ import net.staticstudios.data.util.TaskQueue;
 import net.staticstudios.data.utils.Link;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.ApiStatus;
+import org.jetbrains.annotations.Blocking;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -24,6 +25,7 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
@@ -748,52 +750,73 @@ public class DataManager {
     }
 
     public UniqueDataMetadata extractMetadata(Class<? extends UniqueData> clazz) {
+        Data dataAnnotation = clazz.getAnnotation(Data.class);
+        return extractMetadata(clazz, dataAnnotation);
+    }
+
+    public UniqueDataMetadata extractMetadata(Class<? extends UniqueData> clazz, Data fallbackDataAnnotation) {
+        logger.debug("Extracting metadata for UniqueData class {}", clazz.getName());
         Preconditions.checkArgument(!uniqueDataMetadataMap.containsKey(clazz), "UniqueData class %s has already been parsed", clazz.getName());
         Data dataAnnotation = clazz.getAnnotation(Data.class);
+        if (dataAnnotation == null) {
+            dataAnnotation = fallbackDataAnnotation;
+        }
         Preconditions.checkNotNull(dataAnnotation, "UniqueData class %s is missing @Data annotation", clazz.getName());
 
-        List<ColumnMetadata> idColumns = new ArrayList<>();
-        for (Field field : ReflectionUtils.getFields(clazz, PersistentValue.class)) {
-            IdColumn idColumnAnnotation = field.getAnnotation(IdColumn.class);
-            if (idColumnAnnotation == null) {
-                continue;
+        UniqueDataMetadata metadata = null;
+
+        if (!Modifier.isAbstract(clazz.getModifiers())) {
+            List<ColumnMetadata> idColumns = new ArrayList<>();
+            for (Field field : ReflectionUtils.getFields(clazz, PersistentValue.class)) {
+                IdColumn idColumnAnnotation = field.getAnnotation(IdColumn.class);
+                if (idColumnAnnotation == null) {
+                    continue;
+                }
+                idColumns.add(new ColumnMetadata(
+                        ValueUtils.parseValue(dataAnnotation.schema()),
+                        ValueUtils.parseValue(dataAnnotation.table()),
+                        ValueUtils.parseValue(idColumnAnnotation.name()),
+                        ReflectionUtils.getGenericType(field),
+                        false,
+                        false,
+                        ""
+                ));
             }
-            idColumns.add(new ColumnMetadata(
-                    ValueUtils.parseValue(dataAnnotation.schema()),
-                    ValueUtils.parseValue(dataAnnotation.table()),
-                    ValueUtils.parseValue(idColumnAnnotation.name()),
-                    ReflectionUtils.getGenericType(field),
-                    false,
-                    false,
-                    ""
-            ));
+            Preconditions.checkArgument(!idColumns.isEmpty(), "UniqueData class %s must have at least one @IdColumn annotated PersistentValue field", clazz.getName());
+            String schema = ValueUtils.parseValue(dataAnnotation.schema());
+            String table = ValueUtils.parseValue(dataAnnotation.table());
+            Map<Field, PersistentCollectionMetadata> persistentCollectionMetadataMap = new HashMap<>();
+            persistentCollectionMetadataMap.putAll(PersistentOneToManyCollectionImpl.extractMetadata(this, clazz));
+            persistentCollectionMetadataMap.putAll(PersistentManyToManyCollectionImpl.extractMetadata(clazz));
+            persistentCollectionMetadataMap.putAll(PersistentOneToManyValueCollectionImpl.extractMetadata(clazz, schema));
+            metadata = new UniqueDataMetadata(
+                    clazz,
+                    schema,
+                    table,
+                    idColumns,
+                    CachedValueImpl.extractMetadata(schema, table, clazz),
+                    PersistentValueImpl.extractMetadata(schema, table, clazz),
+                    ReferenceImpl.extractMetadata(clazz),
+                    persistentCollectionMetadataMap
+            );
+            uniqueDataMetadataMap.put(clazz, metadata);
         }
-        Preconditions.checkArgument(!idColumns.isEmpty(), "UniqueData class %s must have at least one @IdColumn annotated PersistentValue field", clazz.getName());
-        String schema = ValueUtils.parseValue(dataAnnotation.schema());
-        String table = ValueUtils.parseValue(dataAnnotation.table());
-        Map<Field, PersistentCollectionMetadata> persistentCollectionMetadataMap = new HashMap<>();
-        persistentCollectionMetadataMap.putAll(PersistentOneToManyCollectionImpl.extractMetadata(this, clazz));
-        persistentCollectionMetadataMap.putAll(PersistentManyToManyCollectionImpl.extractMetadata(clazz));
-        persistentCollectionMetadataMap.putAll(PersistentOneToManyValueCollectionImpl.extractMetadata(clazz, schema));
-        UniqueDataMetadata metadata = new UniqueDataMetadata(
-                clazz,
-                schema,
-                table,
-                idColumns,
-                CachedValueImpl.extractMetadata(schema, table, clazz),
-                PersistentValueImpl.extractMetadata(schema, table, clazz),
-                ReferenceImpl.extractMetadata(clazz),
-                persistentCollectionMetadataMap
-        );
-        uniqueDataMetadataMap.put(clazz, metadata);
 
         for (Field field : ReflectionUtils.getFields(clazz, Relation.class)) {
             Class<?> genericType = ReflectionUtils.getGenericType(field);
-            if (genericType != null && UniqueData.class.isAssignableFrom(genericType)) {
+            if (genericType != null && !Modifier.isAbstract(genericType.getModifiers()) && UniqueData.class.isAssignableFrom(genericType)) {
                 Class<? extends UniqueData> dependencyClass = genericType.asSubclass(UniqueData.class);
                 if (!uniqueDataMetadataMap.containsKey(dependencyClass)) {
                     extractMetadata(dependencyClass);
                 }
+            }
+        }
+
+        Class<?> superClass = clazz.getSuperclass();
+        if (superClass != null && UniqueData.class.isAssignableFrom(superClass) && superClass != UniqueData.class) {
+            Class<? extends UniqueData> superUniqueDataClass = superClass.asSubclass(UniqueData.class);
+            if (!uniqueDataMetadataMap.containsKey(superUniqueDataClass)) {
+                extractMetadata(superUniqueDataClass, dataAnnotation);
             }
         }
 
@@ -1552,4 +1575,15 @@ public class DataManager {
 //        instance.markDeleted();
 //        return instance;
 //    }
+
+    /**
+     * Block the calling thread until all previously enqueued tasks have been completed
+     */
+    @Blocking
+    public void flushTaskQueue() {
+        //This will add a task to the queue and block until it's done
+        taskQueue.submitTask(connection -> {
+            //Ignore
+        }).join();
+    }
 }

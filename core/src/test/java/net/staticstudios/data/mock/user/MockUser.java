@@ -9,6 +9,8 @@ import java.util.UUID;
 @Data(schema = "public", table = "users")
 public class MockUser extends UniqueData {
     //todo: test inheritance properly. test the ij plugin and AP too.
+    //todo:
+    // test composite id cols, using non primitive types. also test collection and reference relations using non primitive types
     @IdColumn(name = "id")
     public PersistentValue<UUID> id = PersistentValue.of(this, UUID.class);
 
@@ -68,6 +70,7 @@ public class MockUser extends UniqueData {
             .withFallback(0);
     @Delete(DeleteStrategy.CASCADE) //todo: impl delete strategy for many to many collections
     @ManyToMany(link = "id=id", joinTable = "user_friends")
+    //todo: there should be a way to specify the column names for the join tables within the ManyToMany annotation. this only matters if the referring and referenced tables are the same.
     public PersistentCollection<MockUser> friends = PersistentCollection.of(this, MockUser.class)
             .onAdd(MockUser.class, (user, added) -> user.friendAdditions.set(user.friendAdditions.get() + 1))
             .onRemove(MockUser.class, (user, removed) -> user.friendRemovals.set(user.friendRemovals.get() + 1));

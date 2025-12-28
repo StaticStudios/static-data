@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.*;
 
 /**
@@ -59,6 +60,7 @@ public class SQLBuilder {
 
     public List<DDLStatement> parse(Class<? extends UniqueData> clazz) {
         Preconditions.checkNotNull(clazz, "Class cannot be null");
+        logger.trace("Starting SQL parsing for class {}", clazz.getName());
 
         Set<Class<? extends UniqueData>> visited = walk(clazz);
         Map<String, SQLSchema> schemas = new HashMap<>();
@@ -80,6 +82,7 @@ public class SQLBuilder {
             for (SQLTable newTable : newSchema.getTables()) {
                 SQLTable existingTable = existingSchema.getTable(newTable.getName());
                 if (existingTable == null) {
+                    newTable.setSchema(existingSchema);
                     existingSchema.addTable(newTable);
                     continue;
                 }
@@ -89,6 +92,7 @@ public class SQLBuilder {
                         Preconditions.checkState(existingColumn.equals(newColumn), "Column " + newColumn.getName() + " in referringTable " + newTable.getName() + " has conflicting definitions! Existing: " + existingColumn + ", New: " + newColumn);
                         continue;
                     }
+                    newColumn.setTable(existingTable);
                     existingTable.addColumn(newColumn);
                 }
             }
@@ -257,7 +261,7 @@ public class SQLBuilder {
 
         for (Field field : ReflectionUtils.getFields(clazz, Relation.class)) {
             Class<?> genericType = ReflectionUtils.getGenericType(field);
-            if (genericType == null || !UniqueData.class.isAssignableFrom(genericType)) {
+            if (genericType == null || !UniqueData.class.isAssignableFrom(genericType) || Modifier.isAbstract(genericType.getModifiers())) {
                 continue;
             }
             Class<? extends UniqueData> related = genericType.asSubclass(UniqueData.class);
@@ -291,6 +295,10 @@ public class SQLBuilder {
         Preconditions.checkNotNull(dataAnnotation, "Data annotation is null for class " + clazz.getName());
 
         for (Field field : ReflectionUtils.getFields(clazz)) {
+            Class<?> genericType = ReflectionUtils.getGenericType(field);
+            if (genericType != null && Modifier.isAbstract(genericType.getModifiers())) {
+                continue;
+            }
             parseReference(clazz, schemas, dataAnnotation, metadata, field);
             parsePersistentCollection(clazz, schemas, dataAnnotation, metadata, field);
         }
@@ -477,7 +485,10 @@ public class SQLBuilder {
         SQLSchema referencedSchema = Objects.requireNonNull(schemas.get(referencedMetadata.schema()));
         SQLTable referencedTable = Objects.requireNonNull(referencedSchema.getTable(referencedMetadata.table()));
 
-        ForeignKey foreignKey = new ForeignKey(schema.getName(), table.getName(), referencedSchema.getName(), referencedTable.getName(), OnDelete.SET_NULL);
+        Delete delete = field.getAnnotation(Delete.class);
+        DeleteStrategy deleteStrategy = delete != null ? delete.value() : DeleteStrategy.NO_ACTION;
+        OnDelete onDelete = deleteStrategy == DeleteStrategy.CASCADE ? OnDelete.CASCADE : OnDelete.SET_NULL;
+        ForeignKey foreignKey = new ForeignKey(schema.getName(), table.getName(), referencedSchema.getName(), referencedTable.getName(), onDelete);
         try {
             parseLinks(foreignKey, oneToOne.link());
         } catch (IllegalArgumentException e) {
@@ -485,8 +496,6 @@ public class SQLBuilder {
         }
         table.addForeignKey(foreignKey);
 
-        Delete delete = field.getAnnotation(Delete.class);
-        DeleteStrategy deleteStrategy = delete != null ? delete.value() : DeleteStrategy.NO_ACTION;
         table.addTrigger(new SQLDeleteStrategyTrigger(dataSchema, dataTable, referencedSchema.getName(), referencedTable.getName(), deleteStrategy, foreignKey.getLinkingColumns()));
     }
 
@@ -541,11 +550,11 @@ public class SQLBuilder {
             referencedTable = new SQLTable(referencedSchema, referencedTableName, idColumns);
             for (ColumnMetadata idCol : referencedTable.getIdColumns()) {
                 Preconditions.checkState(referencedTable.getColumn(idCol.name()) == null, "ID column name " + idCol.name() + " in referringTable " + referencedTableName + " is duplicated!");
-                SQLColumn sqlColumn = new SQLColumn(referencedTable, idCol.type(), idCol.name(), false, false, true, null);
+                SQLColumn sqlColumn = new SQLColumn(referencedTable, dataManager.getSerializedType(idCol.type()), idCol.name(), false, false, true, null);
                 referencedTable.addColumn(sqlColumn);
             }
             referencedSchema.addTable(referencedTable);
-            referencedTable.addColumn(new SQLColumn(referencedTable, genericType, referencedColumnName, oneToMany.nullable(), oneToMany.indexed(), oneToMany.unique(), null));
+            referencedTable.addColumn(new SQLColumn(referencedTable, dataManager.getSerializedType(genericType), referencedColumnName, oneToMany.nullable(), oneToMany.indexed(), oneToMany.unique(), null));
             for (Link link : parseLinks(oneToMany.link())) {
                 Class<?> columnType = null;
                 SQLColumn columnInReferringTable = table.getColumn(link.columnInReferringTable());
@@ -553,7 +562,7 @@ public class SQLBuilder {
                     columnType = columnInReferringTable.getType();
                 }
                 Preconditions.checkNotNull(columnType, "Link name %s in OneToMany annotation on field %s in class %s is not an ID name", link.columnInReferringTable(), field.getName(), clazz.getName());
-                SQLColumn linkingColumn = new SQLColumn(referencedTable, columnType, link.columnInReferencedTable(), false, false, false, null);
+                SQLColumn linkingColumn = new SQLColumn(referencedTable, dataManager.getSerializedType(columnType), link.columnInReferencedTable(), false, false, false, null);
                 referencedTable.addColumn(linkingColumn);
             }
 
@@ -643,7 +652,7 @@ public class SQLBuilder {
                         break;
                     }
                 }
-                Preconditions.checkNotNull(foundColumn, "Column not found in data referringTable! " + dataLink.columnInReferringTable());
+                Preconditions.checkNotNull(foundColumn, "Column not found in data referringTable! " + dataLink.columnInReferringTable() + ", join table: " + joinTableName);
                 joinTableIdColumns.add(new ColumnMetadata(joinTableSchemaName, joinTableName, dataTableColumnPrefix + "_" + foundColumn.getName(), foundColumn.getType(), false, false, ""));
             }
             for (Link referencedLink : joinTableToReferencedTableLinks) {
@@ -654,13 +663,13 @@ public class SQLBuilder {
                         break;
                     }
                 }
-                Preconditions.checkNotNull(foundColumn, "Column not found in referenced referringTable! " + referencedLink.columnInReferringTable());
+                Preconditions.checkNotNull(foundColumn, "Column not found in referenced referringTable! " + referencedLink.columnInReferringTable() + ", join table: " + joinTableName);
                 joinTableIdColumns.add(new ColumnMetadata(joinTableSchemaName, joinTableName, referencedTableColumnPrefix + "_" + foundColumn.getName(), foundColumn.getType(), false, false, ""));
             }
             joinTable = new SQLTable(joinSchema, joinTableName, joinTableIdColumns);
             for (ColumnMetadata idCol : joinTable.getIdColumns()) {
                 Preconditions.checkState(joinTable.getColumn(idCol.name()) == null, "ID column name " + idCol.name() + " in referringTable " + joinTableName + " is duplicated!");
-                SQLColumn sqlColumn = new SQLColumn(joinTable, idCol.type(), idCol.name(), false, false, true, null);
+                SQLColumn sqlColumn = new SQLColumn(joinTable, dataManager.getSerializedType(idCol.type()), idCol.name(), false, false, true, null);
                 joinTable.addColumn(sqlColumn);
             }
             joinSchema.addTable(joinTable);
