@@ -725,7 +725,6 @@ public class DataManager {
 
         finishedLoading = true;
         dataAccessor.resync();
-        //todo: can't call load() after this, and only after this is called do we sync data.
     }
 
     @SafeVarargs
@@ -1138,7 +1137,7 @@ public class DataManager {
 
         for (InsertStatement insertStatement : List.copyOf(insertStatements)) {
             insertStatement.calculateRequiredDependencies();
-            insertStatements.addAll(insertStatement.createUnmetDependencyStatements(insertStatements));
+            insertStatement.satisfyDependencies(insertStatements);
         }
 
         InsertStatement.checkForCycles(insertStatements);

@@ -504,58 +504,46 @@ public class BuilderProcessor extends AbstractBuilderProcessor {
             }
 
 
-            bodyStatements.add(
-                    If(
-                            Binary(
-                                    JCTree.Tag.NE,
-                                    Ident(names.fromString(pv.getFieldName())),
-                                    Literal(TypeTag.BOT, null)
-                            ),
-                            Block(0,
-                                    List.from(
-                                            fpv.getLinks().stream().map(link -> {
-                                                String linkingColumnReferencesFieldName = fpv.getFieldName() + "$" + link.columnInReferringTable() + "_references";
-                                                String linkingColumnReferredBySchemaFieldName = fpv.getFieldName() + "$_referredBySchema";
-                                                String linkingColumnReferredByTableFieldName = fpv.getFieldName() + "$_referredByTable";
-                                                String linkingColumnReferredByColumnFieldName = fpv.getFieldName() + "$" + link.columnInReferringTable() + "_referredByColumn";
+            bodyStatements.addAll(
+                    fpv.getLinks().stream().map(link -> {
+                        String linkingColumnReferencesFieldName = fpv.getFieldName() + "$" + link.columnInReferringTable() + "_references";
+                        String linkingColumnReferredBySchemaFieldName = fpv.getFieldName() + "$_referredBySchema";
+                        String linkingColumnReferredByTableFieldName = fpv.getFieldName() + "$_referredByTable";
+                        String linkingColumnReferredByColumnFieldName = fpv.getFieldName() + "$" + link.columnInReferringTable() + "_referredByColumn";
 
 
-                                                return Exec(
-                                                        Apply(
-                                                                List.nil(),
-                                                                Select(
-                                                                        Ident(names.fromString("ctx")),
-                                                                        names.fromString("set")
-                                                                ),
-                                                                List.of(
-                                                                        Ident(names.fromString(pv.getFieldName() + "$schema")),
-                                                                        Ident(names.fromString(pv.getFieldName() + "$table")),
-                                                                        Ident(names.fromString(linkingColumnReferencesFieldName)),
-                                                                        Apply(
-                                                                                List.nil(),
-                                                                                Select(
-                                                                                        Ident(names.fromString("ctx")),
-                                                                                        names.fromString("getValue")
-                                                                                ),
-                                                                                List.of(
-                                                                                        Ident(names.fromString(linkingColumnReferredBySchemaFieldName)),
-                                                                                        Ident(names.fromString(linkingColumnReferredByTableFieldName)),
-                                                                                        Ident(names.fromString(linkingColumnReferredByColumnFieldName))
+                        return Exec(
+                                Apply(
+                                        List.nil(),
+                                        Select(
+                                                Ident(names.fromString("ctx")),
+                                                names.fromString("set")
+                                        ),
+                                        List.of(
+                                                Ident(names.fromString(pv.getFieldName() + "$schema")),
+                                                Ident(names.fromString(pv.getFieldName() + "$table")),
+                                                Ident(names.fromString(linkingColumnReferencesFieldName)),
+                                                Apply(
+                                                        List.nil(),
+                                                        Select(
+                                                                Ident(names.fromString("ctx")),
+                                                                names.fromString("getValue")
+                                                        ),
+                                                        List.of(
+                                                                Ident(names.fromString(linkingColumnReferredBySchemaFieldName)),
+                                                                Ident(names.fromString(linkingColumnReferredByTableFieldName)),
+                                                                Ident(names.fromString(linkingColumnReferredByColumnFieldName))
 
-                                                                                )
-                                                                        ),
-                                                                        Select(
-                                                                                chainDots("net", "staticstudios", "data", "InsertStrategy"),
-                                                                                names.fromString("PREFER_EXISTING")
-                                                                        )
-                                                                )
                                                         )
-                                                );
-                                            }).toList()
-                                    )
-                            ),
-                            null
-                    )
+                                                ),
+                                                Select(
+                                                        chainDots("net", "staticstudios", "data", "InsertStrategy"),
+                                                        names.fromString("PREFER_EXISTING")
+                                                )
+                                        )
+                                )
+                        );
+                    }).toList()
             );
         }
 

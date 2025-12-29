@@ -135,25 +135,26 @@ public class InsertStatement {
         columnValues.put(column, new Value(insertStrategy, value));
     }
 
-    public List<InsertStatement> createUnmetDependencyStatements(List<InsertStatement> existingStatements) {
+
+    public void satisfyDependencies(List<InsertStatement> existingStatements) {
         Preconditions.checkState(dependencyRequirements != null, "Must call calculateRequiredDependencies() before checking for unmet dependencies.");
-        List<InsertStatement> unmetStatements = new ArrayList<>();
         for (DependencyRequirement requirement : dependencyRequirements) {
-            boolean satisfied = false;
+//            boolean satisfied = false;
             for (InsertStatement existingStatement : existingStatements) {
                 if (requirement.isSatisfiedBy(existingStatement)) {
-                    satisfied = true;
+//                    satisfied = true;
                     dependantOn.add(existingStatement);
                     break;
                 }
             }
-            if (!satisfied) {
-                InsertStatement satisfyingStatement = requirement.createSatisfyingStatement(dataManager);
-                unmetStatements.add(satisfyingStatement);
-                dependantOn.add(satisfyingStatement);
-            }
+
+            // the data might be present in the database, do not enforce this here. this will be the user's responsibility.
+//            if (!satisfied) {
+//                throw new IllegalStateException("Unmet dependency for statement: \"" + asStatement().getPgSql() + "\" requiring " +
+//                        "schema \"" + requirement.schema + "\", table \"" + requirement.table + "\", with column values " +
+//                        requirement.requiredColumnValues);
+//            }
         }
-        return unmetStatements;
     }
 
     public void calculateRequiredDependencies() {
@@ -317,30 +318,6 @@ public class InsertStatement {
             });
             return lookingFor.isEmpty();
         }
-
-        public InsertStatement createSatisfyingStatement(DataManager dataManager) {
-            SQLSchema sqlSchema = Objects.requireNonNull(dataManager.getSQLBuilder().getSchema(schema));
-            SQLTable sqlTable = Objects.requireNonNull(sqlSchema.getTable(table));
-            ColumnValuePair[] idColumns = new ColumnValuePair[sqlTable.getIdColumns().size()];
-
-            for (ColumnMetadata idColumn : sqlTable.getIdColumns()) {
-                Optional<ColumnValuePair> matchingPair = requiredColumnValues.stream()
-                        .filter(pair -> pair.column().equals(idColumn.name()))
-                        .findFirst();
-                Preconditions.checkState(matchingPair.isPresent(), "Cannot create satisfying statement for dependency requirement: missing id column value for " + idColumn.name());
-                idColumns[sqlTable.getIdColumns().indexOf(idColumn)] = matchingPair.get();
-            }
-
-            InsertStatement statement = new InsertStatement(dataManager, sqlTable, new ColumnValuePairs(idColumns));
-            for (ColumnValuePair pair : requiredColumnValues) {
-                if (sqlTable.getIdColumns().stream().noneMatch(col -> col.name().equals(pair.column()))) {
-                    statement.set(pair.column(), InsertStrategy.PREFER_EXISTING, pair.value());
-                }
-            }
-
-            return statement;
-        }
-
     }
 
 }
