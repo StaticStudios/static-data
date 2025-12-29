@@ -424,7 +424,7 @@ public class PersistentOneToManyValueCollectionImpl<T> implements PersistentColl
         UniqueDataMetadata holderMetadata = holder.getMetadata();
         DataAccessor dataAccessor = holder.getDataManager().getDataAccessor();
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append("SELECT ").append("\"").append(dataColumn).append("\", ");
+        sqlBuilder.append("SELECT ").append("\"").append(dataSchema).append("\".\"").append(dataTable).append("\".\"").append(dataColumn).append("\", ");
         for (ColumnMetadata columnMetadata : holderMetadata.idColumns()) {
             sqlBuilder.append("\"").append(columnMetadata.schema()).append("\".\"").append(columnMetadata.table()).append("\".\"").append(columnMetadata.name()).append("\", ");
         }
@@ -441,7 +441,7 @@ public class PersistentOneToManyValueCollectionImpl<T> implements PersistentColl
 
         for (Link entry : link) {
             String theirColumn = entry.columnInReferencedTable();
-            sqlBuilder.append("\"").append(theirColumn).append("\" = \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\".\"").append(entry.columnInReferringTable()).append("\" AND ");
+            sqlBuilder.append("\"").append(dataSchema).append("\".\"").append(dataTable).append("\".\"").append(theirColumn).append("\" = \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\".\"").append(entry.columnInReferringTable()).append("\" AND ");
         }
         for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
             sqlBuilder.append("\"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\".\"").append(columnValuePair.column()).append("\" = ? AND ");
