@@ -8,6 +8,7 @@ import net.staticstudios.data.impl.data.PersistentManyToManyCollectionImpl;
 import net.staticstudios.data.util.*;
 
 import java.util.List;
+import java.util.Map;
 
 public interface PostInsertAction {
 
@@ -70,6 +71,37 @@ public interface PostInsertAction {
                 .referencedClass(collectionMetadata.getReferencedType())
                 .joinTableSchema(collectionMetadata.getJoinTableSchema(dataManager))
                 .joinTableName(collectionMetadata.getJoinTableName(dataManager));
+    }
+
+    static <T extends UniqueData> UpdateColumnPostInsertAction set(T holder, String column, Object value) {
+        UniqueDataMetadata metadata = holder.getMetadata();
+
+        return new UpdateColumnPostInsertAction(
+                metadata.schema(),
+                metadata.table(),
+                holder.getIdColumns(),
+                Map.of(column, value)
+        );
+    }
+
+    static <T extends UniqueData> UpdateColumnPostInsertAction set(T holder, Map<String, Object> updateValues) {
+        UniqueDataMetadata metadata = holder.getMetadata();
+
+        return new UpdateColumnPostInsertAction(
+                metadata.schema(),
+                metadata.table(),
+                holder.getIdColumns(),
+                updateValues
+        );
+    }
+
+    static UpdateColumnPostInsertAction set(String schema, String table, List<ColumnValuePair> idColumns, Map<String, Object> updateValues) {
+        return new UpdateColumnPostInsertAction(
+                schema,
+                table,
+                new ColumnValuePairs(idColumns.toArray(new ColumnValuePair[0])),
+                updateValues
+        );
     }
 
     List<SQlStatement> getStatements();

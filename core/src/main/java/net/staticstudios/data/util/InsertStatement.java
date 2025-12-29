@@ -30,7 +30,7 @@ public class InsertStatement {
 
     public static boolean checkForCycles(List<InsertStatement> statements) {
         Set<InsertStatement> visited = new HashSet<>();
-        Set<InsertStatement> recursionStack = new HashSet<>();
+        Set<InsertStatement> recursionStack = new LinkedHashSet<>();
 
         for (InsertStatement statement : statements) {
             if (detectCycleDFS(statement, visited, recursionStack)) {
@@ -42,7 +42,7 @@ public class InsertStatement {
 
     private static boolean detectCycleDFS(InsertStatement current, Set<InsertStatement> visited, Set<InsertStatement> stack) {
         if (stack.contains(current)) {
-            throw new IllegalStateException("Dependency cycle detected involving table: " + current.getTable().getName());
+            throw new IllegalStateException(buildCycleErrorMessage(stack, current));
         }
         if (visited.contains(current)) {
             return false;
@@ -59,6 +59,44 @@ public class InsertStatement {
 
         stack.remove(current);
         return false;
+    }
+
+    /**
+     * Reconstructs the exact path of the cycle from the recursion stack.
+     */
+    private static String buildCycleErrorMessage(Set<InsertStatement> stack, InsertStatement current) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Dependency cycle detected:\n");
+
+        boolean cycleStarted = false;
+        for (InsertStatement node : stack) {
+            if (node == current) {
+                cycleStarted = true;
+            }
+            if (cycleStarted) {
+                sb.append(formatStatementForError(node)).append(" -> \n");
+            }
+        }
+        sb.append(formatStatementForError(current));
+
+        return sb.toString();
+    }
+
+    private static String formatStatementForError(InsertStatement stmt) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(stmt.getTable().getName());
+        sb.append("[");
+
+        ColumnValuePair[] pairs = stmt.getIdColumns().getPairs();
+        for (int i = 0; i < pairs.length; i++) {
+            ColumnValuePair pair = pairs[i];
+            sb.append(pair.column()).append("=").append(pair.value());
+            if (i < pairs.length - 1) {
+                sb.append(", ");
+            }
+        }
+        sb.append("]");
+        return sb.toString();
     }
 
     public static List<InsertStatement> sort(List<InsertStatement> statements) {
