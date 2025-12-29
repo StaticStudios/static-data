@@ -23,6 +23,7 @@ public class BatchInsertTest extends DataTest {
     public void testCompletableFuture() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
 
         BatchInsert batch = dataManager.createBatchInsert();
         CompletableFuture<MockUser> cf = MockUser.builder(dataManager)
@@ -42,6 +43,7 @@ public class BatchInsertTest extends DataTest {
     public void testManyToManyPostInsertAction() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
 
         List<MockUser> users = new ArrayList<>();
         for (int i = 0; i < 3; i++) {
@@ -93,6 +95,7 @@ public class BatchInsertTest extends DataTest {
     public void testManyToManyPostInsertAction2() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
 
         MockUser user = MockUser.builder(dataManager)
                 .id(UUID.randomUUID())

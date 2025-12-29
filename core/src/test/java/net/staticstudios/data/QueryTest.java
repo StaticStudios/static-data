@@ -14,6 +14,7 @@ public class QueryTest extends DataTest {
     public void testFindOneEquals() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         UUID id = UUID.randomUUID();
         MockUser original = MockUser.builder(dataManager)
                 .id(id)
@@ -29,6 +30,7 @@ public class QueryTest extends DataTest {
     public void testFindAllLike() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
 
         MockUser original1 = MockUser.builder(dataManager)
                 .id(UUID.randomUUID())
@@ -68,6 +70,7 @@ public class QueryTest extends DataTest {
     public void testQueryOnForeignColumn() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
 
         MockUser likesRed = MockUser.builder(dataManager)
                 .id(UUID.randomUUID())

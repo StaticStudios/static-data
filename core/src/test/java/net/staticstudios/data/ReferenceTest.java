@@ -20,6 +20,7 @@ public class ReferenceTest extends DataTest {
     public void testCreateSettingsWithoutReference() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
 
         MockUserSettings settings = MockUserSettings.builder(dataManager)
                 .id(UUID.randomUUID())
@@ -32,6 +33,7 @@ public class ReferenceTest extends DataTest {
     public void testCreateSettingsThenReference() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
 
         MockUserSettings settings = MockUserSettings.builder(dataManager)
                 .id(UUID.randomUUID())
@@ -53,6 +55,7 @@ public class ReferenceTest extends DataTest {
     public void testCreateUserAndReferenceInSingleInsert() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
 
         UUID settingsId = UUID.randomUUID();
         BatchInsert batch = dataManager.createBatchInsert();
@@ -79,6 +82,7 @@ public class ReferenceTest extends DataTest {
     public void testChangeReference() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
 
         MockUserSettings settings = MockUserSettings.builder(dataManager)
                 .id(UUID.randomUUID())
@@ -120,6 +124,7 @@ public class ReferenceTest extends DataTest {
     public void testDeleteStrategyCascade() throws SQLException {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         Connection h2Connection = getH2Connection(dataManager);
         Connection pgConnection = getConnection();
         UUID id = UUID.randomUUID();
@@ -171,6 +176,7 @@ public class ReferenceTest extends DataTest {
     public void testUpdateHandlerUpdate() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
 
         MockUser user = MockUser.builder(dataManager)
                 .id(UUID.randomUUID())
@@ -217,6 +223,7 @@ public class ReferenceTest extends DataTest {
     public void testReferenceNoFkey() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
 
         UUID bestBuddyId = UUID.randomUUID();
 

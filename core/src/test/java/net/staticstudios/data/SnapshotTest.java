@@ -14,6 +14,7 @@ public class SnapshotTest extends DataTest {
     public void testPersistentValues() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
 
         UUID id = UUID.randomUUID();
 

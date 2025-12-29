@@ -58,7 +58,9 @@ public class DataManager {
     private final Set<ReferenceMetadata> registeredUpdateHandlersForReference = ConcurrentHashMap.newKeySet();
 
     private final List<ValueSerializer<?, ?>> valueSerializers = new CopyOnWriteArrayList<>();
-    private final Consumer<Runnable> updateHandlerExecurtor;
+    private final Consumer<Runnable> updateHandlerExecutor;
+
+    private boolean finishedLoading = false;
     //todo: custom types are serialized and deserialized all the time currently, we should have a cache for these. caffeine with time based eviction sounds good.
 
     public DataManager(StaticDataConfig config, boolean setGlobal) {
@@ -71,7 +73,7 @@ public class DataManager {
                 config.redisHost(),
                 config.redisPort()
         );
-        this.updateHandlerExecurtor = config.updateHandlerExecutor();
+        this.updateHandlerExecutor = config.updateHandlerExecutor();
 
         if (setGlobal) {
             if (Boolean.FALSE.equals(DataManager.useGlobal)) {
@@ -651,7 +653,7 @@ public class DataManager {
     }
 
     private void submitUpdateHandler(Runnable runnable) {
-        updateHandlerExecurtor.accept(runnable);
+        updateHandlerExecutor.accept(runnable);
     }
 
     @ApiStatus.Internal
@@ -718,8 +720,18 @@ public class DataManager {
         return Collections.emptyList();
     }
 
+    public final void finishLoading() {
+        Preconditions.checkState(!finishedLoading, "finishLoading() has already been called");
+
+        finishedLoading = true;
+        dataAccessor.resync();
+        //todo: can't call load() after this, and only after this is called do we sync data.
+    }
+
     @SafeVarargs
     public final void load(Class<? extends UniqueData>... classes) {
+        Preconditions.checkState(!finishedLoading, "Cannot call load(...) after finishLoading() has been called");
+
         List<UniqueDataMetadata> extracted = new ArrayList<>();
         for (Class<? extends UniqueData> clazz : classes) {
             extracted.add(extractMetadata(clazz));

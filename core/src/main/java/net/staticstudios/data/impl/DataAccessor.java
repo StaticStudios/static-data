@@ -32,4 +32,6 @@ public interface DataAccessor {
     void setRedisValue(String key, String value, int expirationSeconds);
 
     void discoverRedisKeys(List<String> partialRedisKeys);
+
+    void resync();
 }

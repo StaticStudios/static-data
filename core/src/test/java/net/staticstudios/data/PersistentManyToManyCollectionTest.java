@@ -27,6 +27,7 @@ public class PersistentManyToManyCollectionTest extends DataTest {
     public void setUp() {
         dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         UUID id = UUID.randomUUID();
         mockUser = MockUser.builder(dataManager)
                 .id(id)

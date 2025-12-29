@@ -50,7 +50,7 @@ public class H2DataAccessor implements DataAccessor {
     private final String jdbcUrl;
     private final ThreadLocal<Connection> threadConnection = new ThreadLocal<>();
     private final ThreadLocal<Map<String, PreparedStatement>> threadPreparedStatementCache = new ThreadLocal<>();
-    private final Set<String> knownTables = new HashSet<>();
+    private final Set<SchemaTable> knownTables = new HashSet<>();
     private final DataManager dataManager;
     private final PostgresListener postgresListener;
     private final Map<List<Pair<String, String>>, Runnable> delayedTasks = new ConcurrentHashMap<>();
@@ -80,9 +80,13 @@ public class H2DataAccessor implements DataAccessor {
         postgresListener.addHandler(notification -> {
             try {
                 SQLSchema sqlSchema = dataManager.getSQLBuilder().getSchema(notification.getSchema());
-                Preconditions.checkNotNull(sqlSchema, "Schema %s not found".formatted(notification.getSchema()));
+                if (sqlSchema == null) {
+                    return; // we don't care about this schema
+                }
                 SQLTable sqlTable = sqlSchema.getTable(notification.getTable());
-                Preconditions.checkNotNull(sqlTable, "Table %s.%s not found".formatted(notification.getSchema(), notification.getTable()));
+                if (sqlTable == null) {
+                    return; // we don't care about this table
+                }
                 switch (notification.getOperation()) {
                     case UPDATE -> {
                         List<Object> values = new ArrayList<>();
@@ -104,7 +108,9 @@ public class H2DataAccessor implements DataAccessor {
                             String column = changed.first();
                             String encoded = changed.second();
                             SQLColumn sqlColumn = sqlTable.getColumn(column);
-                            Preconditions.checkNotNull(sqlColumn, "Column %s.%s.%s not found".formatted(notification.getSchema(), notification.getTable(), column));
+                            if (sqlColumn == null) {
+                                return; // we don't care about this column
+                            }
                             Object decoded = encoded == null ? null : Primitives.decodePrimitive(sqlColumn.getType(), encoded);
                             values.add(decoded);
                             sb.append("\"").append(column).append("\" = ?, ");
@@ -144,7 +150,9 @@ public class H2DataAccessor implements DataAccessor {
                             String column = entry.getKey();
                             String encoded = entry.getValue();
                             SQLColumn sqlColumn = sqlTable.getColumn(column);
-                            Preconditions.checkNotNull(sqlColumn, "Column %s.%s.%s not found".formatted(notification.getSchema(), notification.getTable(), column));
+                            if (sqlColumn == null) {
+                                return; // we don't care about this column
+                            }
                             Object decoded = encoded == null ? null : Primitives.decodePrimitive(sqlColumn.getType(), encoded);
                             values.add(decoded);
                             sb.append("\"").append(column).append("\", ");
@@ -225,13 +233,6 @@ public class H2DataAccessor implements DataAccessor {
         });
     }
 
-    public synchronized void resync() {
-        //todo: i would ideally like to support periodic resyncing of data. even if this means we pause everything until then. not exactly sure how this would look tho.
-
-        //todo: when we resync we should clear the task queue and steal the connection
-        //todo: if possible, id like to pause everything else until we are done syncing
-    }
-
     public synchronized void sync(List<SchemaTable> schemaTables, List<String> redisPartialKeys) throws SQLException {
         taskQueue.submitTask((realDbConnection, jedis) -> {
             if (!schemaTables.isEmpty()) {
@@ -293,10 +294,6 @@ public class H2DataAccessor implements DataAccessor {
             }
             if (!redisPartialKeys.isEmpty()) {
                 for (String partialKey : redisPartialKeys) {
-                    if (knownRedisPartialKeys.contains(partialKey)) {
-                        continue;
-                    }
-
                     String cursor = ScanParams.SCAN_POINTER_START;
                     ScanParams scanParams = new ScanParams().match(partialKey).count(1000);
 
@@ -536,27 +533,35 @@ public class H2DataAccessor implements DataAccessor {
 
     @Override
     public void discoverRedisKeys(List<String> partialRedisKeys) {
+        knownRedisPartialKeys.addAll(partialRedisKeys);
+    }
+
+    @Override
+    public synchronized void resync() {
+        //todo: i would ideally like to support periodic resyncing of data. even if this means we pause everything until then. not exactly sure how this would look tho.
+
+        //todo: when we resync we should clear the task queue and steal the connection
+        //todo: if possible, id like to pause everything else until we are done syncing
         try {
-            sync(Collections.emptyList(), partialRedisKeys);
-            knownRedisPartialKeys.addAll(partialRedisKeys);
+            sync(new ArrayList<>(knownTables), new ArrayList<>(knownRedisPartialKeys));
         } catch (SQLException e) {
-            logger.error("Error discovering redis keys", e);
+            throw new RuntimeException(e);
         }
     }
 
     private synchronized void updateKnownTables() throws SQLException {
-        Set<String> currentTables = new HashSet<>();
+        Set<SchemaTable> currentTables = new HashSet<>();
         Connection connection = getConnection();
         try (Statement statement = connection.createStatement();
              ResultSet rs = statement.executeQuery(
                      "SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA NOT IN ('INFORMATION_SCHEMA', 'SYSTEM_LOBS') AND TABLE_TYPE='BASE TABLE'")) {
-            List<SchemaTable> toSync = new ArrayList<>();
             while (rs.next()) {
                 String schema = rs.getString("TABLE_SCHEMA");
                 String table = rs.getString("TABLE_NAME");
-                currentTables.add(schema + "." + table);
+                SchemaTable schemaTable = new SchemaTable(schema, table);
+                currentTables.add(schemaTable);
 
-                if (!knownTables.contains(schema + "." + table)) {
+                if (!knownTables.contains(schemaTable)) {
                     logger.debug("Discovered new referringTable {}.{}", schema, table);
                     UUID randomId = UUID.randomUUID();
                     @Language("SQL") String sql = "CREATE TRIGGER IF NOT EXISTS \"insert_update_trg_%s_%s\" AFTER INSERT, UPDATE ON \"%s\".\"%s\" FOR EACH ROW CALL '%s'";
@@ -578,10 +583,8 @@ public class H2DataAccessor implements DataAccessor {
                     }
 
                     taskQueue.submitTask(realDbConnection -> postgresListener.ensureTableHasTrigger(realDbConnection, schema, table)).join();
-                    toSync.add(new SchemaTable(schema, table));
                 }
             }
-            sync(toSync, Collections.emptyList());
         }
         knownTables.clear();
         knownTables.addAll(currentTables);

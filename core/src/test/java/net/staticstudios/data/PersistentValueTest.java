@@ -29,6 +29,7 @@ public class PersistentValueTest extends DataTest {
 
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         for (UUID id : userIds) {
             MockUser.builder(dataManager)
                     .id(id)
@@ -56,6 +57,7 @@ public class PersistentValueTest extends DataTest {
     public void testUniqueDataCache() throws SQLException {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         UUID id = UUID.randomUUID();
         MockUser mockUser = MockUser.builder(dataManager)
                 .id(id)
@@ -83,6 +85,7 @@ public class PersistentValueTest extends DataTest {
     public void testUpdate() throws SQLException {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         UUID id = UUID.randomUUID();
         MockUser mockUser = MockUser.builder(dataManager)
                 .id(id)
@@ -133,6 +136,7 @@ public class PersistentValueTest extends DataTest {
     public void testUpdateForeignColumn() throws SQLException {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         UUID id = UUID.randomUUID();
         MockUser mockUser = MockUser.builder(dataManager)
                 .id(id)
@@ -183,6 +187,7 @@ public class PersistentValueTest extends DataTest {
     public void testUpdateHandlerRegistration() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         UUID id = UUID.randomUUID();
         assertEquals(0, dataManager.getUpdateHandlers("public", "users", "name", MockUser.class).size());
         MockUser mockUser = MockUser.builder(dataManager)
@@ -220,6 +225,7 @@ public class PersistentValueTest extends DataTest {
     public void testReceiveUpdateFromPostgres() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         UUID id = UUID.randomUUID();
         MockUser mockUser = MockUser.builder(dataManager)
                 .id(id)
@@ -249,6 +255,7 @@ public class PersistentValueTest extends DataTest {
     public void testReceiveInsertFromPostgres() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         UUID id = UUID.randomUUID();
 
         try (PreparedStatement preferencesStatement = getConnection().prepareStatement("INSERT INTO user_preferences (user_id, fav_color) VALUES (?, ?)");
@@ -279,6 +286,7 @@ public class PersistentValueTest extends DataTest {
     public void testReceiveDeleteFromPostgres() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         UUID id = UUID.randomUUID();
         MockUser mockUser = MockUser.builder(dataManager)
                 .id(id)
@@ -311,6 +319,7 @@ public class PersistentValueTest extends DataTest {
     public void testChangeIdColumn() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         UUID id = UUID.randomUUID();
         MockUser mockUser = MockUser.builder(dataManager)
                 .id(id)
@@ -342,6 +351,7 @@ public class PersistentValueTest extends DataTest {
         //todo: this and the other id column test are failing because fkeys have been changed to be on the user referringTable. use a trigger to update the fkeys on id change, similar to the cascade delete trigger
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         UUID id = UUID.randomUUID();
         MockUser mockUser = MockUser.builder(dataManager)
                 .id(id)
@@ -384,6 +394,7 @@ public class PersistentValueTest extends DataTest {
     public void testUpdateInterval() throws Exception {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         UUID id = UUID.randomUUID();
         MockUser mockUser = MockUser.builder(dataManager)
                 .id(id)
@@ -421,6 +432,7 @@ public class PersistentValueTest extends DataTest {
     public void testInsertStrategyPreferExisting() throws SQLException {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         Connection connection = getConnection();
         UUID id = UUID.randomUUID();
         try (PreparedStatement preparedStatement = connection.prepareStatement("INSERT INTO public.user_preferences (user_id, fav_color) VALUES (?, ?)")) {
@@ -456,6 +468,7 @@ public class PersistentValueTest extends DataTest {
     public void testInsertStrategyOverwriteExisting() throws SQLException {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         Connection connection = getConnection();
         UUID id = UUID.randomUUID();
         try (PreparedStatement preparedStatement = connection.prepareStatement("INSERT INTO public.user_metadata (user_id, name_updates) VALUES (?, ?)")) {
@@ -490,6 +503,7 @@ public class PersistentValueTest extends DataTest {
     public void testDeleteStrategyCascade() throws SQLException {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         Connection h2Connection = getH2Connection(dataManager);
         Connection pgConnection = getConnection();
         UUID id = UUID.randomUUID();
@@ -538,6 +552,7 @@ public class PersistentValueTest extends DataTest {
     public void testDeleteStrategyNoAction() throws SQLException {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         Connection h2Connection = getH2Connection(dataManager);
         Connection pgConnection = getConnection();
         UUID id = UUID.randomUUID();

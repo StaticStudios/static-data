@@ -48,6 +48,8 @@ public interface PostInsertAction {
     }
 
     static InsertIntoJoinTableManyToManyPostInsertAction.Builder manyToMany(Class<? extends UniqueData> holderClass, String collectionJoinTableSchema, String collectionJoinTableName) {
+        collectionJoinTableSchema = ValueUtils.parseValue(collectionJoinTableSchema);
+        collectionJoinTableName = ValueUtils.parseValue(collectionJoinTableName);
         DataManager dataManager = DataManager.getInstance();
         UniqueDataMetadata metadata = dataManager.getMetadata(holderClass);
         PersistentManyToManyCollectionMetadata collectionMetadata = null;

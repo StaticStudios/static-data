@@ -45,6 +45,7 @@ public class CustomTypeTest extends DataTest {
         dataManager.registerValueSerializer(new AccountDetailsValueSerializer());
         dataManager.registerValueSerializer(new AccountSettingsValueSerializer());
         dataManager.load(MockAccount.class);
+        dataManager.finishLoading();
 
         MockAccount account = MockAccount.builder(dataManager)
                 .id(1)
@@ -85,6 +86,7 @@ public class CustomTypeTest extends DataTest {
         dataManager.registerValueSerializer(detailsSerializer);
         dataManager.registerValueSerializer(settingsSerializer);
         dataManager.load(MockAccount.class);
+        dataManager.finishLoading();
 
         MockAccount account = MockAccount.query(dataManager).where(w -> w.idIs(1)).findOne();
         assertNotNull(account);

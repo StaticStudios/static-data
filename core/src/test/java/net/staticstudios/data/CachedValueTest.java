@@ -19,6 +19,7 @@ public class CachedValueTest extends DataTest {
     public void testBasic() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         MockUser user = MockUser.builder(dataManager)
                 .id(UUID.randomUUID())
                 .name("john doe")
@@ -38,6 +39,7 @@ public class CachedValueTest extends DataTest {
     public void testFallback() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         MockUser user = MockUser.builder(dataManager)
                 .id(UUID.randomUUID())
                 .name("john doe")
@@ -61,6 +63,7 @@ public class CachedValueTest extends DataTest {
     public void testUpdateHandler() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         MockUser user = MockUser.builder(dataManager)
                 .id(UUID.randomUUID())
                 .name("john doe")
@@ -103,6 +106,7 @@ public class CachedValueTest extends DataTest {
     public void testUpdateRedis() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         MockUser user = MockUser.builder(dataManager)
                 .id(UUID.randomUUID())
                 .name("john doe")
@@ -150,6 +154,7 @@ public class CachedValueTest extends DataTest {
 
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
+        dataManager.finishLoading();
         MockUser user = MockUser.builder(dataManager)
                 .id(userId)
                 .name("john doe")

@@ -36,6 +36,15 @@ public class StaticData {
     }
 
     /**
+     * Completes the loading process by ensuring all data is fully loaded and ready for use.
+     * This method should be called after invoking the {@link #load(Class[])} method.
+     */
+    public static void finishLoading() {
+        assertInit();
+        DataManager.getInstance().finishLoading();
+    }
+
+    /**
      * Create an BatchInsert for batching multiple insert operations together.
      *
      * @return a new BatchInsert instance
