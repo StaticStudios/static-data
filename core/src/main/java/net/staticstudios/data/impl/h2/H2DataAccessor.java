@@ -103,6 +103,10 @@ public class H2DataAccessor implements DataAccessor {
                             }
                         }
 
+                        if (index == 0) {
+                            return; // nothing changed
+                        }
+
                         for (Pair<String, String> changed : changedValues) {
                             if (changed == null) break;
                             String column = changed.first();
