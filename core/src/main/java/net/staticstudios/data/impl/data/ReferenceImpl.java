@@ -103,18 +103,33 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
         ColumnValuePair[] idColumns = new ColumnValuePair[link.size()];
         int i = 0;
         UniqueDataMetadata holderMetadata = holder.getMetadata();
+        UniqueDataMetadata referencedMetadata = holder.getDataManager().getMetadata(type);
         DataAccessor dataAccessor = holder.getDataManager().getDataAccessor();
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("SELECT ");
+        for (ColumnMetadata idColumn : referencedMetadata.idColumns()) {
+            sqlBuilder.append("_referenced.\"").append(idColumn.name()).append("\", ");
+        }
         for (Link entry : link) {
             String myColumn = entry.columnInReferringTable();
-            sqlBuilder.append("\"").append(myColumn).append("\", ");
+            sqlBuilder.append("_referring.\"").append(myColumn).append("\", ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 2);
-        sqlBuilder.append(" FROM \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\" WHERE ");
+
+        sqlBuilder.append(" FROM \"").append(referencedMetadata.schema()).append("\".\"").append(referencedMetadata.table()).append("\" _referenced");
+        sqlBuilder.append(" INNER JOIN \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\" _referring ON ");
+        for (Link entry : link) {
+            String myColumn = entry.columnInReferringTable();
+            String theirColumn = entry.columnInReferencedTable();
+            sqlBuilder.append("_referenced.\"").append(theirColumn).append("\" = ");
+            sqlBuilder.append("_referring.\"").append(myColumn).append("\" AND ");
+        }
+        sqlBuilder.setLength(sqlBuilder.length() - 5);
+
+        sqlBuilder.append(" WHERE ");
 
         for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
-            sqlBuilder.append("\"").append(columnValuePair.column()).append("\" = ? AND ");
+            sqlBuilder.append("_referring.\"").append(columnValuePair.column()).append("\" = ? AND ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 5);
 
