@@ -175,14 +175,17 @@ public class DataPsiAugmentProvider extends PsiAugmentProvider {
                 setterMethod.addModifier(PsiModifier.FINAL);
 
                 builderClass.addMethod(setterMethod);
-            } else if (IntelliJPluginUtils.isValidReference(psiField)) {
-                SyntheticMethod setterMethod = new SyntheticMethod(parentClass, builderClass, psiField.getName(), builderType);
-                setterMethod.addParameter(psiField.getName(), innerType);
-                setterMethod.addModifier(PsiModifier.PUBLIC);
-                setterMethod.addModifier(PsiModifier.FINAL);
-
-                builderClass.addMethod(setterMethod);
             }
+            // Avoid adding methods for references to the builder. while seemly convenient, it can be misleading.
+            // For example, do i update the values in the referenced table, or the referring table?
+//            else if (IntelliJPluginUtils.isValidReference(psiField)) {
+//                SyntheticMethod setterMethod = new SyntheticMethod(parentClass, builderClass, psiField.getName(), builderType);
+//                setterMethod.addParameter(psiField.getName(), innerType);
+//                setterMethod.addModifier(PsiModifier.PUBLIC);
+//                setterMethod.addModifier(PsiModifier.FINAL);
+//
+//                builderClass.addMethod(setterMethod);
+//            }
             //todo: support CachedValues, similar to PVs
         }
 

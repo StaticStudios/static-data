@@ -33,9 +33,9 @@ public class BuilderProcessor extends AbstractBuilderProcessor {
             processValue(pv);
         }
 
-        for (ParsedReference ref : references) {
-            processReference(ref);
-        }
+//        for (ParsedReference ref : references) {
+//            processReference(ref);
+//        }
 
         makeInsertContextMethod(persistentValues, references);
         makeInsertModeMethod();
@@ -92,164 +92,166 @@ public class BuilderProcessor extends AbstractBuilderProcessor {
         }
     }
 
-    private void processReference(ParsedReference ref) {
-        String idColumnValuePairsFieldName = ref.getFieldName() + "_reference$idColumnValuePairs";
-        String schemaFieldName = ref.getFieldName() + "_reference$schema";
-        String tableFieldName = ref.getFieldName() + "_reference$table";
-
-        createField(VarDef(
-                Modifiers(Flags.PRIVATE),
-                names.fromString(idColumnValuePairsFieldName),
-                TypeArray(chainDots("net", "staticstudios", "data", "util", "ColumnValuePair")),
-                Literal(TypeTag.BOT, null)
-        ), builderClassDecl);
-
-        createField(VarDef(
-                Modifiers(Flags.PRIVATE),
-                names.fromString(schemaFieldName),
-                Ident(names.fromString("String")),
-                Literal(TypeTag.BOT, null)
-        ), builderClassDecl);
-
-        createField(VarDef(
-                Modifiers(Flags.PRIVATE),
-                names.fromString(tableFieldName),
-                Ident(names.fromString("String")),
-                Literal(TypeTag.BOT, null)
-        ), builderClassDecl);
-
-        var handleNotNull = Block(0, List.of(
-                Exec(
-                        Assign(
-                                Select(
-                                        Ident(names.fromString("this")),
-                                        names.fromString(idColumnValuePairsFieldName)
-                                ),
-                                Apply(
-                                        List.nil(),
-                                        Select(
-                                                Apply(
-                                                        List.nil(),
-                                                        Select(
-                                                                Ident(names.fromString(ref.getFieldName())),
-                                                                names.fromString("getIdColumns")
-                                                        ),
-                                                        List.nil()
-                                                ),
-                                                names.fromString("getPairs")
-                                        ),
-                                        List.nil()
-                                )
-                        )
-                ),
-                VarDef(
-                        Modifiers(0),
-                        names.fromString("__$metadata"),
-                        chainDots("net", "staticstudios", "data", "util", "UniqueDataMetadata"),
-                        Apply(
-                                List.nil(),
-                                Select(
-                                        Ident(names.fromString(ref.getFieldName())),
-                                        names.fromString("getMetadata")
-                                ),
-                                List.nil()
-                        )
-                ),
-                Exec(
-                        Assign(
-                                Select(
-                                        Ident(names.fromString("this")),
-                                        names.fromString(schemaFieldName)
-                                ),
-                                Apply(
-                                        List.nil(),
-                                        Select(
-                                                Ident(names.fromString("__$metadata")),
-                                                names.fromString("schema")
-                                        ),
-                                        List.nil()
-                                )
-                        )
-                ),
-                Exec(
-                        Assign(
-                                Select(
-                                        Ident(names.fromString("this")),
-                                        names.fromString(tableFieldName)
-                                ),
-                                Apply(
-                                        List.nil(),
-                                        Select(
-                                                Ident(names.fromString("__$metadata")),
-                                                names.fromString("table")
-                                        ),
-                                        List.nil()
-                                )
-                        )
-                )
-        ));
-
-        var handleNull = Block(0, List.of(
-                Exec(
-                        Assign(
-                                Select(
-                                        Ident(names.fromString("this")),
-                                        names.fromString(idColumnValuePairsFieldName)
-                                ),
-                                Literal(TypeTag.BOT, null)
-                        )
-                ),
-                Exec(
-                        Assign(
-                                Select(
-                                        Ident(names.fromString("this")),
-                                        names.fromString(schemaFieldName)
-                                ),
-                                Literal(TypeTag.BOT, null)
-                        )
-                ),
-                Exec(
-                        Assign(
-                                Select(
-                                        Ident(names.fromString("this")),
-                                        names.fromString(tableFieldName)
-                                ),
-                                Literal(TypeTag.BOT, null)
-                        )
-                )
-        ));
-
-        createMethod(MethodDef(
-                Modifiers(Flags.PUBLIC | Flags.FINAL),
-                names.fromString(ref.getFieldName()),
-                Ident(names.fromString(getBuilderClassName())),
-                List.nil(),
-                List.of(
-                        VarDef(
-                                Modifiers(Flags.PARAMETER),
-                                names.fromString(ref.getFieldName()),
-                                chainDots(ref.getTypeFQNParts()),
-                                null
-                        )
-                ),
-                List.nil(),
-                Block(0, List.of(
-                        If(
-                                Binary(
-                                        JCTree.Tag.NE,
-                                        Ident(names.fromString(ref.getFieldName())),
-                                        Literal(TypeTag.BOT, null)
-                                ),
-                                handleNotNull,
-                                handleNull
-                        ),
-                        Return(
-                                Ident(names.fromString("this"))
-                        )
-                )),
-                null
-        ), builderClassDecl);
-    }
+    // Avoid adding methods for references to the builder. while seemly convenient, it can be misleading.
+    // For example, do i update the values in the referenced table, or the referring table?
+//    private void processReference(ParsedReference ref) {
+//        String idColumnValuePairsFieldName = ref.getFieldName() + "_reference$idColumnValuePairs";
+//        String schemaFieldName = ref.getFieldName() + "_reference$schema";
+//        String tableFieldName = ref.getFieldName() + "_reference$table";
+//
+//        createField(VarDef(
+//                Modifiers(Flags.PRIVATE),
+//                names.fromString(idColumnValuePairsFieldName),
+//                TypeArray(chainDots("net", "staticstudios", "data", "util", "ColumnValuePair")),
+//                Literal(TypeTag.BOT, null)
+//        ), builderClassDecl);
+//
+//        createField(VarDef(
+//                Modifiers(Flags.PRIVATE),
+//                names.fromString(schemaFieldName),
+//                Ident(names.fromString("String")),
+//                Literal(TypeTag.BOT, null)
+//        ), builderClassDecl);
+//
+//        createField(VarDef(
+//                Modifiers(Flags.PRIVATE),
+//                names.fromString(tableFieldName),
+//                Ident(names.fromString("String")),
+//                Literal(TypeTag.BOT, null)
+//        ), builderClassDecl);
+//
+//        var handleNotNull = Block(0, List.of(
+//                Exec(
+//                        Assign(
+//                                Select(
+//                                        Ident(names.fromString("this")),
+//                                        names.fromString(idColumnValuePairsFieldName)
+//                                ),
+//                                Apply(
+//                                        List.nil(),
+//                                        Select(
+//                                                Apply(
+//                                                        List.nil(),
+//                                                        Select(
+//                                                                Ident(names.fromString(ref.getFieldName())),
+//                                                                names.fromString("getIdColumns")
+//                                                        ),
+//                                                        List.nil()
+//                                                ),
+//                                                names.fromString("getPairs")
+//                                        ),
+//                                        List.nil()
+//                                )
+//                        )
+//                ),
+//                VarDef(
+//                        Modifiers(0),
+//                        names.fromString("__$metadata"),
+//                        chainDots("net", "staticstudios", "data", "util", "UniqueDataMetadata"),
+//                        Apply(
+//                                List.nil(),
+//                                Select(
+//                                        Ident(names.fromString(ref.getFieldName())),
+//                                        names.fromString("getMetadata")
+//                                ),
+//                                List.nil()
+//                        )
+//                ),
+//                Exec(
+//                        Assign(
+//                                Select(
+//                                        Ident(names.fromString("this")),
+//                                        names.fromString(schemaFieldName)
+//                                ),
+//                                Apply(
+//                                        List.nil(),
+//                                        Select(
+//                                                Ident(names.fromString("__$metadata")),
+//                                                names.fromString("schema")
+//                                        ),
+//                                        List.nil()
+//                                )
+//                        )
+//                ),
+//                Exec(
+//                        Assign(
+//                                Select(
+//                                        Ident(names.fromString("this")),
+//                                        names.fromString(tableFieldName)
+//                                ),
+//                                Apply(
+//                                        List.nil(),
+//                                        Select(
+//                                                Ident(names.fromString("__$metadata")),
+//                                                names.fromString("table")
+//                                        ),
+//                                        List.nil()
+//                                )
+//                        )
+//                )
+//        ));
+//
+//        var handleNull = Block(0, List.of(
+//                Exec(
+//                        Assign(
+//                                Select(
+//                                        Ident(names.fromString("this")),
+//                                        names.fromString(idColumnValuePairsFieldName)
+//                                ),
+//                                Literal(TypeTag.BOT, null)
+//                        )
+//                ),
+//                Exec(
+//                        Assign(
+//                                Select(
+//                                        Ident(names.fromString("this")),
+//                                        names.fromString(schemaFieldName)
+//                                ),
+//                                Literal(TypeTag.BOT, null)
+//                        )
+//                ),
+//                Exec(
+//                        Assign(
+//                                Select(
+//                                        Ident(names.fromString("this")),
+//                                        names.fromString(tableFieldName)
+//                                ),
+//                                Literal(TypeTag.BOT, null)
+//                        )
+//                )
+//        ));
+//
+//        createMethod(MethodDef(
+//                Modifiers(Flags.PUBLIC | Flags.FINAL),
+//                names.fromString(ref.getFieldName()),
+//                Ident(names.fromString(getBuilderClassName())),
+//                List.nil(),
+//                List.of(
+//                        VarDef(
+//                                Modifiers(Flags.PARAMETER),
+//                                names.fromString(ref.getFieldName()),
+//                                chainDots(ref.getTypeFQNParts()),
+//                                null
+//                        )
+//                ),
+//                List.nil(),
+//                Block(0, List.of(
+//                        If(
+//                                Binary(
+//                                        JCTree.Tag.NE,
+//                                        Ident(names.fromString(ref.getFieldName())),
+//                                        Literal(TypeTag.BOT, null)
+//                                ),
+//                                handleNotNull,
+//                                handleNull
+//                        ),
+//                        Return(
+//                                Ident(names.fromString("this"))
+//                        )
+//                )),
+//                null
+//        ), builderClassDecl);
+//    }
 
     private void processFpv(ParsedForeignPersistentValue fpv) {
 
@@ -547,100 +549,102 @@ public class BuilderProcessor extends AbstractBuilderProcessor {
             );
         }
 
-        for (ParsedReference ref : parsedReferences) {
-            String idColumnValuePairsFieldName = ref.getFieldName() + "_reference$idColumnValuePairs";
-            String schemaFieldName = ref.getFieldName() + "_reference$schema";
-            String tableFieldName = ref.getFieldName() + "_reference$table";
 
-
-            bodyStatements.add(
-                    If(
-                            Binary(
-                                    JCTree.Tag.NE,
-                                    Ident(names.fromString(idColumnValuePairsFieldName)),
-                                    Literal(TypeTag.BOT, null)
-                            ),
-                            ForLoop(
-                                    List.of(
-                                            VarDef(
-                                                    Modifiers(0),
-                                                    names.fromString("i"),
-                                                    TypeIdent(TypeTag.INT),
-                                                    Literal(0)
-                                            )
-                                    ),
-                                    Binary(
-                                            JCTree.Tag.LT,
-                                            Ident(names.fromString("i")),
-                                            Select(
-                                                    Ident(names.fromString(idColumnValuePairsFieldName)),
-                                                    names.fromString("length")
-                                            )
-                                    ),
-                                    List.of(
-                                            Exec(
-                                                    Unary(
-                                                            JCTree.Tag.POSTINC,
-                                                            Ident(names.fromString("i"))
-                                                    )
-                                            )
-                                    ),
-                                    Block(
-                                            0,
-                                            List.of(
-                                                    Exec(
-                                                            Apply(
-                                                                    List.nil(),
-                                                                    Select(
-                                                                            Ident(names.fromString("ctx")),
-                                                                            names.fromString("set")
-                                                                    ),
-                                                                    List.of(
-                                                                            Select(
-                                                                                    Ident(names.fromString("this")),
-                                                                                    names.fromString(schemaFieldName)
-                                                                            ),
-                                                                            Select(
-                                                                                    Ident(names.fromString("this")),
-                                                                                    names.fromString(tableFieldName)
-                                                                            ),
-                                                                            Apply(
-                                                                                    List.nil(),
-                                                                                    Select(
-                                                                                            Indexed(
-                                                                                                    Ident(names.fromString(idColumnValuePairsFieldName)),
-                                                                                                    Ident(names.fromString("i"))
-                                                                                            ),
-                                                                                            names.fromString("column")
-                                                                                    ),
-                                                                                    List.nil()
-                                                                            ),
-                                                                            Apply(
-                                                                                    List.nil(),
-                                                                                    Select(
-                                                                                            Indexed(
-                                                                                                    Ident(names.fromString(idColumnValuePairsFieldName)),
-                                                                                                    Ident(names.fromString("i"))
-                                                                                            ),
-                                                                                            names.fromString("value")
-                                                                                    ),
-                                                                                    List.nil()
-                                                                            ),
-                                                                            Select(
-                                                                                    chainDots("net", "staticstudios", "data", "InsertStrategy"),
-                                                                                    names.fromString("OVERWRITE_EXISTING")
-                                                                            )
-                                                                    )
-                                                            )
-                                                    )
-
-                                            )
-                                    )
-                            ),
-                            null
-                    )
-            );
-        }
+        // Avoid adding methods for references to the builder. while seemly convenient, it can be misleading.
+        // For example, do i update the values in the referenced table, or the referring table?
+//        for (ParsedReference ref : parsedReferences) {
+//            String idColumnValuePairsFieldName = ref.getFieldName() + "_reference$idColumnValuePairs";
+//            String schemaFieldName = ref.getFieldName() + "_reference$schema";
+//            String tableFieldName = ref.getFieldName() + "_reference$table";
+//
+//            bodyStatements.add(
+//                    If(
+//                            Binary(
+//                                    JCTree.Tag.NE,
+//                                    Ident(names.fromString(idColumnValuePairsFieldName)),
+//                                    Literal(TypeTag.BOT, null)
+//                            ),
+//                            ForLoop(
+//                                    List.of(
+//                                            VarDef(
+//                                                    Modifiers(0),
+//                                                    names.fromString("i"),
+//                                                    TypeIdent(TypeTag.INT),
+//                                                    Literal(0)
+//                                            )
+//                                    ),
+//                                    Binary(
+//                                            JCTree.Tag.LT,
+//                                            Ident(names.fromString("i")),
+//                                            Select(
+//                                                    Ident(names.fromString(idColumnValuePairsFieldName)),
+//                                                    names.fromString("length")
+//                                            )
+//                                    ),
+//                                    List.of(
+//                                            Exec(
+//                                                    Unary(
+//                                                            JCTree.Tag.POSTINC,
+//                                                            Ident(names.fromString("i"))
+//                                                    )
+//                                            )
+//                                    ),
+//                                    Block(
+//                                            0,
+//                                            List.of(
+//                                                    Exec(
+//                                                            Apply(
+//                                                                    List.nil(),
+//                                                                    Select(
+//                                                                            Ident(names.fromString("ctx")),
+//                                                                            names.fromString("set")
+//                                                                    ),
+//                                                                    List.of(
+//                                                                            Select(
+//                                                                                    Ident(names.fromString("this")),
+//                                                                                    names.fromString(schemaFieldName)
+//                                                                            ),
+//                                                                            Select(
+//                                                                                    Ident(names.fromString("this")),
+//                                                                                    names.fromString(tableFieldName)
+//                                                                            ),
+//                                                                            Apply(
+//                                                                                    List.nil(),
+//                                                                                    Select(
+//                                                                                            Indexed(
+//                                                                                                    Ident(names.fromString(idColumnValuePairsFieldName)),
+//                                                                                                    Ident(names.fromString("i"))
+//                                                                                            ),
+//                                                                                            names.fromString("column")
+//                                                                                    ),
+//                                                                                    List.nil()
+//                                                                            ),
+//                                                                            Apply(
+//                                                                                    List.nil(),
+//                                                                                    Select(
+//                                                                                            Indexed(
+//                                                                                                    Ident(names.fromString(idColumnValuePairsFieldName)),
+//                                                                                                    Ident(names.fromString("i"))
+//                                                                                            ),
+//                                                                                            names.fromString("value")
+//                                                                                    ),
+//                                                                                    List.nil()
+//                                                                            ),
+//                                                                            Select(
+//                                                                                    chainDots("net", "staticstudios", "data", "InsertStrategy"),
+//                                                                                    names.fromString("OVERWRITE_EXISTING")
+//                                                                            )
+//                                                                    )
+//                                                            )
+//                                                    )
+//
+//                                            )
+//                                    )
+//                            ),
+//                            null
+//                    )
+//            );
+//        }
 
         createMethod(MethodDef(
                 Modifiers(Flags.PUBLIC | Flags.FINAL),
