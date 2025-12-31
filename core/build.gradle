@@ -36,12 +36,12 @@ tasks.named('build') {
     dependsOn(shadowJar)
 }
 
-tasks.named("publish") {
-    dependsOn(build)
-}
-
 test {
     useJUnitPlatform()
+}
+
+tasks.withType(GenerateModuleMetadata).configureEach {
+    enabled = false
 }
 
 java {
@@ -58,7 +58,9 @@ publishing {
         maven(MavenPublication) {
             artifactId = 'static-data'
 
-            from components.shadow
+            artifact(tasks.shadowJar) {
+                classifier = null
+            }
 
             artifact sourcesJar
             artifact javadocJar
