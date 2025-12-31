@@ -1,8 +1,11 @@
 package net.staticstudios.data.impl.h2.trigger;
 
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.UniqueData;
+import net.staticstudios.data.impl.h2.H2DataAccessor;
 import net.staticstudios.data.util.TriggerCause;
 import org.h2.api.Trigger;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,6 +21,7 @@ public class H2UpdateHandlerTrigger implements Trigger {
     private final Logger logger = LoggerFactory.getLogger(H2UpdateHandlerTrigger.class);
     private final List<String> columnNames = new ArrayList<>();
     private DataManager dataManager;
+    private H2DataAccessor dataAccessor;
     private String schema;
     private String table;
 
@@ -30,6 +34,7 @@ public class H2UpdateHandlerTrigger implements Trigger {
         UUID dataManagerId = UUID.fromString(triggerName.substring(triggerName.length() - 36).replace('_', '-'));
         this.table = triggerName.substring(triggerName.indexOf("_trg_") + 5, triggerName.length() - 37); //dont use referringTable name since it might be a copy for an internal referringTable (very odd behavior i must say h2)
         this.dataManager = dataManagerMap.get(dataManagerId);
+        this.dataAccessor = (H2DataAccessor) dataManager.getDataAccessor();
         this.schema = schemaName;
     }
 
@@ -69,7 +74,7 @@ public class H2UpdateHandlerTrigger implements Trigger {
     }
 
     private void handleInsert(Object[] newRow) {
-        dataManager.callCollectionChangeHandlers(columnNames, schema, table, columnNames, new Object[newRow.length], newRow, TriggerCause.INSERT);
+        dataAccessor.onCommit(() -> dataManager.callCollectionChangeHandlers(columnNames, schema, table, columnNames, new Object[newRow.length], newRow, TriggerCause.INSERT, null));
     }
 
     private void handleUpdate(Object[] oldRow, Object[] newRow) {
@@ -82,21 +87,29 @@ public class H2UpdateHandlerTrigger implements Trigger {
             }
         }
 
-        for (String changedColumn : changedColumns) {
-            dataManager.updateIdColumns(columnNames, schema, table, changedColumn, oldRow, newRow);
-        }
+        dataAccessor.onCommit(() -> {
+            for (String changedColumn : changedColumns) {
+                dataManager.updateIdColumns(columnNames, schema, table, changedColumn, oldRow, newRow);
+            }
 
-        for (String changedColumn : changedColumns) {
-            dataManager.callPersistentValueUpdateHandlers(columnNames, schema, table, changedColumn, oldRow, newRow);
-        }
+            for (String changedColumn : changedColumns) {
+                dataManager.callPersistentValueUpdateHandlers(columnNames, schema, table, changedColumn, oldRow, newRow);
+            }
 
-        dataManager.callCollectionChangeHandlers(columnNames, schema, table, changedColumns, oldRow, newRow, TriggerCause.UPDATE);
-        dataManager.callReferenceUpdateHandlers(columnNames, schema, table, changedColumns, oldRow, newRow);
+            dataManager.callCollectionChangeHandlers(columnNames, schema, table, changedColumns, oldRow, newRow, TriggerCause.UPDATE, null);
+            dataManager.callReferenceUpdateHandlers(columnNames, schema, table, changedColumns, oldRow, newRow);
+        });
     }
 
     private void handleDelete(Object[] oldRow) {
-        dataManager.callCollectionChangeHandlers(columnNames, schema, table, columnNames, oldRow, new Object[oldRow.length], TriggerCause.DELETE);
 
-        dataManager.handleDelete(columnNames, schema, table, oldRow);
+        // we might want a snapshot later. before the data is actually gone, so create it now, if it'll be used later.
+        @Nullable UniqueData snapshot = dataManager.createSnapshotForCollectionRemoveHandlers(columnNames, schema, table, oldRow);
+
+        dataAccessor.onCommit(() -> {
+            dataManager.callCollectionChangeHandlers(columnNames, schema, table, columnNames, oldRow, new Object[oldRow.length], TriggerCause.DELETE, snapshot);
+
+            dataManager.handleDelete(columnNames, schema, table, oldRow);
+        });
     }
 }

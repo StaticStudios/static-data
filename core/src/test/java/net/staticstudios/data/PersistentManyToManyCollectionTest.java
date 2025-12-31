@@ -377,7 +377,6 @@ public class PersistentManyToManyCollectionTest extends DataTest {
         int i = 0;
         for (MockUser friend : friends) {
             user.friends.add(friend);
-            waitForUpdateHandlers();
 
             assertEquals(++i, user.friendAdditions.get());
         }
@@ -392,7 +391,6 @@ public class PersistentManyToManyCollectionTest extends DataTest {
 
         List<MockUser> friends = createFriends(5);
         user.friends.addAll(friends);
-        waitForUpdateHandlers();
 
         assertEquals(5, user.friends.size());
         assertEquals(0, user.friendRemovals.get());
@@ -400,7 +398,6 @@ public class PersistentManyToManyCollectionTest extends DataTest {
         int i = 0;
         for (MockUser friend : friends) {
             user.friends.remove(friend);
-            waitForUpdateHandlers();
 
             assertEquals(++i, user.friendRemovals.get());
         }

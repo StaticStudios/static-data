@@ -392,7 +392,6 @@ public class PersistentOneToManyValueCollectionTest extends DataTest {
         int i = 0;
         for (Integer number : numbers) {
             user.favoriteNumbers.add(number);
-            waitForUpdateHandlers();
             assertEquals(++i, user.favoriteNumberAdditions.get());
         }
     }
@@ -407,7 +406,6 @@ public class PersistentOneToManyValueCollectionTest extends DataTest {
         List<Integer> numbers = createNumbers(5);
         user.favoriteNumbers.addAll(numbers);
         waitForDataPropagation();
-        waitForUpdateHandlers();
 
         assertEquals(5, user.favoriteNumbers.size());
         assertEquals(0, user.favoriteNumberRemovals.get());
@@ -415,7 +413,6 @@ public class PersistentOneToManyValueCollectionTest extends DataTest {
         int i = 0;
         for (Integer number : numbers) {
             user.favoriteNumbers.remove(number);
-            waitForUpdateHandlers();
 
             assertEquals(++i, user.favoriteNumberRemovals.get());
         }

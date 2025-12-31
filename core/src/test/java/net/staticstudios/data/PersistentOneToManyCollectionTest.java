@@ -317,7 +317,6 @@ public class PersistentOneToManyCollectionTest extends DataTest {
         int i = 0;
         for (MockUserSession session : sessions) {
             user.sessions.add(session);
-            waitForUpdateHandlers();
 
             assertEquals(++i, user.sessionAdditions.get());
         }
@@ -332,7 +331,6 @@ public class PersistentOneToManyCollectionTest extends DataTest {
 
         List<MockUserSession> sessions = createSessions(5);
         user.sessions.addAll(sessions);
-        waitForUpdateHandlers();
 
         assertEquals(5, user.sessions.size());
         assertEquals(0, user.sessionRemovals.get());
@@ -340,7 +338,6 @@ public class PersistentOneToManyCollectionTest extends DataTest {
         int i = 0;
         for (MockUserSession session : sessions) {
             user.sessions.remove(session);
-            waitForUpdateHandlers();
 
             assertEquals(++i, user.sessionRemovals.get());
         }
@@ -360,7 +357,6 @@ public class PersistentOneToManyCollectionTest extends DataTest {
                     .userId(user.id.get())
                     .timestamp(Timestamp.from(Instant.now()))
                     .insert(InsertMode.ASYNC);
-            waitForUpdateHandlers();
 
             assertEquals(i + 1, user.sessionAdditions.get());
         }
@@ -375,7 +371,6 @@ public class PersistentOneToManyCollectionTest extends DataTest {
 
         List<MockUserSession> sessions = createSessions(5);
         user.sessions.addAll(sessions);
-        waitForUpdateHandlers();
 
         assertEquals(5, user.sessions.size());
         assertEquals(0, user.sessionRemovals.get());
@@ -383,7 +378,6 @@ public class PersistentOneToManyCollectionTest extends DataTest {
         int i = 0;
         for (MockUserSession session : sessions) {
             session.delete();
-            waitForUpdateHandlers();
 
             assertEquals(++i, user.sessionRemovals.get());
         }

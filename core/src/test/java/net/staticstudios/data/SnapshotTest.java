@@ -35,7 +35,6 @@ public class SnapshotTest extends DataTest {
         assertEquals(0, snapshot.nameUpdates.get());
 
         user.name.set("new name");
-        waitForUpdateHandlers();
 
         assertEquals("new name", user.name.get());
         assertEquals("some name", snapshot.name.get());

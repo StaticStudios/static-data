@@ -52,7 +52,7 @@ public class DataTest {
                 .postgresPassword(postgres.getPassword())
                 .redisHost(redis.getHost())
                 .redisPort(redis.getFirstMappedPort())
-                .updateHandlerExecutor(ThreadUtils::submit)
+                .updateHandlerExecutor(Runnable::run)
                 .build();
 
         connection = DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
@@ -134,18 +134,6 @@ public class DataTest {
 
     public int getWaitForDataPropagationTime() {
         return 500 + (Objects.equals(System.getenv("GITHUB_ACTIONS"), "true") ? 1000 : 0);
-    }
-
-    public int getWaitForUpdateHandlersTime() {
-        return 100 + (Objects.equals(System.getenv("GITHUB_ACTIONS"), "true") ? 500 : 0);
-    }
-
-    public void waitForUpdateHandlers() {
-        try {
-            Thread.sleep(getWaitForUpdateHandlersTime());
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
     }
 
     public void waitForDataPropagation() {

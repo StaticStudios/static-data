@@ -1,13 +1,14 @@
 package net.staticstudios.data.impl.h2;
 
 import com.google.common.base.Preconditions;
+import com.google.gson.Gson;
 import com.impossibl.postgres.api.jdbc.PGConnection;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.InsertMode;
 import net.staticstudios.data.impl.DataAccessor;
 import net.staticstudios.data.impl.h2.trigger.H2UpdateHandlerTrigger;
 import net.staticstudios.data.impl.pg.PostgresListener;
-import net.staticstudios.data.impl.redis.RedisCacheEntry;
+import net.staticstudios.data.impl.redis.RedisEncodedValue;
 import net.staticstudios.data.impl.redis.RedisEvent;
 import net.staticstudios.data.impl.redis.RedisListener;
 import net.staticstudios.data.parse.DDLStatement;
@@ -32,7 +33,6 @@ import java.io.FileOutputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.*;
-import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
@@ -46,6 +46,7 @@ public class H2DataAccessor implements DataAccessor {
     private static final String SET_REFERENTIAL_INTEGRITY_FALSE = "SET REFERENTIAL_INTEGRITY FALSE";
     @Language("SQL")
     private static final String SET_REFERENTIAL_INTEGRITY_TRUE = "SET REFERENTIAL_INTEGRITY TRUE";
+    private static final Gson GSON = new Gson();
     private final TaskQueue taskQueue;
     private final String jdbcUrl;
     private final ThreadLocal<Connection> threadConnection = new ThreadLocal<>();
@@ -60,11 +61,13 @@ public class H2DataAccessor implements DataAccessor {
         return t;
     });
     private final RedisListener redisListener;
-    private final Map<String, RedisCacheEntry> redisCache = new ConcurrentHashMap<>();
+    private final Map<String, String> redisCache = new ConcurrentHashMap<>();
     private final Set<String> knownRedisPartialKeys = ConcurrentHashMap.newKeySet();
 
-    public H2DataAccessor(DataManager dataManager, PostgresListener postgresListener, RedisListener redisListener, TaskQueue taskQueue) {
+    private final ThreadLocal<LinkedList<Runnable>> commitCallbacks = ThreadLocal.withInitial(LinkedList::new);
+    private final ThreadLocal<LinkedList<Runnable>> rollbackCallbacks = ThreadLocal.withInitial(LinkedList::new);
 
+    public H2DataAccessor(DataManager dataManager, PostgresListener postgresListener, RedisListener redisListener, TaskQueue taskQueue) {
         try {
             Class.forName("org.h2.Driver");
         } catch (ClassNotFoundException e) {
@@ -305,7 +308,7 @@ public class H2DataAccessor implements DataAccessor {
                     cursor = scanResult.getCursor();
 
                     for (String key : scanResult.getResult()) {
-                        redisCache.put(key, new RedisCacheEntry(jedis.get(key), Instant.now()));
+                        redisCache.put(key, decodeRedis(jedis.get(key)).value());
                     }
                 } while (!cursor.equals(ScanParams.SCAN_POINTER_START));
 
@@ -325,7 +328,7 @@ public class H2DataAccessor implements DataAccessor {
         if (connection == null) {
             connection = DriverManager.getConnection(jdbcUrl);
             connection.setAutoCommit(false);
-            threadConnection.set(connection);
+            threadConnection.set(connection = new H2ProxyConnection(connection, this));
 
             ThreadUtils.onShutdownRunSync(ShutdownStage.CLEANUP, () -> {
                 Connection _connection = threadConnection.get();
@@ -498,39 +501,30 @@ public class H2DataAccessor implements DataAccessor {
 
     @Override
     public @Nullable String getRedisValue(String key) {
-        RedisCacheEntry cacheEntry = redisCache.get(key);
-        if (cacheEntry != null) {
-            return cacheEntry.value();
-        }
-        return null;
+        return redisCache.get(key);
     }
 
     @Override
     public void setRedisValue(String key, String value, int expirationSeconds) {
-        RedisCacheEntry prev;
+        String prev;
         if (value == null) {
             prev = redisCache.remove(key);
             taskQueue.submitTask((connection, jedis) -> {
                 jedis.del(key);
             });
         } else {
-            prev = redisCache.put(key, new RedisCacheEntry(value, Instant.now()));
+            prev = redisCache.put(key, value);
             taskQueue.submitTask((connection, jedis) -> {
                 if (expirationSeconds > 0) {
-                    jedis.setex(key, expirationSeconds, value);
+                    jedis.setex(key, expirationSeconds, encodeRedis(value));
                 } else {
-                    jedis.set(key, value);
+                    jedis.set(key, encodeRedis(value));
                 }
             });
         }
 
-        String prevValue = null;
-
-        if (prev != null) {
-            prevValue = prev.value();
-        }
         RedisUtils.DeconstructedKey deconstructedKey = RedisUtils.deconstruct(key);
-        dataManager.callCachedValueUpdateHandlers(deconstructedKey.partialKey(), deconstructedKey.encodedIdNames(), deconstructedKey.encodedIdValues(), prevValue, value);
+        dataManager.callCachedValueUpdateHandlers(deconstructedKey.partialKey(), deconstructedKey.encodedIdNames(), deconstructedKey.encodedIdValues(), prev, value);
     }
 
     @Override
@@ -661,16 +655,68 @@ public class H2DataAccessor implements DataAccessor {
     }
 
     private void handleRedisEvent(RedisEvent event, String key, @Nullable String value) {
+        RedisEncodedValue redisEncoded = value == null ? null : decodeRedis(value);
+
+        if (redisEncoded != null && Objects.equals(redisEncoded.staticDataAppName(), dataManager.getApplicationName())) {
+            return; // ignore events from ourselves
+        }
+
         if (event == RedisEvent.SET) {
-            RedisCacheEntry entry = redisCache.get(key);
-            if (entry != null && (entry.entryInstant().isAfter(Instant.now()) || Objects.equals(entry.value(), value))) {
+            String entry = redisCache.get(key);
+            if (entry != null && Objects.equals(entry, value)) {
                 return;
             }
-            redisCache.put(key, new RedisCacheEntry(value, Instant.now()));
+            redisCache.put(key, value);
             RedisUtils.DeconstructedKey deconstructedKey = RedisUtils.deconstruct(key);
-            dataManager.callCachedValueUpdateHandlers(deconstructedKey.partialKey(), deconstructedKey.encodedIdNames(), deconstructedKey.encodedIdValues(), entry == null ? null : entry.value(), value);
+            dataManager.callCachedValueUpdateHandlers(deconstructedKey.partialKey(), deconstructedKey.encodedIdNames(), deconstructedKey.encodedIdValues(), entry, value);
         } else if (event == RedisEvent.DEL || event == RedisEvent.EXPIRED) {
             redisCache.remove(key);
         }
+    }
+
+    public void onCommit(Runnable callback) {
+        commitCallbacks.get().add(callback);
+    }
+
+    public void onRollback(Runnable callback) {
+        rollbackCallbacks.get().add(callback);
+    }
+
+    protected void handleCommit() {
+        List<Runnable> callbacks = commitCallbacks.get();
+        commitCallbacks.set(new LinkedList<>());
+        rollbackCallbacks.get().clear();
+        if (callbacks != null) {
+            for (Runnable callback : callbacks) {
+                try {
+                    callback.run();
+                } catch (Exception e) {
+                    logger.error("Error executing commit callback", e);
+                }
+            }
+        }
+    }
+
+    protected void handleRollback() {
+        List<Runnable> callbacks = rollbackCallbacks.get();
+        rollbackCallbacks.set(new LinkedList<>());
+        commitCallbacks.get().clear();
+        if (callbacks != null) {
+            for (Runnable callback : callbacks) {
+                try {
+                    callback.run();
+                } catch (Exception e) {
+                    logger.error("Error executing rollback callback", e);
+                }
+            }
+        }
+    }
+
+    private String encodeRedis(Object value) {
+        return GSON.toJson(new RedisEncodedValue(dataManager.getApplicationName(), value.toString()));
+    }
+
+    private RedisEncodedValue decodeRedis(String encoded) {
+        return GSON.fromJson(encoded, RedisEncodedValue.class);
     }
 }

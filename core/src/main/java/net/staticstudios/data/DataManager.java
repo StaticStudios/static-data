@@ -36,6 +36,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
+@ApiStatus.Internal
 public class DataManager {
     private static Boolean useGlobal = null;
     private static DataManager instance;
@@ -127,7 +128,6 @@ public class DataManager {
                 .add(handler);
     }
 
-    @ApiStatus.Internal
     public void callPersistentValueUpdateHandlers(List<String> columnNames, String schema, String table, String column, Object[] oldSerializedValues, Object[] newSerializedValues) {
         logger.trace("Calling update handlers for {}.{}.{} with old values {} and new values {}", schema, table, column, Arrays.toString(oldSerializedValues), Arrays.toString(newSerializedValues));
         Map<Class<? extends UniqueData>, List<ValueUpdateHandlerWrapper<?, ?>>> handlersForColumn = persistentValueUpdateHandlers.get(schema + "." + table + "." + column);
@@ -166,7 +166,6 @@ public class DataManager {
         }
     }
 
-    @ApiStatus.Internal
     public void callCachedValueUpdateHandlers(String partialKey, List<String> encodedIdNames, List<String> encodedIdValues, @Nullable String oldValue, @Nullable String newValue) {
         if (Objects.equals(oldValue, newValue)) {
             return;
@@ -218,8 +217,53 @@ public class DataManager {
         }
     }
 
-    @ApiStatus.Internal
-    public void callCollectionChangeHandlers(List<String> columnNames, String schema, String table, List<String> changedColumns, Object[] oldSerializedValues, Object[] newSerializedValues, TriggerCause cause) {
+    /**
+     * Called when an entry is deleted from the database, but a remove handler will want this snapshot of the data later, when update handlers are called.
+     */
+    public @Nullable UniqueData createSnapshotForCollectionRemoveHandlers(List<String> columnNames, String schema, String table, Object[] oldSerializedValues) {
+        Map<Class<? extends UniqueData>, List<CollectionChangeHandlerWrapper<?, ?>>> handlersForTable = collectionChangeHandlers.get(schema + "." + table);
+        if (handlersForTable == null) {
+            return null;
+        }
+
+        for (Map.Entry<Class<? extends UniqueData>, List<CollectionChangeHandlerWrapper<?, ?>>> entry : handlersForTable.entrySet()) {
+            List<CollectionChangeHandlerWrapper<?, ?>> handlers = entry.getValue();
+            for (CollectionChangeHandlerWrapper<?, ?> wrapper : handlers) {
+                PersistentCollectionMetadata collectionMetadata = wrapper.getCollectionMetadata();
+                Preconditions.checkNotNull(collectionMetadata, "Collection metadata not set for collection change handler");
+                if (wrapper.getType() != CollectionChangeHandlerWrapper.Type.REMOVE) {
+                    continue;
+                }
+
+                UniqueDataMetadata referencedMetadata;
+
+                if (collectionMetadata instanceof PersistentOneToManyCollectionMetadata oneToManyCollectionMetadata) {
+                    referencedMetadata = getMetadata(oneToManyCollectionMetadata.getReferencedType());
+                } else if (collectionMetadata instanceof PersistentManyToManyCollectionMetadata manyToManyCollectionMetadata) {
+                    referencedMetadata = getMetadata(manyToManyCollectionMetadata.getReferencedType());
+
+                    if (!Objects.equals(schema, referencedMetadata.schema()) || !Objects.equals(table, referencedMetadata.table())) {
+                        continue; //don't need a snapshot if it wasn't the referenced object being deleted
+                    }
+                } else {
+                    continue;
+                }
+
+                ColumnValuePair[] idColumns = new ColumnValuePair[referencedMetadata.idColumns().size()];
+                for (ColumnMetadata idColumn : referencedMetadata.idColumns()) {
+                    Object serializedValue = oldSerializedValues[columnNames.indexOf(idColumn.name())];
+                    Object deserializedValue = deserialize(idColumn.type(), serializedValue);
+                    idColumns[referencedMetadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), deserializedValue);
+                }
+
+                return createSnapshot(referencedMetadata.clazz(), new ColumnValuePairs(idColumns));
+            }
+        }
+
+        return null;
+    }
+
+    public void callCollectionChangeHandlers(List<String> columnNames, String schema, String table, List<String> changedColumns, Object[] oldSerializedValues, Object[] newSerializedValues, TriggerCause cause, @Nullable UniqueData snapshot) {
         logger.trace("Calling collection change handlers for {}.{} on changed columns {} with old values {} and new values {}", schema, table, changedColumns, Arrays.toString(oldSerializedValues), Arrays.toString(newSerializedValues));
         Map<Class<? extends UniqueData>, List<CollectionChangeHandlerWrapper<?, ?>>> handlersForTable = collectionChangeHandlers.get(schema + "." + table);
         if (handlersForTable == null) {
@@ -233,11 +277,11 @@ public class DataManager {
                 Preconditions.checkNotNull(collectionMetadata, "Collection metadata not set for collection change handler");
                 switch (collectionMetadata) {
                     case PersistentOneToManyCollectionMetadata oneToManyCollectionMetadata ->
-                            handleOneToManyCollectionChange(wrapper, oneToManyCollectionMetadata, columnNames, oldSerializedValues, newSerializedValues, cause);
+                            handleOneToManyCollectionChange(wrapper, oneToManyCollectionMetadata, columnNames, oldSerializedValues, newSerializedValues, cause, snapshot);
                     case PersistentOneToManyValueCollectionMetadata oneToManyValueCollectionMetadata ->
                             handleOneToManyValuedCollectionChange(wrapper, oneToManyValueCollectionMetadata, columnNames, oldSerializedValues, newSerializedValues);
                     case PersistentManyToManyCollectionMetadata manyToManyCollectionMetadata ->
-                            handleManyToManyCollectionChange(wrapper, manyToManyCollectionMetadata, columnNames, oldSerializedValues, newSerializedValues, cause);
+                            handleManyToManyCollectionChange(wrapper, manyToManyCollectionMetadata, schema, table, columnNames, oldSerializedValues, newSerializedValues, cause, snapshot);
                     default ->
                             throw new IllegalStateException("Unknown collection metadata type: " + collectionMetadata.getClass().getName());
                 }
@@ -245,7 +289,7 @@ public class DataManager {
         }
     }
 
-    private void handleOneToManyCollectionChange(CollectionChangeHandlerWrapper<?, ?> handler, PersistentOneToManyCollectionMetadata metadata, List<String> columnNames, Object[] oldSerializedValues, Object[] newSerializedValues, TriggerCause cause) {
+    private void handleOneToManyCollectionChange(CollectionChangeHandlerWrapper<?, ?> handler, PersistentOneToManyCollectionMetadata metadata, List<String> columnNames, Object[] oldSerializedValues, Object[] newSerializedValues, TriggerCause cause, @Nullable UniqueData snapshot) {
         List<Link> links = metadata.getLinks();
         Object[] oldLinkValues = new Object[links.size()];
         Object[] newLinkValues = new Object[links.size()];
@@ -266,23 +310,9 @@ public class DataManager {
         }
 
         UniqueDataMetadata referencedMetadata = getMetadata(metadata.getReferencedType());
-        StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append("SELECT ");
-        for (ColumnMetadata idColumn : referencedMetadata.idColumns()) {
-            sqlBuilder.append("\"").append(idColumn.name()).append("\", ");
-        }
-        sqlBuilder.setLength(sqlBuilder.length() - 2);
-        sqlBuilder.append(" FROM \"").append(referencedMetadata.schema()).append("\".\"").append(referencedMetadata.table()).append("\" WHERE ");
-        List<Object> oldValues = new ArrayList<>();
         List<Object> newValues = new ArrayList<>();
         for (ColumnMetadata idColumn : referencedMetadata.idColumns()) {
-            if (!oldValues.isEmpty()) {
-                sqlBuilder.append(" AND ");
-            }
-            sqlBuilder.append("\"").append(idColumn.name()).append("\" = ? ");
             int columnIndex = columnNames.indexOf(idColumn.name());
-            Object oldDeserializedValue = deserialize(idColumn.type(), oldSerializedValues[columnIndex]);
-            oldValues.add(oldDeserializedValue);
             Object newDeserializedValue = deserialize(idColumn.type(), newSerializedValues[columnIndex]);
             newValues.add(newDeserializedValue);
         }
@@ -291,48 +321,36 @@ public class DataManager {
         if (instance == null) {
             return;
         }
+        ColumnValuePair[] idColumns = new ColumnValuePair[referencedMetadata.idColumns().size()];
 
         if (handler.getType() == CollectionChangeHandlerWrapper.Type.REMOVE) {
-            try (ResultSet rs = dataAccessor.executeQuery(sqlBuilder.toString(), oldValues)) {
-                if (rs.next()) {
-                    ColumnValuePair[] idColumns = new ColumnValuePair[referencedMetadata.idColumns().size()];
-                    for (ColumnMetadata idColumn : referencedMetadata.idColumns()) {
-                        Object serializedValue = rs.getObject(idColumn.name());
-                        Object deserializedValue = deserialize(idColumn.type(), serializedValue);
-                        idColumns[referencedMetadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), deserializedValue);
-                    }
-                    UniqueData oldInstance;
-                    if (cause == TriggerCause.DELETE) {
-                        //the handler probably cares about the data that was removed, so we create a snapshot since the actual data is no longer available
-                        oldInstance = createSnapshot(referencedMetadata.clazz(), new ColumnValuePairs(idColumns));
-                    } else {
-                        oldInstance = getInstance(referencedMetadata.clazz(), idColumns);
-                    }
-                    if (oldInstance != null) {
-                        submitUpdateHandler(() -> handler.unsafeHandle(instance, oldInstance));
-                    }
+            UniqueData oldInstance;
+            if (cause == TriggerCause.DELETE) {
+                //the handler probably cares about the data that was removed, so we create a snapshot since the actual data is no longer available
+                oldInstance = snapshot;
+            } else {
+                for (ColumnMetadata idColumn : referencedMetadata.idColumns()) {
+                    Object serializedValue = newValues.get(columnNames.indexOf(idColumn.name()));
+                    Object deserializedValue = deserialize(idColumn.type(), serializedValue);
+                    idColumns[referencedMetadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), deserializedValue);
                 }
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
+
+                oldInstance = getInstance(referencedMetadata.clazz(), idColumns);
+            }
+            if (oldInstance != null) {
+                submitUpdateHandler(() -> handler.unsafeHandle(instance, oldInstance));
             }
         }
 
         if (handler.getType() == CollectionChangeHandlerWrapper.Type.ADD) {
-            try (ResultSet rs = dataAccessor.executeQuery(sqlBuilder.toString(), newValues)) {
-                if (rs.next()) {
-                    ColumnValuePair[] idColumns = new ColumnValuePair[referencedMetadata.idColumns().size()];
-                    for (ColumnMetadata idColumn : referencedMetadata.idColumns()) {
-                        Object serializedValue = rs.getObject(idColumn.name());
-                        Object deserializedValue = deserialize(idColumn.type(), serializedValue);
-                        idColumns[referencedMetadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), deserializedValue);
-                    }
-                    UniqueData newInstance = getInstance(referencedMetadata.clazz(), idColumns);
-                    if (newInstance != null) {
-                        submitUpdateHandler(() -> handler.unsafeHandle(instance, newInstance));
-                    }
-                }
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
+            for (ColumnMetadata idColumn : referencedMetadata.idColumns()) {
+                Object serializedValue = newValues.get(columnNames.indexOf(idColumn.name()));
+                Object deserializedValue = deserialize(idColumn.type(), serializedValue);
+                idColumns[referencedMetadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), deserializedValue);
+            }
+            UniqueData newInstance = getInstance(referencedMetadata.clazz(), idColumns);
+            if (newInstance != null) {
+                submitUpdateHandler(() -> handler.unsafeHandle(instance, newInstance));
             }
         }
     }
@@ -377,7 +395,7 @@ public class DataManager {
         }
     }
 
-    private void handleManyToManyCollectionChange(CollectionChangeHandlerWrapper<?, ?> handler, PersistentManyToManyCollectionMetadata metadata, List<String> columnNames, Object[] oldSerializedValues, Object[] newSerializedValues, TriggerCause cause) {
+    private void handleManyToManyCollectionChange(CollectionChangeHandlerWrapper<?, ?> handler, PersistentManyToManyCollectionMetadata metadata, String schema, String table, List<String> columnNames, Object[] oldSerializedValues, Object[] newSerializedValues, TriggerCause cause, @Nullable UniqueData snapshot) {
         List<Link> links = metadata.getJoinTableToReferencedTableLinks(this);
         Object[] oldLinkValues = new Object[links.size()];
         Object[] newLinkValues = new Object[links.size()];
@@ -438,35 +456,35 @@ public class DataManager {
             return;
         }
 
+        ColumnValuePair[] idColumns = new ColumnValuePair[referencedMetadata.idColumns().size()];
         if (handler.getType() == CollectionChangeHandlerWrapper.Type.REMOVE) {
-            try (ResultSet rs = dataAccessor.executeQuery(sqlBuilder.toString(), oldValues)) {
-                if (rs.next()) {
-                    ColumnValuePair[] idColumns = new ColumnValuePair[referencedMetadata.idColumns().size()];
-                    for (ColumnMetadata idColumn : referencedMetadata.idColumns()) {
-                        Object serializedValue = rs.getObject(idColumn.name());
-                        Object deserializedValue = deserialize(idColumn.type(), serializedValue);
-                        idColumns[referencedMetadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), deserializedValue);
-                    }
-                    UniqueData oldInstance;
-                    if (cause == TriggerCause.DELETE) {
-                        //the handler probably cares about the data that was removed, so we create a snapshot since the actual data is no longer available
-                        oldInstance = createSnapshot(referencedMetadata.clazz(), new ColumnValuePairs(idColumns));
-                    } else {
+            UniqueData oldInstance = null;
+            if (cause == TriggerCause.DELETE && Objects.equals(schema, referencedMetadata.schema()) && Objects.equals(table, referencedMetadata.table())) {
+                //the handler probably cares about the data that was removed, so we create a snapshot since the actual data is no longer available
+                oldInstance = snapshot;
+            } else {
+                try (ResultSet rs = dataAccessor.executeQuery(sqlBuilder.toString(), oldValues)) {
+                    if (rs.next()) {
+                        for (ColumnMetadata idColumn : referencedMetadata.idColumns()) {
+                            Object serializedValue = rs.getObject(idColumn.name());
+                            Object deserializedValue = deserialize(idColumn.type(), serializedValue);
+                            idColumns[referencedMetadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), deserializedValue);
+                        }
                         oldInstance = getInstance(referencedMetadata.clazz(), idColumns);
                     }
-                    if (oldInstance != null) {
-                        submitUpdateHandler(() -> handler.unsafeHandle(instance, oldInstance));
-                    }
+                } catch (SQLException e) {
+                    throw new RuntimeException(e);
                 }
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
+            }
+            if (oldInstance != null) {
+                UniqueData finalOldInstance = oldInstance;
+                submitUpdateHandler(() -> handler.unsafeHandle(instance, finalOldInstance));
             }
         }
 
         if (handler.getType() == CollectionChangeHandlerWrapper.Type.ADD) {
             try (ResultSet rs = dataAccessor.executeQuery(sqlBuilder.toString(), newValues)) {
                 if (rs.next()) {
-                    ColumnValuePair[] idColumns = new ColumnValuePair[referencedMetadata.idColumns().size()];
                     for (ColumnMetadata idColumn : referencedMetadata.idColumns()) {
                         Object serializedValue = rs.getObject(idColumn.name());
                         Object deserializedValue = deserialize(idColumn.type(), serializedValue);
@@ -546,7 +564,6 @@ public class DataManager {
         return getInstance(uniqueDataMetadata.clazz(), idColumns);
     }
 
-    @ApiStatus.Internal
     public void callReferenceUpdateHandlers(List<String> columnNames, String schema, String table, List<String> changedColumns, Object[] oldSerializedValues, Object[] newSerializedValues) {
         logger.trace("Calling reference update handlers for {}.{} on changed columns {} with old values {} and new values {}", schema, table, changedColumns, Arrays.toString(oldSerializedValues), Arrays.toString(newSerializedValues));
         Map<Class<? extends UniqueData>, List<ReferenceUpdateHandlerWrapper<?, ?>>> handlersForTable = referenceUpdateHandlers.get(schema + "." + table);
@@ -656,7 +673,6 @@ public class DataManager {
         updateHandlerExecutor.accept(runnable);
     }
 
-    @ApiStatus.Internal
     public void registerPersistentValueUpdateHandlers(PersistentValueMetadata metadata, Collection<ValueUpdateHandlerWrapper<?, ?>> handlers) {
         if (registeredUpdateHandlersForColumns.add(metadata)) {
             for (ValueUpdateHandlerWrapper<?, ?> handler : handlers) {
@@ -665,7 +681,6 @@ public class DataManager {
         }
     }
 
-    @ApiStatus.Internal
     public void registerCachedValueUpdateHandlers(CachedValueMetadata metadata, Collection<CachedValueUpdateHandlerWrapper<?, ?>> handlers) {
         if (registeredUpdateHandlersForRedis.add(metadata)) {
             UniqueDataMetadata holderMetadata = getMetadata(metadata.holderClass());
@@ -676,7 +691,6 @@ public class DataManager {
         }
     }
 
-    @ApiStatus.Internal
     public void registerCollectionChangeHandlers(PersistentCollectionMetadata metadata, Collection<CollectionChangeHandlerWrapper<?, ?>> handlers) {
         if (registeredChangeHandlersForCollection.add(metadata)) {
             handlers.forEach(h -> h.setCollectionMetadata(metadata));
@@ -698,7 +712,6 @@ public class DataManager {
         }
     }
 
-    @ApiStatus.Internal
     public void registerReferenceUpdateHandlers(ReferenceMetadata metadata, Collection<ReferenceUpdateHandlerWrapper<?, ?>> handlers) {
         if (registeredUpdateHandlersForReference.add(metadata)) {
             handlers.forEach(h -> h.setReferenceMetadata(metadata));
@@ -844,7 +857,6 @@ public class DataManager {
         return metadata;
     }
 
-    @ApiStatus.Internal
     public void handleDelete(List<String> columnNames, String schema, String table, Object[] values) {
         uniqueDataMetadataMap.values().forEach(uniqueDataMetadata -> {
             if (!uniqueDataMetadata.schema().equals(schema) || !uniqueDataMetadata.table().equals(table)) {
@@ -872,7 +884,6 @@ public class DataManager {
         });
     }
 
-    @ApiStatus.Internal
     public synchronized void updateIdColumns(List<String> columnNames, String schema, String table, String column, Object[] oldValues, Object[] newValues) {
         uniqueDataMetadataMap.values().forEach(uniqueDataMetadata -> {
             if (!uniqueDataMetadata.schema().equals(schema) || !uniqueDataMetadata.table().equals(table)) {
@@ -1229,7 +1240,6 @@ public class DataManager {
         }
     }
 
-    @ApiStatus.Internal
     public void set(String schema, String table, String column, ColumnValuePairs idColumns, List<Link> idColumnLinks, Object value, int delay) {
         StringBuilder sqlBuilder;
         if (idColumnLinks.isEmpty()) {

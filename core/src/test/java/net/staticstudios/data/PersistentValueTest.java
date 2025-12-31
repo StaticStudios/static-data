@@ -204,20 +204,15 @@ public class PersistentValueTest extends DataTest {
         mockUser = dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id)); // should have a cache miss
         //the handler for this pv should not have been registered again
         assertEquals(1, dataManager.getUpdateHandlers("public", "users", "name", MockUser.class).size());
-        waitForUpdateHandlers();
         assertEquals(0, mockUser.getNameUpdates());
 
         mockUser.name.set("new name");
-        waitForUpdateHandlers();
         assertEquals(1, mockUser.getNameUpdates());
         mockUser.name.set("new name");
-        waitForUpdateHandlers();
         assertEquals(1, mockUser.getNameUpdates());
         mockUser.name.set("new name2");
-        waitForUpdateHandlers();
         assertEquals(2, mockUser.getNameUpdates());
         mockUser.name.set("new name");
-        waitForUpdateHandlers();
         assertEquals(3, mockUser.getNameUpdates());
     }
 
@@ -331,7 +326,6 @@ public class PersistentValueTest extends DataTest {
         assertEquals(id, mockUser.id.get());
         assertEquals(0, mockUser.nameUpdates.get());
         mockUser.name.set("new name");
-        waitForUpdateHandlers();
         assertEquals(1, mockUser.nameUpdates.get());
         UUID newId = UUID.randomUUID();
         mockUser.id.set(newId);
@@ -341,7 +335,6 @@ public class PersistentValueTest extends DataTest {
         assertSame(dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", newId)), mockUser);
         assertEquals(1, mockUser.nameUpdates.get());
         mockUser.name.set("new name2");
-        waitForUpdateHandlers();
         assertEquals(2, mockUser.nameUpdates.get());
     }
 
@@ -364,7 +357,6 @@ public class PersistentValueTest extends DataTest {
         assertEquals(0, mockUser.nameUpdates.get());
         mockUser.name.set("new name");
 
-        waitForUpdateHandlers();
 
         assertEquals(1, mockUser.nameUpdates.get());
         UUID newId = UUID.randomUUID();
@@ -383,10 +375,8 @@ public class PersistentValueTest extends DataTest {
         assertNull(dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id)));
         assertNotNull(dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", newId)));
         assertSame(dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", newId)), mockUser);
-        waitForUpdateHandlers();
         assertEquals(1, mockUser.nameUpdates.get());
         mockUser.name.set("new name2");
-        waitForUpdateHandlers();
         assertEquals(2, mockUser.nameUpdates.get());
     }
 

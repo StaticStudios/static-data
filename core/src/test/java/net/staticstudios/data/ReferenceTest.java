@@ -190,22 +190,18 @@ public class ReferenceTest extends DataTest {
         assertEquals(0, user.settingsUpdates.get());
 
         user.settings.set(settings);
-        waitForUpdateHandlers();
 
         assertEquals(1, user.settingsUpdates.get());
 
         user.settings.set(settings);
-        waitForUpdateHandlers();
 
         assertEquals(1, user.settingsUpdates.get());
 
         user.settings.set(null);
-        waitForUpdateHandlers();
 
         assertEquals(2, user.settingsUpdates.get());
 
         user.settings.set(settings);
-        waitForUpdateHandlers();
 
         assertEquals(3, user.settingsUpdates.get());
 
@@ -214,7 +210,6 @@ public class ReferenceTest extends DataTest {
                 .insert(InsertMode.SYNC);
 
         user.settings.set(settings2);
-        waitForUpdateHandlers();
 
         assertEquals(4, user.settingsUpdates.get());
     }

@@ -1,5 +1,7 @@
 package net.staticstudios.data;
 
+import com.google.gson.Gson;
+import net.staticstudios.data.impl.redis.RedisEncodedValue;
 import net.staticstudios.data.misc.DataTest;
 import net.staticstudios.data.mock.user.MockUser;
 import net.staticstudios.data.util.ColumnValuePair;
@@ -14,6 +16,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 public class CachedValueTest extends DataTest {
+
+    private Gson gson = new Gson();
 
     @Test
     public void testBasic() {
@@ -69,21 +73,18 @@ public class CachedValueTest extends DataTest {
                 .name("john doe")
                 .insert(InsertMode.ASYNC);
 
-        waitForUpdateHandlers();
         assertEquals(0, user.cooldownUpdates.get());
 
         user.onCooldown.set(false);
         assertEquals(false, user.onCooldown.get());
 
         //the fallback value is false, so we didn't change anything. update handlers shouldn't be fired
-        waitForUpdateHandlers();
         assertEquals(0, user.cooldownUpdates.get());
 
 
         user.onCooldown.set(true);
         assertEquals(true, user.onCooldown.get());
 
-        waitForUpdateHandlers();
         assertEquals(1, user.cooldownUpdates.get());
 
 
@@ -91,14 +92,12 @@ public class CachedValueTest extends DataTest {
         assertEquals(true, user.onCooldown.get());
 
         //didnt change, so no update
-        waitForUpdateHandlers();
         assertEquals(1, user.cooldownUpdates.get());
 
 
         user.onCooldown.set(false);
         assertEquals(false, user.onCooldown.get());
 
-        waitForUpdateHandlers();
         assertEquals(2, user.cooldownUpdates.get());
     }
 
@@ -118,21 +117,18 @@ public class CachedValueTest extends DataTest {
         String cooldownUpdatesKey = RedisUtils.buildRedisKey("public", "users", "cooldown_updates", user.getIdColumns());
 
         user.onCooldown.set(true);
-        waitForUpdateHandlers();
         user.cooldownUpdates.set(1);
         waitForDataPropagation();
-        assertEquals("true", jedis.get(onCooldownKey));
-        assertEquals("1", jedis.get(cooldownUpdatesKey));
+        assertEquals("true", gson.fromJson(jedis.get(onCooldownKey), RedisEncodedValue.class).value());
+        assertEquals("1", gson.fromJson(jedis.get(cooldownUpdatesKey), RedisEncodedValue.class).value());
 
         user.onCooldown.set(null);
-        waitForUpdateHandlers();
         user.cooldownUpdates.set(null);
         waitForDataPropagation();
         assertNull(jedis.get(onCooldownKey));
         assertNull(jedis.get(cooldownUpdatesKey));
 
         user.onCooldown.set(false); //fallback
-        waitForUpdateHandlers();
         user.cooldownUpdates.set(0); //fallback
         waitForDataPropagation();
         assertNull(jedis.get(onCooldownKey));
@@ -149,8 +145,8 @@ public class CachedValueTest extends DataTest {
         String onCooldownKey = RedisUtils.buildRedisKey("public", "users", "on_cooldown", columnValuePairs);
         String cooldownUpdatesKey = RedisUtils.buildRedisKey("public", "users", "cooldown_updates", columnValuePairs);
 
-        jedis.set(onCooldownKey, "true");
-        jedis.set(cooldownUpdatesKey, "5");
+        jedis.set(onCooldownKey, gson.toJson(new RedisEncodedValue(null, "true")));
+        jedis.set(cooldownUpdatesKey, gson.toJson(new RedisEncodedValue(null, "5")));
 
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
