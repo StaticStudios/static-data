@@ -201,7 +201,7 @@ public class PersistentOneToManyValueCollectionImpl<T> implements PersistentColl
         for (T entry : c) {
             transaction.update(insertStatement, () -> {
                 List<Object> values = new ArrayList<>(holderLinkingValues);
-                values.add(entry);
+                values.add(holder.getDataManager().serialize(entry));
                 return values;
             });
         }
@@ -452,7 +452,7 @@ public class PersistentOneToManyValueCollectionImpl<T> implements PersistentColl
         try (ResultSet rs = dataAccessor.executeQuery(sql, holder.getIdColumns().stream().map(ColumnValuePair::value).toList())) {
             while (rs.next()) {
                 Object value = rs.getObject(dataColumn);
-                values.add(type.cast(value));
+                values.add(holder.getDataManager().deserialize(type, value));
             }
         } catch (SQLException e) {
             throw new RuntimeException(e);
