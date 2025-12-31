@@ -65,10 +65,10 @@ public class PrimitivesTest extends DataTest {
         test(Primitives.TIMESTAMP, new Timestamp(System.currentTimeMillis()));
     }
 
-    @Test
-    public void testByteArray() throws Exception {
-        test(Primitives.BYTE_ARRAY, new byte[]{1, 2, 3, 4, 5});
-    }
+//    @Test
+//    public void testByteArray() throws Exception {
+//        test(Primitives.BYTE_ARRAY, new byte[]{1, 2, 3, 4, 5});
+//    }
 
     private <T> void test(Primitive<T> primitive, T value) throws Exception {
         // note that encoding and decoding is only in the context of PG. H2 byte[] is in a different format, but we don't every encode/decode when working with H2.

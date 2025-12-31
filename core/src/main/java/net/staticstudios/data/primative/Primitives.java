@@ -1,7 +1,6 @@
 package net.staticstudios.data.primative;
 
 import com.google.common.base.Preconditions;
-import net.staticstudios.data.util.PostgresUtils;
 import org.jetbrains.annotations.Nullable;
 
 import java.sql.Timestamp;
@@ -77,17 +76,19 @@ public class Primitives {
             .decoder(s -> Timestamp.from(OffsetDateTime.parse(s, TIMESTAMP_FORMATTER).toInstant()))
             .copier(timestamp -> new Timestamp(timestamp.getTime()))
             .build(Primitives::register);
-    public static final Primitive<byte[]> BYTE_ARRAY = Primitive.builder(byte[].class)
-            .h2SQLType("BINARY LARGE OBJECT")
-            .pgSQLType("BYTEA")
-            .encoder(PostgresUtils::toHex)
-            .decoder(PostgresUtils::toBytes)
-            .copier(bytes -> {
-                byte[] copy = new byte[bytes.length];
-                System.arraycopy(bytes, 0, copy, 0, bytes.length);
-                return copy;
-            })
-            .build(Primitives::register);
+
+    // dropping support for byte[] for the time being, im running into weird issues on the h2 side. also the javac stuff is having issues parsing ...<byte[]> types.
+//    public static final Primitive<byte[]> BYTE_ARRAY = Primitive.builder(byte[].class)
+//            .h2SQLType("BINARY LARGE OBJECT")
+//            .pgSQLType("BYTEA")
+//            .encoder(PostgresUtils::toHex)
+//            .decoder(PostgresUtils::toBytes)
+//            .copier(bytes -> {
+//                byte[] copy = new byte[bytes.length];
+//                System.arraycopy(bytes, 0, copy, 0, bytes.length);
+//                return copy;
+//            })
+//            .build(Primitives::register);
 
     @SuppressWarnings("unchecked")
     public static <T> Primitive<T> getPrimitive(Class<T> type) {

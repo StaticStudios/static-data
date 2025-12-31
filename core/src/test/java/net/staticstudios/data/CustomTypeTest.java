@@ -5,9 +5,6 @@ import net.staticstudios.data.mock.account.*;
 import net.staticstudios.data.mock.wrapper.booleanprimitive.BooleanWrapper;
 import net.staticstudios.data.mock.wrapper.booleanprimitive.BooleanWrapperDataClass;
 import net.staticstudios.data.mock.wrapper.booleanprimitive.BooleanWrapperValueSerializer;
-import net.staticstudios.data.mock.wrapper.bytearrayprimitive.ByteArrayWrapper;
-import net.staticstudios.data.mock.wrapper.bytearrayprimitive.ByteArrayWrapperDataClass;
-import net.staticstudios.data.mock.wrapper.bytearrayprimitive.ByteArrayWrapperValueSerializer;
 import net.staticstudios.data.mock.wrapper.doubleprimitive.DoubleWrapper;
 import net.staticstudios.data.mock.wrapper.doubleprimitive.DoubleWrapperDataClass;
 import net.staticstudios.data.mock.wrapper.doubleprimitive.DoubleWrapperValueSerializer;
@@ -367,40 +364,40 @@ public class CustomTypeTest extends DataTest {
         }
     }
 
-    @Test
-    public void testCustomTypeWithByteArrayPrimitive() throws SQLException {
-        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
-        dataManager.registerValueSerializer(new ByteArrayWrapperValueSerializer());
-        dataManager.load(ByteArrayWrapperDataClass.class);
-        byte[] bytes = new byte[]{1, 2, 3, 4, 5};
-        ByteArrayWrapperDataClass data = ByteArrayWrapperDataClass.builder(dataManager)
-                .id(1)
-                .value(new ByteArrayWrapper(bytes))
-                .insert(InsertMode.SYNC);
-
-        assertNotNull(data.value.get());
-        assertArrayEquals(bytes, data.value.get().value());
-
-        waitForDataPropagation();
-
-        Connection connection = getConnection();
-        try (Statement statement = connection.createStatement()) {
-            try (ResultSet rs = statement.executeQuery("SELECT * FROM \"public\".\"custom_type_test_bytea\" WHERE \"id\" = 1;")) {
-                assertTrue(rs.next());
-                assertArrayEquals(bytes, (byte[]) rs.getObject("val"));
-            }
-        }
-
-        data.value.set(null);
-        assertNull(data.value.get());
-        waitForDataPropagation();
-        try (Statement statement = connection.createStatement()) {
-            try (ResultSet rs = statement.executeQuery("SELECT * FROM \"public\".\"custom_type_test_bytea\" WHERE \"id\" = 1;")) {
-                assertTrue(rs.next());
-                assertNull(rs.getObject("val"));
-            }
-        }
-    }
+//    @Test
+//    public void testCustomTypeWithByteArrayPrimitive() throws SQLException {
+//        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+//        dataManager.registerValueSerializer(new ByteArrayWrapperValueSerializer());
+//        dataManager.load(ByteArrayWrapperDataClass.class);
+//        byte[] bytes = new byte[]{1, 2, 3, 4, 5};
+//        ByteArrayWrapperDataClass data = ByteArrayWrapperDataClass.builder(dataManager)
+//                .id(1)
+//                .value(new ByteArrayWrapper(bytes))
+//                .insert(InsertMode.SYNC);
+//
+//        assertNotNull(data.value.get());
+//        assertArrayEquals(bytes, data.value.get().value());
+//
+//        waitForDataPropagation();
+//
+//        Connection connection = getConnection();
+//        try (Statement statement = connection.createStatement()) {
+//            try (ResultSet rs = statement.executeQuery("SELECT * FROM \"public\".\"custom_type_test_bytea\" WHERE \"id\" = 1;")) {
+//                assertTrue(rs.next());
+//                assertArrayEquals(bytes, (byte[]) rs.getObject("val"));
+//            }
+//        }
+//
+//        data.value.set(null);
+//        assertNull(data.value.get());
+//        waitForDataPropagation();
+//        try (Statement statement = connection.createStatement()) {
+//            try (ResultSet rs = statement.executeQuery("SELECT * FROM \"public\".\"custom_type_test_bytea\" WHERE \"id\" = 1;")) {
+//                assertTrue(rs.next());
+//                assertNull(rs.getObject("val"));
+//            }
+//        }
+//    }
 
     //todo: test postgres listen/notify with custom types. specifically ensure the encode and decode functions are correct
 }

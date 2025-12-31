@@ -151,7 +151,7 @@ plugin for your IDE.
 Any class can be used as a data type, provided it's a "Primitive" or has a registered `ValueSerializer`. "Primitive"
 types are basic types supported in PostgreSQL:
 
-- `String`, `Integer`, `Long`, `Float`, `Double`, `Boolean`, `UUID`, `Timestamp`, and `byte[]`
+- `String`, `Integer`, `Long`, `Float`, `Double`, `Boolean`, `UUID`, and `Timestamp`.
 
 Nullability is controlled through the `nullable` parameter in the `@Column` and `@ForeignColumn` annotations. For
 example:
