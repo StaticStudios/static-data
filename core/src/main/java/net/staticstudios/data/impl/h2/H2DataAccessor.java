@@ -296,22 +296,20 @@ public class H2DataAccessor implements DataAccessor {
                     }
                 }
             }
-            if (!redisPartialKeys.isEmpty()) {
-                for (String partialKey : redisPartialKeys) {
-                    String cursor = ScanParams.SCAN_POINTER_START;
-                    ScanParams scanParams = new ScanParams().match(partialKey).count(1000);
+            for (String partialKey : redisPartialKeys) {
+                String cursor = ScanParams.SCAN_POINTER_START;
+                ScanParams scanParams = new ScanParams().match(partialKey).count(1000);
 
-                    do {
-                        ScanResult<String> scanResult = jedis.scan(cursor, scanParams);
-                        cursor = scanResult.getCursor();
+                do {
+                    ScanResult<String> scanResult = jedis.scan(cursor, scanParams);
+                    cursor = scanResult.getCursor();
 
-                        for (String key : scanResult.getResult()) {
-                            redisCache.put(key, new RedisCacheEntry(jedis.get(key), Instant.now()));
-                        }
-                    } while (!cursor.equals(ScanParams.SCAN_POINTER_START));
+                    for (String key : scanResult.getResult()) {
+                        redisCache.put(key, new RedisCacheEntry(jedis.get(key), Instant.now()));
+                    }
+                } while (!cursor.equals(ScanParams.SCAN_POINTER_START));
 
-                    redisListener.listen(partialKey, this::handleRedisEvent);
-                }
+                redisListener.listen(partialKey, this::handleRedisEvent);
             }
         }).join();
 

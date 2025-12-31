@@ -733,7 +733,7 @@ public class DataManager {
 
         List<UniqueDataMetadata> extracted = new ArrayList<>();
         for (Class<? extends UniqueData> clazz : classes) {
-            extracted.add(extractMetadata(clazz));
+            extracted.addAll(extractMetadata(clazz));
         }
         List<DDLStatement> defs = new ArrayList<>();
         for (Class<? extends UniqueData> clazz : classes) {
@@ -763,12 +763,14 @@ public class DataManager {
         dataAccessor.discoverRedisKeys(partialRedisKeys);
     }
 
-    public UniqueDataMetadata extractMetadata(Class<? extends UniqueData> clazz) {
+    public List<UniqueDataMetadata> extractMetadata(Class<? extends UniqueData> clazz) {
         Data dataAnnotation = clazz.getAnnotation(Data.class);
-        return extractMetadata(clazz, dataAnnotation);
+        List<UniqueDataMetadata> extracted = new ArrayList<>();
+        extractMetadata(clazz, dataAnnotation, extracted);
+        return extracted;
     }
 
-    public UniqueDataMetadata extractMetadata(Class<? extends UniqueData> clazz, Data fallbackDataAnnotation) {
+    public void extractMetadata(Class<? extends UniqueData> clazz, Data fallbackDataAnnotation, List<UniqueDataMetadata> extracted) {
         logger.debug("Extracting metadata for UniqueData class {}", clazz.getName());
         Preconditions.checkArgument(!uniqueDataMetadataMap.containsKey(clazz), "UniqueData class %s has already been parsed", clazz.getName());
         Data dataAnnotation = clazz.getAnnotation(Data.class);
@@ -814,6 +816,7 @@ public class DataManager {
                     persistentCollectionMetadataMap
             );
             uniqueDataMetadataMap.put(clazz, metadata);
+            extracted.add(metadata);
         }
 
         for (Field field : ReflectionUtils.getFields(clazz, Relation.class)) {
@@ -821,7 +824,7 @@ public class DataManager {
             if (genericType != null && !Modifier.isAbstract(genericType.getModifiers()) && UniqueData.class.isAssignableFrom(genericType)) {
                 Class<? extends UniqueData> dependencyClass = genericType.asSubclass(UniqueData.class);
                 if (!uniqueDataMetadataMap.containsKey(dependencyClass)) {
-                    extractMetadata(dependencyClass);
+                    extractMetadata(dependencyClass, null, extracted);
                 }
             }
         }
@@ -830,11 +833,9 @@ public class DataManager {
         if (superClass != null && UniqueData.class.isAssignableFrom(superClass) && superClass != UniqueData.class) {
             Class<? extends UniqueData> superUniqueDataClass = superClass.asSubclass(UniqueData.class);
             if (!uniqueDataMetadataMap.containsKey(superUniqueDataClass)) {
-                extractMetadata(superUniqueDataClass, dataAnnotation);
+                extractMetadata(superUniqueDataClass, dataAnnotation, extracted);
             }
         }
-
-        return metadata;
     }
 
     public UniqueDataMetadata getMetadata(Class<? extends UniqueData> clazz) {
