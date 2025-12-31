@@ -44,13 +44,6 @@ tasks.named("publish") {
 
 
 publishing {
-    repositories {
-        maven {
-            credentials(org.gradle.api.credentials.PasswordCredentials.class)
-            name = "StaticStudios"
-            setUrl("https://repo.staticstudios.net/private/")
-        }
-    }
     publications {
         maven(MavenPublication) {
             artifactId = 'static-data-processor'

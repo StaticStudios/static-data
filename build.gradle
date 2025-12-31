@@ -28,9 +28,12 @@ subprojects {
         publishing {
             repositories {
                 maven {
+                    credentials(org.gradle.api.credentials.PasswordCredentials.class)
                     name = "StaticStudios"
-                    url = "https://repo.staticstudios.net/private/"
-                    credentials(org.gradle.api.credentials.PasswordCredentials)
+                    var base = "https://repo.staticstudios.net"
+                    var releasesRepoUrl = "$base/releases/"
+                    var snapshotsRepoUrl = "$base/snapshots/"
+                    setUrl((version.toString().endsWith("SNAPSHOT")) ? snapshotsRepoUrl : releasesRepoUrl)
                 }
             }
         }
