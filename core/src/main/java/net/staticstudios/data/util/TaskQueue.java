@@ -4,6 +4,8 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.pool.HikariPool;
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 
@@ -12,6 +14,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class TaskQueue {
+    private static final Logger LOGGER = LoggerFactory.getLogger(TaskQueue.class);
     private final BlockingDeque<ConnectionJedisConsumer> taskQueue = new LinkedBlockingDeque<>();
     private final AtomicBoolean isShutdown = new AtomicBoolean(false);
     private final ExecutorService executor;
@@ -57,6 +60,7 @@ public class TaskQueue {
                 task.accept(connection, jedis);
                 future.complete(null);
             } catch (Exception e) {
+                LOGGER.error("Error executing task in TaskQueue", e);
                 future.completeExceptionally(e);
             }
         });
@@ -84,7 +88,7 @@ public class TaskQueue {
                         connection.setAutoCommit(true);
                     }
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    LOGGER.error("Error executing task in TaskQueue", e);
                 }
             }
         });
@@ -105,7 +109,7 @@ public class TaskQueue {
                 executor.shutdownNow();
             }
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            LOGGER.error("Interrupted while shutting down TaskQueue", e);
         }
     }
 }
