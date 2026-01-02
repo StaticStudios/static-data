@@ -656,6 +656,7 @@ public class H2DataAccessor implements DataAccessor {
 
     private void handleRedisEvent(RedisEvent event, String key, @Nullable String value) {
         RedisEncodedValue redisEncoded = value == null ? null : decodeRedis(value);
+        String redisValue = redisEncoded == null ? null : redisEncoded.value();
 
         if (redisEncoded != null && Objects.equals(redisEncoded.staticDataAppName(), dataManager.getApplicationName())) {
             return; // ignore events from ourselves
@@ -663,12 +664,12 @@ public class H2DataAccessor implements DataAccessor {
 
         if (event == RedisEvent.SET) {
             String entry = redisCache.get(key);
-            if (entry != null && Objects.equals(entry, value)) {
+            if (entry != null && Objects.equals(entry, redisValue)) {
                 return;
             }
-            redisCache.put(key, value);
+            redisCache.put(key, redisValue);
             RedisUtils.DeconstructedKey deconstructedKey = RedisUtils.deconstruct(key);
-            dataManager.callCachedValueUpdateHandlers(deconstructedKey.partialKey(), deconstructedKey.encodedIdNames(), deconstructedKey.encodedIdValues(), entry, value);
+            dataManager.callCachedValueUpdateHandlers(deconstructedKey.partialKey(), deconstructedKey.encodedIdNames(), deconstructedKey.encodedIdValues(), entry, redisValue);
         } else if (event == RedisEvent.DEL || event == RedisEvent.EXPIRED) {
             redisCache.remove(key);
         }
