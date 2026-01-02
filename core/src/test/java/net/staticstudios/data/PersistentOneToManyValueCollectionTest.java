@@ -312,12 +312,16 @@ public class PersistentOneToManyValueCollectionTest extends DataTest {
 
         Connection pgConnection = getConnection();
         List<Integer> numbers = createNumbers(5);
+        List<UUID> ids = new ArrayList<>();
+        for (Integer number : numbers) {
+            ids.add(UUID.randomUUID());
+        }
         int i = 0;
         for (Integer number : numbers) {
             try (PreparedStatement preparedStatement = pgConnection.prepareStatement(
                     "INSERT INTO \"public\".\"favorite_numbers\" (\"favorite_numbers_id\", \"user_id\", \"number\") VALUES (?, ?, ?)"
             )) {
-                preparedStatement.setObject(1, number);
+                preparedStatement.setObject(1, ids.get(i));
                 preparedStatement.setObject(2, user2.id.get());
                 preparedStatement.setInt(3, number);
                 preparedStatement.executeUpdate();
@@ -328,7 +332,7 @@ public class PersistentOneToManyValueCollectionTest extends DataTest {
                     "UPDATE \"public\".\"favorite_numbers\" SET \"user_id\" = ? WHERE \"favorite_numbers_id\" = ?"
             )) {
                 preparedStatement.setObject(1, user.id.get());
-                preparedStatement.setInt(2, number);
+                preparedStatement.setObject(2, ids.get(i));
                 preparedStatement.executeUpdate();
             } catch (Exception e) {
                 throw new RuntimeException(e);
@@ -352,12 +356,16 @@ public class PersistentOneToManyValueCollectionTest extends DataTest {
 
         Connection pgConnection = getConnection();
         List<Integer> numbers = createNumbers(5);
+        List<UUID> ids = new ArrayList<>();
+        for (Integer number : numbers) {
+            ids.add(UUID.randomUUID());
+        }
         int i = 0;
         for (Integer number : numbers) {
             try (PreparedStatement preparedStatement = pgConnection.prepareStatement(
                     "INSERT INTO \"public\".\"favorite_numbers\" (\"favorite_numbers_id\", \"user_id\", \"number\") VALUES (?, ?, ?)"
             )) {
-                preparedStatement.setObject(1, number);
+                preparedStatement.setObject(1, ids.get(i));
                 preparedStatement.setObject(2, user.id.get());
                 preparedStatement.setInt(3, number);
                 preparedStatement.executeUpdate();
@@ -368,7 +376,7 @@ public class PersistentOneToManyValueCollectionTest extends DataTest {
                     "UPDATE \"public\".\"favorite_numbers\" SET \"user_id\" = ? WHERE \"favorite_numbers_id\" = ?"
             )) {
                 preparedStatement.setObject(1, user2.id.get());
-                preparedStatement.setInt(2, number);
+                preparedStatement.setObject(2, ids.get(i));
                 preparedStatement.executeUpdate();
             } catch (Exception e) {
                 throw new RuntimeException(e);

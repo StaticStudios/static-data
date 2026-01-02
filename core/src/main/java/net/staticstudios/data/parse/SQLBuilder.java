@@ -118,15 +118,8 @@ public class SQLBuilder {
                 pgSb.append("CREATE TABLE IF NOT EXISTS \"").append(schema.getName()).append("\".\"").append(table.getName()).append("\" (\n");
                 boolean skipPKDef = false;
                 for (ColumnMetadata idColumn : table.getIdColumns()) {
-                    if (idColumn instanceof AutoIncrementingIntegerColumnMetadata) {
-                        Preconditions.checkArgument(table.getIdColumns().size() == 1, "Auto-incrementing ID column can only be used as the sole ID column in referringTable " + table.getName());
-                        h2Sb.append(INDENT).append("\"").append(idColumn.name()).append("\" ").append("BIGINT AUTO_INCREMENT PRIMARY KEY\n");
-                        pgSb.append(INDENT).append("\"").append(idColumn.name()).append("\" ").append("BIGSERIAL PRIMARY KEY\n");
-                        skipPKDef = true;
-                    } else {
-                        h2Sb.append(INDENT).append("\"").append(idColumn.name()).append("\" ").append(SQLUtils.getH2SqlType(idColumn.type())).append(",\n");
-                        pgSb.append(INDENT).append("\"").append(idColumn.name()).append("\" ").append(SQLUtils.getPgSqlType(idColumn.type())).append(" NOT NULL,\n");
-                    }
+                    h2Sb.append(INDENT).append("\"").append(idColumn.name()).append("\" ").append(SQLUtils.getH2SqlType(idColumn.type())).append(",\n");
+                    pgSb.append(INDENT).append("\"").append(idColumn.name()).append("\" ").append(SQLUtils.getPgSqlType(idColumn.type())).append(" NOT NULL,\n");
                 }
                 if (!skipPKDef) {
                     h2Sb.append(INDENT).append("PRIMARY KEY (");
@@ -563,7 +556,7 @@ public class SQLBuilder {
         SQLSchema referencedSchema = schemas.computeIfAbsent(referencedSchemaName, SQLSchema::new);
         SQLTable referencedTable = referencedSchema.getTable(referencedTableName);
         if (referencedTable == null) {
-            List<ColumnMetadata> idColumns = List.of(new AutoIncrementingIntegerColumnMetadata(referencedSchemaName, referencedTableName, referencedTableName + "_id"));
+            List<ColumnMetadata> idColumns = List.of(new ColumnMetadata(referencedSchemaName, referencedTableName, referencedTableName + "_id", UUID.class, false, false, ""));
             referencedTable = new SQLTable(referencedSchema, referencedTableName, idColumns);
             for (ColumnMetadata idCol : referencedTable.getIdColumns()) {
                 Preconditions.checkState(referencedTable.getColumn(idCol.name()) == null, "ID column name " + idCol.name() + " in referringTable " + referencedTableName + " is duplicated!");

@@ -180,7 +180,6 @@ public class PersistentOneToManyValueCollectionImpl<T> implements PersistentColl
         SQLTransaction.Statement selectDataIdsStatement = buildSelectDataIdsStatement();
         SQLTransaction.Statement insertStatement = buildInsertStatement();
 
-
         List<Object> holderLinkingValues = new ArrayList<>(link.size());
         List<Object> holderIdValues = holder.getIdColumns().stream().map(ColumnValuePair::value).toList();
 
@@ -200,7 +199,9 @@ public class PersistentOneToManyValueCollectionImpl<T> implements PersistentColl
 
         for (T entry : c) {
             transaction.update(insertStatement, () -> {
-                List<Object> values = new ArrayList<>(holderLinkingValues);
+                List<Object> values = new ArrayList<>();
+                values.add(UUID.randomUUID());
+                values.addAll(holderLinkingValues);
                 values.add(holder.getDataManager().serialize(entry));
                 return values;
             });
@@ -361,14 +362,14 @@ public class PersistentOneToManyValueCollectionImpl<T> implements PersistentColl
 
     private SQLTransaction.Statement buildInsertStatement() {
         StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append("INSERT INTO \"").append(dataSchema).append("\".\"").append(dataTable).append("\" (");
+        sqlBuilder.append("INSERT INTO \"").append(dataSchema).append("\".\"").append(dataTable).append("\" (\"").append(dataTable).append("_id\", ");
         for (Link entry : link) {
             String theirColumn = entry.columnInReferencedTable();
             sqlBuilder.append("\"").append(theirColumn).append("\", ");
         }
         sqlBuilder.append("\"").append(dataColumn).append("\"");
         sqlBuilder.append(") VALUES (");
-        sqlBuilder.append("?, ".repeat(link.size() + 1));
+        sqlBuilder.append("?, ".repeat(link.size() + 2));
         sqlBuilder.setLength(sqlBuilder.length() - 2);
         sqlBuilder.append(")");
         @Language("SQL") String sql = sqlBuilder.toString();
