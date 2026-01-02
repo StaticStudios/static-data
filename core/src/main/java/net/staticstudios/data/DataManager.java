@@ -1242,6 +1242,10 @@ public class DataManager {
 
     public void set(String schema, String table, String column, ColumnValuePairs idColumns, List<Link> idColumnLinks, Object value, int delay) {
         StringBuilder sqlBuilder;
+
+        @Language("SQL") String h2Sql;
+        @Language("SQL") String pgSql;
+
         if (idColumnLinks.isEmpty()) {
             sqlBuilder = new StringBuilder().append("UPDATE \"").append(schema).append("\".\"").append(table).append("\" SET \"").append(column).append("\" = ? WHERE ");
             for (ColumnValuePair columnValuePair : idColumns) {
@@ -1249,8 +1253,8 @@ public class DataManager {
                 sqlBuilder.append("\"").append(name).append("\" = ? AND ");
             }
             sqlBuilder.setLength(sqlBuilder.length() - 5);
+            pgSql = h2Sql = sqlBuilder.toString();
         } else { // we're dealing with a foreign key
-            //todo: use update on conclifct bla bla bla for pg
             sqlBuilder = new StringBuilder().append("MERGE INTO \"").append(schema).append("\".\"").append(table).append("\" target USING (VALUES (?");
             sqlBuilder.append(", ?".repeat(idColumns.getPairs().length));
             sqlBuilder.append(")) AS source (\"").append(column).append("\"");
@@ -1299,23 +1303,40 @@ public class DataManager {
                 sqlBuilder.append(", source.\"").append(name).append("\"");
             }
             sqlBuilder.append(")");
-        }
-        @Language("SQL") String h2Sql = sqlBuilder.toString();
 
-        sqlBuilder.setLength(0);
-        sqlBuilder.append("UPDATE \"").append(schema).append("\".\"").append(table).append("\" SET \"").append(column).append("\" = ? WHERE ");
-        for (ColumnValuePair columnValuePair : idColumns) {
-            String name = columnValuePair.column();
-            for (Link link : idColumnLinks) {
-                if (link.columnInReferringTable().equals(columnValuePair.column())) {
-                    name = link.columnInReferencedTable();
-                    break;
+            h2Sql = sqlBuilder.toString();
+            sqlBuilder.setLength(0);
+
+            sqlBuilder.append("INSERT INTO \"").append(schema).append("\".\"").append(table).append("\" (\"").append(column).append("\"");
+            for (ColumnValuePair columnValuePair : idColumns) {
+                String name = columnValuePair.column();
+                for (Link link : idColumnLinks) {
+                    if (link.columnInReferringTable().equals(columnValuePair.column())) {
+                        name = link.columnInReferencedTable();
+                        break;
+                    }
                 }
+                sqlBuilder.append(", \"").append(name).append("\"");
             }
-            sqlBuilder.append("\"").append(name).append("\" = ? AND ");
+            sqlBuilder.append(") VALUES (?");
+            for (ColumnValuePair columnValuePair : idColumns) {
+                sqlBuilder.append(", ?");
+            }
+            sqlBuilder.append(") ON CONFLICT (");
+            for (ColumnValuePair columnValuePair : idColumns) {
+                String name = columnValuePair.column();
+                for (Link link : idColumnLinks) {
+                    if (link.columnInReferringTable().equals(columnValuePair.column())) {
+                        name = link.columnInReferencedTable();
+                        break;
+                    }
+                }
+                sqlBuilder.append("\"").append(name).append("\", ");
+            }
+            sqlBuilder.setLength(sqlBuilder.length() - 2);
+            sqlBuilder.append(") DO UPDATE SET \"").append(column).append("\" = EXCLUDED.\"").append(column).append("\"");
+            pgSql = sqlBuilder.toString();
         }
-        sqlBuilder.setLength(sqlBuilder.length() - 5);
-        @Language("SQL") String pgSql = sqlBuilder.toString();
 
         List<Object> values = new ArrayList<>(1 + idColumns.getPairs().length);
         values.add(serialize(value));
