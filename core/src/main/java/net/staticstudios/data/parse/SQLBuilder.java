@@ -205,7 +205,14 @@ public class SQLBuilder {
                         sb.append("\"").append(link.columnInReferencedTable()).append("\", ");
                     }
                     sb.setLength(sb.length() - 2);
-                    sb.append(") ON DELETE ").append(foreignKey.getOnDelete()).append(" ON UPDATE ").append(foreignKey.getOnUpdate()).append(";");
+                    sb.append(")");
+                    if (foreignKey.getOnDelete() != null) {
+                        sb.append(" ON DELETE ").append(foreignKey.getOnDelete());
+                    }
+                    if (foreignKey.getOnUpdate() != null) {
+                        sb.append(" ON UPDATE ").append(foreignKey.getOnUpdate());
+                    }
+                    sb.append(";");
                     String h2 = sb.toString();
 
 
@@ -226,7 +233,14 @@ public class SQLBuilder {
                         sb.append("\"").append(link.columnInReferencedTable()).append("\", ");
                     }
                     sb.setLength(sb.length() - 2);
-                    sb.append(") ON DELETE ").append(foreignKey.getOnDelete()).append(" ON UPDATE ").append(foreignKey.getOnUpdate()).append(";");
+                    sb.append(")");
+                    if (foreignKey.getOnDelete() != null) {
+                        sb.append(" ON DELETE ").append(foreignKey.getOnDelete());
+                    }
+                    if (foreignKey.getOnUpdate() != null) {
+                        sb.append(" ON UPDATE ").append(foreignKey.getOnUpdate());
+                    }
+                    sb.append(";");
                     sb.append(" END IF; END $$;");
                     String pg = sb.toString();
                     statements.add(DDLStatement.of(h2, pg));
@@ -435,7 +449,7 @@ public class SQLBuilder {
 
             Preconditions.checkArgument(!(referencedSchema.equals(dataSchema) && referencedTable.equals(dataTable)), "ForeignColumn field %s in class %s cannot reference its own referringTable", field.getName(), clazz.getName());
 
-            ForeignKey foreignKey = new ForeignKey(dataSchema, dataTable, referencedSchema, referencedTable, OnDelete.CASCADE);
+            ForeignKey foreignKey = new ForeignKey("fcol", dataSchema, dataTable, referencedSchema, referencedTable, OnDelete.CASCADE);
             try {
                 parseLinks(foreignKey, foreignColumn.link());
             } catch (IllegalArgumentException e) {
@@ -491,8 +505,7 @@ public class SQLBuilder {
 
         Delete delete = field.getAnnotation(Delete.class);
         DeleteStrategy deleteStrategy = delete != null ? delete.value() : DeleteStrategy.NO_ACTION;
-        OnDelete onDelete = deleteStrategy == DeleteStrategy.CASCADE ? OnDelete.CASCADE : OnDelete.SET_NULL;
-        ForeignKey foreignKey = new ForeignKey(schema.getName(), table.getName(), referencedSchema.getName(), referencedTable.getName(), onDelete);
+        ForeignKey foreignKey = new ForeignKey("o2o", schema.getName(), table.getName(), referencedSchema.getName(), referencedTable.getName(), OnDelete.SET_NULL);
         try {
             parseLinks(foreignKey, oneToOne.link());
         } catch (IllegalArgumentException e) {
@@ -578,7 +591,7 @@ public class SQLBuilder {
 
         // unlike a Reference, this foreign key goes on the referenced referringTable, not our referringTable.
         // Since the foreign key is on the other referringTable, let the foreign key handle the deletion strategy instead of a trigger.
-        ForeignKey foreignKey = new ForeignKey(referencedSchemaName, referencedTableName, schema.getName(), table.getName(), onDelete);
+        ForeignKey foreignKey = new ForeignKey("pc_o2mv", referencedSchemaName, referencedTableName, schema.getName(), table.getName(), onDelete);
         try {
             parseLinksReversed(foreignKey, oneToMany.link());
         } catch (IllegalArgumentException e) {
@@ -602,11 +615,15 @@ public class SQLBuilder {
 
         Delete delete = field.getAnnotation(Delete.class);
         DeleteStrategy deleteStrategy = delete != null ? delete.value() : DeleteStrategy.NO_ACTION;
-        OnDelete onDelete = deleteStrategy == DeleteStrategy.CASCADE ? OnDelete.CASCADE : OnDelete.SET_NULL;
+        OnDelete onDelete = switch (deleteStrategy) {
+            case CASCADE -> OnDelete.CASCADE;
+            case SET_NULL -> OnDelete.SET_NULL;
+            case NO_ACTION -> OnDelete.NO_ACTION;
+        };
 
         // unlike a Reference, this foreign key goes on the referenced referringTable, not our referringTable.
         // Since the foreign key is on the other referringTable, let the foreign key handle the deletion strategy instead of a trigger.
-        ForeignKey foreignKey = new ForeignKey(referencedSchema.getName(), referencedTable.getName(), schema.getName(), table.getName(), onDelete);
+        ForeignKey foreignKey = new ForeignKey("pc_o2m", referencedSchema.getName(), referencedTable.getName(), schema.getName(), table.getName(), onDelete);
         try {
             parseLinksReversed(foreignKey, oneToMany.link());
         } catch (IllegalArgumentException e) {
@@ -686,8 +703,8 @@ public class SQLBuilder {
         // it should always cascade on the join referringTable, but depending on the delete strategy, we may or may not delete the referenced data.
         // impl with a trigger?
 
-        ForeignKey foreignKeyJoinToDataTable = new ForeignKey(joinSchema.getName(), joinTable.getName(), schema.getName(), table.getName(), onDelete);
-        ForeignKey foreignKeyJoinToReferenceTable = new ForeignKey(joinSchema.getName(), joinTable.getName(), referencedSchema.getName(), referencedTable.getName(), onDelete);
+        ForeignKey foreignKeyJoinToDataTable = new ForeignKey("pc_m2m", joinSchema.getName(), joinTable.getName(), schema.getName(), table.getName(), onDelete);
+        ForeignKey foreignKeyJoinToReferenceTable = new ForeignKey("pc_m2m", joinSchema.getName(), joinTable.getName(), referencedSchema.getName(), referencedTable.getName(), onDelete);
         joinTableToDataTableLinks.forEach(foreignKeyJoinToDataTable::addLink);
         joinTableToReferencedTableLinks.forEach(foreignKeyJoinToReferenceTable::addLink);
         joinTable.addForeignKey(foreignKeyJoinToDataTable);

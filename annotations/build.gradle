@@ -2,9 +2,6 @@ plugins {
     id 'java'
 }
 
-group = 'net.staticstudios'
-version = '3.0.0-SNAPSHOT'
-
 repositories {
     mavenCentral()
 }

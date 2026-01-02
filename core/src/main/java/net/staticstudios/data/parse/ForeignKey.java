@@ -3,6 +3,7 @@ package net.staticstudios.data.parse;
 import net.staticstudios.data.util.OnDelete;
 import net.staticstudios.data.util.OnUpdate;
 import net.staticstudios.data.utils.Link;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -10,15 +11,17 @@ import java.util.Objects;
 import java.util.Set;
 
 public class ForeignKey {
+    private final String prefix;
     private final Set<Link> links = new LinkedHashSet<>();
     private final String referencedSchema;
     private final String referencedTable;
     private final String referringSchema;
     private final String referringTable;
-    private final OnDelete onDelete;
-    private final OnUpdate onUpdate;
+    private final @Nullable OnDelete onDelete;
+    private final @Nullable OnUpdate onUpdate;
 
-    public ForeignKey(String referringSchema, String referringTable, String referencedSchema, String referencedTable, OnDelete onDelete) {
+    public ForeignKey(String prefix, String referringSchema, String referringTable, String referencedSchema, String referencedTable, @Nullable OnDelete onDelete) {
+        this.prefix = prefix;
         this.referringSchema = referringSchema;
         this.referringTable = referringTable;
         this.referencedSchema = referencedSchema;
@@ -51,16 +54,16 @@ public class ForeignKey {
         return referringTable;
     }
 
-    public OnDelete getOnDelete() {
+    public @Nullable OnDelete getOnDelete() {
         return onDelete;
     }
 
-    public OnUpdate getOnUpdate() {
+    public @Nullable OnUpdate getOnUpdate() {
         return onUpdate;
     }
 
     public String getName() {
-        return "fk_"
+        return "fk_" + prefix + "_"
 //                + referringSchema + "_" + referringTable + "_"
                 + String.join("_", links.stream().map(Link::columnInReferringTable).toList())
                 + "_to_"
