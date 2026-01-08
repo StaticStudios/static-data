@@ -45,12 +45,12 @@ public class DataManager {
     private final DataAccessor dataAccessor;
     private final SQLBuilder sqlBuilder;
     private final TaskQueue taskQueue;
-    private final ConcurrentHashMap<Class<? extends UniqueData>, UniqueDataMetadata> uniqueDataMetadataMap = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<Class<? extends UniqueData>, Map<ColumnValuePairs, UniqueData>> uniqueDataInstanceCache = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Map<Class<? extends UniqueData>, List<ValueUpdateHandlerWrapper<?, ?>>>> persistentValueUpdateHandlers = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Map<Class<? extends UniqueData>, List<CachedValueUpdateHandlerWrapper<?, ?>>>> cachedValueUpdateHandlers = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Map<Class<? extends UniqueData>, List<CollectionChangeHandlerWrapper<?, ?>>>> collectionChangeHandlers = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Map<Class<? extends UniqueData>, List<ReferenceUpdateHandlerWrapper<?, ?>>>> referenceUpdateHandlers = new ConcurrentHashMap<>();
+    private final Map<String, UniqueDataMetadata> uniqueDataMetadataMap = new ConcurrentHashMap<>();
+    private final Map<String, Map<ColumnValuePairs, UniqueData>> uniqueDataInstanceCache = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, List<ValueUpdateHandlerWrapper<?, ?>>>> persistentValueUpdateHandlers = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, List<CachedValueUpdateHandlerWrapper<?, ?>>>> cachedValueUpdateHandlers = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, List<CollectionChangeHandlerWrapper<?, ?>>>> collectionChangeHandlers = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, List<ReferenceUpdateHandlerWrapper<?, ?>>>> referenceUpdateHandlers = new ConcurrentHashMap<>();
     private final PostgresListener postgresListener;
     private final RedisListener redisListener;
     private final Set<PersistentValueMetadata> registeredUpdateHandlersForColumns = ConcurrentHashMap.newKeySet();
@@ -118,19 +118,19 @@ public class DataManager {
     public void addUpdateHandler(String schema, String table, String column, ValueUpdateHandlerWrapper<?, ?> handler) {
         String key = schema + "." + table + "." + column;
         persistentValueUpdateHandlers.computeIfAbsent(key, k -> new ConcurrentHashMap<>())
-                .computeIfAbsent(handler.getHolderClass(), k -> new CopyOnWriteArrayList<>())
+                .computeIfAbsent(handler.getHolderClass().getName(), k -> new CopyOnWriteArrayList<>())
                 .add(handler);
     }
 
     private void addRedisUpdateHandler(String partialKey, CachedValueUpdateHandlerWrapper<?, ?> handler) {
         cachedValueUpdateHandlers.computeIfAbsent(partialKey, k -> new ConcurrentHashMap<>())
-                .computeIfAbsent(handler.getHolderClass(), k -> new CopyOnWriteArrayList<>())
+                .computeIfAbsent(handler.getHolderClass().getName(), k -> new CopyOnWriteArrayList<>())
                 .add(handler);
     }
 
     public void callPersistentValueUpdateHandlers(List<String> columnNames, String schema, String table, String column, Object[] oldSerializedValues, Object[] newSerializedValues) {
         logger.trace("Calling update handlers for {}.{}.{} with old values {} and new values {}", schema, table, column, Arrays.toString(oldSerializedValues), Arrays.toString(newSerializedValues));
-        Map<Class<? extends UniqueData>, List<ValueUpdateHandlerWrapper<?, ?>>> handlersForColumn = persistentValueUpdateHandlers.get(schema + "." + table + "." + column);
+        Map<String, List<ValueUpdateHandlerWrapper<?, ?>>> handlersForColumn = persistentValueUpdateHandlers.get(schema + "." + table + "." + column);
         if (handlersForColumn == null) {
             return;
         }
@@ -138,8 +138,9 @@ public class DataManager {
         int columnIndex = columnNames.indexOf(column);
         Preconditions.checkArgument(columnIndex != -1, "Column %s not found in provided name names %s", column, columnNames);
 
-        for (Map.Entry<Class<? extends UniqueData>, List<ValueUpdateHandlerWrapper<?, ?>>> entry : handlersForColumn.entrySet()) {
-            Class<? extends UniqueData> holderClass = entry.getKey();
+        for (Map.Entry<String, List<ValueUpdateHandlerWrapper<?, ?>>> entry : handlersForColumn.entrySet()) {
+            String holderClassName = entry.getKey();
+            Class<? extends UniqueData> holderClass = ClassUtils.forName(holderClassName);
             UniqueDataMetadata metadata = getMetadata(holderClass);
             List<ValueUpdateHandlerWrapper<?, ?>> handlers = entry.getValue();
             ColumnValuePair[] idColumns = new ColumnValuePair[metadata.idColumns().size()];
@@ -171,12 +172,13 @@ public class DataManager {
             return;
         }
         logger.trace("Calling Redis update handlers for {} with old value {} and new value {}", partialKey, oldValue, newValue);
-        Map<Class<? extends UniqueData>, List<CachedValueUpdateHandlerWrapper<?, ?>>> handlersForKey = cachedValueUpdateHandlers.get(partialKey);
+        Map<String, List<CachedValueUpdateHandlerWrapper<?, ?>>> handlersForKey = cachedValueUpdateHandlers.get(partialKey);
         if (handlersForKey == null) {
             return;
         }
-        for (Map.Entry<Class<? extends UniqueData>, List<CachedValueUpdateHandlerWrapper<?, ?>>> entry : handlersForKey.entrySet()) {
-            Class<? extends UniqueData> holderClass = entry.getKey();
+        for (Map.Entry<String, List<CachedValueUpdateHandlerWrapper<?, ?>>> entry : handlersForKey.entrySet()) {
+            String holderClassName = entry.getKey();
+            Class<? extends UniqueData> holderClass = ClassUtils.forName(holderClassName);
             UniqueDataMetadata metadata = getMetadata(holderClass);
             List<CachedValueUpdateHandlerWrapper<?, ?>> handlers = entry.getValue();
             ColumnValuePair[] idColumns = new ColumnValuePair[encodedIdValues.size()];
@@ -221,12 +223,12 @@ public class DataManager {
      * Called when an entry is deleted from the database, but a remove handler will want this snapshot of the data later, when update handlers are called.
      */
     public @Nullable UniqueData createSnapshotForCollectionRemoveHandlers(List<String> columnNames, String schema, String table, Object[] oldSerializedValues) {
-        Map<Class<? extends UniqueData>, List<CollectionChangeHandlerWrapper<?, ?>>> handlersForTable = collectionChangeHandlers.get(schema + "." + table);
+        Map<String, List<CollectionChangeHandlerWrapper<?, ?>>> handlersForTable = collectionChangeHandlers.get(schema + "." + table);
         if (handlersForTable == null) {
             return null;
         }
 
-        for (Map.Entry<Class<? extends UniqueData>, List<CollectionChangeHandlerWrapper<?, ?>>> entry : handlersForTable.entrySet()) {
+        for (Map.Entry<String, List<CollectionChangeHandlerWrapper<?, ?>>> entry : handlersForTable.entrySet()) {
             List<CollectionChangeHandlerWrapper<?, ?>> handlers = entry.getValue();
             for (CollectionChangeHandlerWrapper<?, ?> wrapper : handlers) {
                 PersistentCollectionMetadata collectionMetadata = wrapper.getCollectionMetadata();
@@ -265,12 +267,12 @@ public class DataManager {
 
     public void callCollectionChangeHandlers(List<String> columnNames, String schema, String table, List<String> changedColumns, Object[] oldSerializedValues, Object[] newSerializedValues, TriggerCause cause, @Nullable UniqueData snapshot) {
         logger.trace("Calling collection change handlers for {}.{} on changed columns {} with old values {} and new values {}", schema, table, changedColumns, Arrays.toString(oldSerializedValues), Arrays.toString(newSerializedValues));
-        Map<Class<? extends UniqueData>, List<CollectionChangeHandlerWrapper<?, ?>>> handlersForTable = collectionChangeHandlers.get(schema + "." + table);
+        Map<String, List<CollectionChangeHandlerWrapper<?, ?>>> handlersForTable = collectionChangeHandlers.get(schema + "." + table);
         if (handlersForTable == null) {
             return;
         }
 
-        for (Map.Entry<Class<? extends UniqueData>, List<CollectionChangeHandlerWrapper<?, ?>>> entry : handlersForTable.entrySet()) {
+        for (Map.Entry<String, List<CollectionChangeHandlerWrapper<?, ?>>> entry : handlersForTable.entrySet()) {
             List<CollectionChangeHandlerWrapper<?, ?>> handlers = entry.getValue();
             for (CollectionChangeHandlerWrapper<?, ?> wrapper : handlers) {
                 PersistentCollectionMetadata collectionMetadata = wrapper.getCollectionMetadata();
@@ -566,12 +568,12 @@ public class DataManager {
 
     public void callReferenceUpdateHandlers(List<String> columnNames, String schema, String table, List<String> changedColumns, Object[] oldSerializedValues, Object[] newSerializedValues) {
         logger.trace("Calling reference update handlers for {}.{} on changed columns {} with old values {} and new values {}", schema, table, changedColumns, Arrays.toString(oldSerializedValues), Arrays.toString(newSerializedValues));
-        Map<Class<? extends UniqueData>, List<ReferenceUpdateHandlerWrapper<?, ?>>> handlersForTable = referenceUpdateHandlers.get(schema + "." + table);
+        Map<String, List<ReferenceUpdateHandlerWrapper<?, ?>>> handlersForTable = referenceUpdateHandlers.get(schema + "." + table);
         if (handlersForTable == null) {
             return;
         }
 
-        for (Map.Entry<Class<? extends UniqueData>, List<ReferenceUpdateHandlerWrapper<?, ?>>> entry : handlersForTable.entrySet()) {
+        for (Map.Entry<String, List<ReferenceUpdateHandlerWrapper<?, ?>>> entry : handlersForTable.entrySet()) {
             List<ReferenceUpdateHandlerWrapper<?, ?>> handlers = entry.getValue();
             for (ReferenceUpdateHandlerWrapper<?, ?> wrapper : handlers) {
                 ReferenceMetadata metadata = wrapper.getReferenceMetadata();
@@ -707,7 +709,7 @@ public class DataManager {
                         throw new IllegalStateException("Unknown PersistentCollectionMetadata type: " + metadata.getClass().getName());
             };
             collectionChangeHandlers.computeIfAbsent(key, k -> new ConcurrentHashMap<>())
-                    .computeIfAbsent(metadata.getHolderClass(), k -> new CopyOnWriteArrayList<>())
+                    .computeIfAbsent(metadata.getHolderClass().getName(), k -> new CopyOnWriteArrayList<>())
                     .addAll(handlers);
         }
     }
@@ -719,7 +721,7 @@ public class DataManager {
             String key = holderMetadata.schema() + "." + holderMetadata.table();
             for (ReferenceUpdateHandlerWrapper<?, ?> handler : handlers) {
                 referenceUpdateHandlers.computeIfAbsent(key, k -> new ConcurrentHashMap<>())
-                        .computeIfAbsent(holderMetadata.clazz(), k -> new CopyOnWriteArrayList<>())
+                        .computeIfAbsent(holderMetadata.clazz().getName(), k -> new CopyOnWriteArrayList<>())
                         .add(handler);
             }
         }
@@ -727,8 +729,8 @@ public class DataManager {
 
     public List<ValueUpdateHandlerWrapper<?, ?>> getUpdateHandlers(String schema, String table, String column, Class<? extends UniqueData> holderClass) {
         String key = schema + "." + table + "." + column;
-        if (persistentValueUpdateHandlers.containsKey(key) && persistentValueUpdateHandlers.get(key).containsKey(holderClass)) {
-            return persistentValueUpdateHandlers.get(key).get(holderClass);
+        if (persistentValueUpdateHandlers.containsKey(key) && persistentValueUpdateHandlers.get(key).containsKey(holderClass.getName())) {
+            return persistentValueUpdateHandlers.get(key).get(holderClass.getName());
         }
         return Collections.emptyList();
     }
@@ -785,7 +787,7 @@ public class DataManager {
 
     public void extractMetadata(Class<? extends UniqueData> clazz, Data fallbackDataAnnotation, List<UniqueDataMetadata> extracted) {
         logger.debug("Extracting metadata for UniqueData class {}", clazz.getName());
-        Preconditions.checkArgument(!uniqueDataMetadataMap.containsKey(clazz), "UniqueData class %s has already been parsed", clazz.getName());
+        Preconditions.checkArgument(!uniqueDataMetadataMap.containsKey(clazz.getName()), "UniqueData class %s has already been parsed", clazz.getName());
         Data dataAnnotation = clazz.getAnnotation(Data.class);
         if (dataAnnotation == null) {
             dataAnnotation = fallbackDataAnnotation;
@@ -828,7 +830,7 @@ public class DataManager {
                     ReferenceImpl.extractMetadata(clazz),
                     persistentCollectionMetadataMap
             );
-            uniqueDataMetadataMap.put(clazz, metadata);
+            uniqueDataMetadataMap.put(clazz.getName(), metadata);
             extracted.add(metadata);
         }
 
@@ -836,7 +838,7 @@ public class DataManager {
             Class<?> genericType = ReflectionUtils.getGenericType(field);
             if (genericType != null && !Modifier.isAbstract(genericType.getModifiers()) && UniqueData.class.isAssignableFrom(genericType)) {
                 Class<? extends UniqueData> dependencyClass = genericType.asSubclass(UniqueData.class);
-                if (!uniqueDataMetadataMap.containsKey(dependencyClass)) {
+                if (!uniqueDataMetadataMap.containsKey(dependencyClass.getName())) {
                     extractMetadata(dependencyClass, null, extracted);
                 }
             }
@@ -845,14 +847,14 @@ public class DataManager {
         Class<?> superClass = clazz.getSuperclass();
         if (superClass != null && UniqueData.class.isAssignableFrom(superClass) && superClass != UniqueData.class) {
             Class<? extends UniqueData> superUniqueDataClass = superClass.asSubclass(UniqueData.class);
-            if (!uniqueDataMetadataMap.containsKey(superUniqueDataClass)) {
+            if (!uniqueDataMetadataMap.containsKey(superUniqueDataClass.getName())) {
                 extractMetadata(superUniqueDataClass, dataAnnotation, extracted);
             }
         }
     }
 
     public UniqueDataMetadata getMetadata(Class<? extends UniqueData> clazz) {
-        UniqueDataMetadata metadata = uniqueDataMetadataMap.get(clazz);
+        UniqueDataMetadata metadata = uniqueDataMetadataMap.get(clazz.getName());
         Preconditions.checkNotNull(metadata, "UniqueData class %s has not been parsed yet", clazz.getName());
         return metadata;
     }
@@ -876,7 +878,7 @@ public class DataManager {
                 Preconditions.checkArgument(found, "Not all ID columnsInReferringTable were provided for UniqueData class %s. Required: %s, Provided: %s", uniqueDataMetadata.clazz().getName(), uniqueDataMetadata.idColumns(), Arrays.toString(values));
             }
 
-            UniqueData instance = uniqueDataInstanceCache.getOrDefault(uniqueDataMetadata.clazz(), Collections.emptyMap()).get(new ColumnValuePairs(idColumns));
+            UniqueData instance = uniqueDataInstanceCache.getOrDefault(uniqueDataMetadata.clazz().getName(), Collections.emptyMap()).get(new ColumnValuePairs(idColumns));
             if (instance == null) {
                 return;
             }
@@ -921,7 +923,7 @@ public class DataManager {
             }
 
             ColumnValuePairs oldIdCols = new ColumnValuePairs(oldIdColumns);
-            Map<ColumnValuePairs, UniqueData> classCache = uniqueDataInstanceCache.get(uniqueDataMetadata.clazz());
+            Map<ColumnValuePairs, UniqueData> classCache = uniqueDataInstanceCache.get(uniqueDataMetadata.clazz().getName());
             if (classCache == null) {
                 return;
             }
@@ -998,9 +1000,9 @@ public class DataManager {
         Preconditions.checkArgument(hasAllIdColumns, "Not all @IdColumn columnsInReferringTable were provided for UniqueData class %s. Required: %s, Provided: %s", clazz.getName(), metadata.idColumns(), idColumns);
 
         T instance;
-        if (uniqueDataInstanceCache.containsKey(clazz) && uniqueDataInstanceCache.get(clazz).containsKey(idColumns)) {
+        if (uniqueDataInstanceCache.containsKey(clazz.getName()) && uniqueDataInstanceCache.get(clazz.getName()).containsKey(idColumns)) {
             logger.trace("Cache hit for UniqueData class {} with ID columnsInReferringTable {}", clazz.getName(), idColumns);
-            instance = (T) uniqueDataInstanceCache.get(clazz).get(idColumns);
+            instance = (T) uniqueDataInstanceCache.get(clazz.getName()).get(idColumns);
             if (instance.isDeleted()) {
                 return null;
             }
@@ -1043,7 +1045,7 @@ public class DataManager {
         PersistentManyToManyCollectionImpl.delegate(instance);
         PersistentOneToManyValueCollectionImpl.delegate(instance);
 
-        uniqueDataInstanceCache.computeIfAbsent(clazz, k -> new MapMaker().weakValues().makeMap())
+        uniqueDataInstanceCache.computeIfAbsent(clazz.getName(), k -> new MapMaker().weakValues().makeMap())
                 .put(idColumns, instance);
 
         logger.trace("Cache miss for UniqueData class {} with ID columnsInReferringTable {}. Created new instance.", clazz.getName(), idColumns);

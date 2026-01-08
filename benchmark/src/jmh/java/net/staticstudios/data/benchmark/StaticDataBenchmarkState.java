@@ -2,8 +2,8 @@ package net.staticstudios.data.benchmark;
 
 import com.redis.testcontainers.RedisContainer;
 import net.staticstudios.data.DataManager;
+import net.staticstudios.data.StaticDataConfig;
 import net.staticstudios.data.benchmark.data.SkyblockPlayer;
-import net.staticstudios.data.util.DataSourceConfig;
 import net.staticstudios.utils.ThreadUtilProvider;
 import net.staticstudios.utils.ThreadUtils;
 import org.openjdk.jmh.annotations.*;
@@ -31,14 +31,16 @@ public class StaticDataBenchmarkState {
             postgres.start();
 
             ThreadUtils.setProvider(ThreadUtilProvider.builder().build());
-            DataSourceConfig dataSourceConfig = new DataSourceConfig(
+            StaticDataConfig dataSourceConfig = new StaticDataConfig(
                     postgres.getHost(),
                     postgres.getFirstMappedPort(),
                     postgres.getDatabaseName(),
                     postgres.getUsername(),
                     postgres.getPassword(),
                     redis.getHost(),
-                    redis.getRedisPort());
+                    redis.getRedisPort(),
+                    Runnable::run
+            );
 
             DataManager dataManager = new DataManager(dataSourceConfig, true);
             dataManager.load(SkyblockPlayer.class);
