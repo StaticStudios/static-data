@@ -12,8 +12,7 @@ import redis.clients.jedis.Jedis;
 
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class CachedValueTest extends DataTest {
 
@@ -158,5 +157,33 @@ public class CachedValueTest extends DataTest {
 
         assertEquals(true, user.onCooldown.get());
         assertEquals(5, user.cooldownUpdates.get());
+    }
+
+    @Test
+    public void testRefreshCachedValues() throws InterruptedException {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        dataManager.finishLoading();
+        MockUser user = MockUser.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("john doe")
+                .insert(InsertMode.ASYNC);
+
+
+        assertEquals(0, user.counter.get());
+        assertEquals(1, user.counter.refresh());
+        assertEquals(2, user.counter.refresh());
+        assertEquals(2, user.counter.get());
+
+        Thread.sleep(10_000); //wait for the cached value to expire
+
+        String counterKey = RedisUtils.buildRedisKey("public", "users", "counter", user.getIdColumns());
+
+        Jedis jedis = getJedis();
+        assertFalse(jedis.exists(counterKey));
+
+        assertEquals(2, user.counter.get()); //trigger a refresh
+        waitForDataPropagation();
+        assertEquals("2", gson.fromJson(jedis.get(counterKey), RedisEncodedValue.class).value());
     }
 }

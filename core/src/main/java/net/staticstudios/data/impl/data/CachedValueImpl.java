@@ -1,7 +1,6 @@
 package net.staticstudios.data.impl.data;
 
 import com.google.common.base.Preconditions;
-import com.google.common.base.Supplier;
 import net.staticstudios.data.CachedValue;
 import net.staticstudios.data.ExpireAfter;
 import net.staticstudios.data.Identifier;
@@ -13,6 +12,7 @@ import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 public class CachedValueImpl<T> extends AbstractCachedValue<T> {
     private final UniqueData holder;
@@ -96,6 +96,11 @@ public class CachedValueImpl<T> extends AbstractCachedValue<T> {
     }
 
     @Override
+    public <U extends UniqueData> CachedValue<T> refresher(Class<U> clazz, CachedValueRefresher<U, T> refresher) {
+        throw new UnsupportedOperationException("Cannot set refresher after initialization");
+    }
+
+    @Override
     public CachedValue<T> supplyFallback(Supplier<T> fallback) {
         throw new UnsupportedOperationException("Cannot set fallback after initialization");
     }
@@ -105,6 +110,12 @@ public class CachedValueImpl<T> extends AbstractCachedValue<T> {
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot get value from a deleted UniqueData instance");
         T value = holder.getDataManager().getRedis(metadata.holderSchema(), metadata.holderTable(), metadata.identifier(), holder.getIdColumns(), dataType);
         if (value == null) {
+            T refreshed = calculateRefreshedValue(getFallback());
+            if (refreshed != null) {
+                set(refreshed);
+                return refreshed;
+            }
+
             return getFallback();
         }
         return value;
@@ -121,6 +132,18 @@ public class CachedValueImpl<T> extends AbstractCachedValue<T> {
             toSet = value;
         }
         holder.getDataManager().setRedis(metadata.holderSchema(), metadata.holderTable(), metadata.identifier(), holder.getIdColumns(), metadata.expireAfterSeconds(), toSet);
+    }
+
+    @Override
+    public @Nullable T refresh() {
+        Preconditions.checkArgument(!holder.isDeleted(), "Cannot refresh value on a deleted UniqueData instance");
+        T value = holder.getDataManager().getRedis(metadata.holderSchema(), metadata.holderTable(), metadata.identifier(), holder.getIdColumns(), dataType);
+        if (value == null) {
+            value = getFallback();
+        }
+        T refreshed = calculateRefreshedValue(value);
+        set(refreshed);
+        return refreshed;
     }
 
     @Override

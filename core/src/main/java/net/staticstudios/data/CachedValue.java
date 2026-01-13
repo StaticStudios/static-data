@@ -1,13 +1,13 @@
 package net.staticstudios.data;
 
 import com.google.common.base.Preconditions;
-import com.google.common.base.Supplier;
 import net.staticstudios.data.impl.data.AbstractCachedValue;
 import net.staticstudios.data.util.*;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * A cached value represents a piece of data in redis.
@@ -30,7 +30,11 @@ public interface CachedValue<T> extends Value<T> {
         return supplyFallback(() -> fallback);
     }
 
+    <U extends UniqueData> CachedValue<T> refresher(Class<U> clazz, CachedValueRefresher<U, T> refresher);
+
     CachedValue<T> supplyFallback(Supplier<T> fallback);
+
+    @Nullable T refresh();
 
     class ProxyCachedValue<T> implements CachedValue<T> {
         protected final UniqueData holder;
@@ -38,6 +42,7 @@ public interface CachedValue<T> extends Value<T> {
         private final List<ValueUpdateHandlerWrapper<?, T>> updateHandlers = new ArrayList<>();
         private @Nullable CachedValue<T> delegate;
         private Supplier<T> fallback = () -> null;
+        private @Nullable CachedValueRefresher<UniqueData, T> refresher;
 
         public ProxyCachedValue(UniqueData holder, Class<T> dataType) {
             this.holder = holder;
@@ -48,6 +53,7 @@ public interface CachedValue<T> extends Value<T> {
             Preconditions.checkNotNull(delegate, "Delegate cannot be null");
             Preconditions.checkState(this.delegate == null, "Delegate is already set");
             delegate.setFallback(this.fallback);
+            delegate.setRefresher(refresher);
             this.delegate = delegate;
 
             //since an update handler can be registered before the fallback is set, we need to convert them here
@@ -88,6 +94,15 @@ public interface CachedValue<T> extends Value<T> {
             return this;
         }
 
+        @SuppressWarnings("unchecked")
+        @Override
+        public <U extends UniqueData> CachedValue<T> refresher(Class<U> clazz, CachedValueRefresher<U, T> refresher) {
+            Preconditions.checkArgument(delegate == null, "Cannot dynamically add a refresher after the holder has been initialized!");
+            LambdaUtils.assertLambdaDoesntCapture(refresher, List.of(UniqueData.class), null);
+            this.refresher = (CachedValueRefresher<UniqueData, T>) refresher;
+            return this;
+        }
+
         @Override
         public T get() {
             if (delegate != null) {
@@ -101,6 +116,14 @@ public interface CachedValue<T> extends Value<T> {
             if (delegate != null) {
                 delegate.set(value);
                 return;
+            }
+            throw new UnsupportedOperationException("Not implemented");
+        }
+
+        @Override
+        public @Nullable T refresh() {
+            if (delegate != null) {
+                return delegate.refresh();
             }
             throw new UnsupportedOperationException("Not implemented");
         }

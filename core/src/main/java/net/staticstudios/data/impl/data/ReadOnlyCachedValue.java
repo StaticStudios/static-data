@@ -1,10 +1,11 @@
 package net.staticstudios.data.impl.data;
 
-import com.google.common.base.Supplier;
 import net.staticstudios.data.CachedValue;
 import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.util.*;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.function.Supplier;
 
 public class ReadOnlyCachedValue<T> extends AbstractCachedValue<T> {
     private final T value;
@@ -69,6 +70,11 @@ public class ReadOnlyCachedValue<T> extends AbstractCachedValue<T> {
     }
 
     @Override
+    public <U extends UniqueData> CachedValue<T> refresher(Class<U> clazz, CachedValueRefresher<U, T> refresher) {
+        throw new UnsupportedOperationException("Cannot set refresher on a read-only CachedValue");
+    }
+
+    @Override
     public T get() {
         return value;
     }
@@ -76,6 +82,11 @@ public class ReadOnlyCachedValue<T> extends AbstractCachedValue<T> {
     @Override
     public void set(T value) {
         throw new UnsupportedOperationException("Cannot set value on a read-only CachedValue");
+    }
+
+    @Override
+    public @Nullable T refresh() {
+        return value;
     }
 
     @Override
