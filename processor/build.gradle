@@ -32,6 +32,10 @@ build {
     dependsOn(shadowJar)
 }
 
+tasks.withType(Javadoc).configureEach {
+    enabled = false
+}
+
 tasks.withType(GenerateModuleMetadata).configureEach {
     enabled = false
 }

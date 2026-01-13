@@ -19,8 +19,8 @@ dependencies {
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 
-    testImplementation("org.testcontainers:postgresql:1.19.8")
-    testImplementation("com.redis:testcontainers-redis:2.2.2")
+    testImplementation("org.testcontainers:testcontainers-postgresql:2.0.1")
+    testImplementation("com.redis:testcontainers-redis:2.2.4")
     testImplementation("org.slf4j:slf4j-log4j12:2.0.16")
     compileOnly project(':processor')
     annotationProcessor project(':processor')
