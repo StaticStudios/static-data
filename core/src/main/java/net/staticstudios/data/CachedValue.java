@@ -32,12 +32,15 @@ public interface CachedValue<T> extends Value<T> {
 
     CachedValue<T> supplyFallback(Supplier<T> fallback);
 
+    CachedValue<T> refresh(Supplier<T> refresh);
+
     class ProxyCachedValue<T> implements CachedValue<T> {
         protected final UniqueData holder;
         protected final Class<T> dataType;
         private final List<ValueUpdateHandlerWrapper<?, T>> updateHandlers = new ArrayList<>();
         private @Nullable CachedValue<T> delegate;
         private Supplier<T> fallback = () -> null;
+        private @Nullable Supplier<T> refresh = null;
 
         public ProxyCachedValue(UniqueData holder, Class<T> dataType) {
             this.holder = holder;
@@ -48,6 +51,7 @@ public interface CachedValue<T> extends Value<T> {
             Preconditions.checkNotNull(delegate, "Delegate cannot be null");
             Preconditions.checkState(this.delegate == null, "Delegate is already set");
             delegate.setFallback(this.fallback);
+            delegate.setRefresh(this.refresh);
             this.delegate = delegate;
 
             //since an update handler can be registered before the fallback is set, we need to convert them here
@@ -86,6 +90,16 @@ public interface CachedValue<T> extends Value<T> {
             LambdaUtils.assertLambdaDoesntCapture(fallback, List.of(UniqueData.class), null);
             this.fallback = fallback;
             return this;
+        }
+
+        @Override
+        public CachedValue<T> refresh(Supplier<T> refresh) {
+            if (delegate != null) {
+                throw new UnsupportedOperationException("Cannot set fallback after initialization");
+            }
+            Preconditions.checkNotNull(refresh, "Refresh supplier cannot be null");
+            LambdaUtils.assertLambdaDoesntCapture(refresh, List.of(UniqueData.class), null);
+            return delegate.refresh(refresh);
         }
 
         @Override

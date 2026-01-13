@@ -69,6 +69,11 @@ public class ReadOnlyCachedValue<T> extends AbstractCachedValue<T> {
     }
 
     @Override
+    public CachedValue<T> refresh(Supplier<T> refresh) {
+        throw new UnsupportedOperationException("Cannot refresh a read-only CachedValue");
+    }
+
+    @Override
     public T get() {
         return value;
     }

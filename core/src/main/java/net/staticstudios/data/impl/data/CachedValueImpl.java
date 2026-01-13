@@ -101,11 +101,17 @@ public class CachedValueImpl<T> extends AbstractCachedValue<T> {
     }
 
     @Override
+    public CachedValue<T> refresh(Supplier<T> refresh) {
+        throw new UnsupportedOperationException("Cannot set refresh after initialization");
+    }
+
+    @Override
     public T get() {
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot get value from a deleted UniqueData instance");
         T value = holder.getDataManager().getRedis(metadata.holderSchema(), metadata.holderTable(), metadata.identifier(), holder.getIdColumns(), dataType);
         if (value == null) {
-            return getFallback();
+            value = refresh();
+            value = value == null ? getFallback() : value;
         }
         return value;
     }
