@@ -102,6 +102,20 @@ public class MockUser extends UniqueData {
             .onUpdate(MockUser.class, (user, update) -> user.cooldownUpdates.set(user.cooldownUpdates.get() + 1))
             .withFallback(false);
 
+    @Column(name = "counter", nullable = true)
+    public PersistentValue<Integer> persistentCounter;
+
+    @ExpireAfter(5)
+    @Identifier("counter")
+    public CachedValue<Integer> counter = CachedValue.of(this, Integer.class)
+            .refresher(MockUser.class, (user, prev) -> {
+                if (prev == null) {
+                    return user.persistentCounter.get() != null ? user.persistentCounter.get() : 0;
+                }
+                return prev + 1;
+            })
+            .onUpdate(MockUser.class, (user, update) -> user.persistentCounter.set(update.newValue()));
+
     public int getNameUpdates() {
         return nameUpdates.get();
     }
