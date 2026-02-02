@@ -1,4 +1,4 @@
-name: Test build
+name: Test and Publish
 
 on:
   pull_request:
@@ -30,13 +30,13 @@ jobs:
       - name: Change Gradle Permissions
         run: chmod +x ./gradlew
 
-      - name: Build (skip tests)
-        run: ./gradlew build -x test -PStaticStudiosUsername=github -PStaticStudiosPassword=${{ secrets.REPOSITORY_SECRET }}
-
       - name: Run Tests
         id: test
         run: ./gradlew test --info --stacktrace -PStaticStudiosUsername=github -PStaticStudiosPassword=${{ secrets.REPOSITORY_SECRET }} | tee gradle-test.log
-        continue-on-error: true
+
+      - name: Publish to Repository
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master' # only publish on push to master
+        run: ./gradlew publish -PStaticStudiosUsername=github -PStaticStudiosPassword=${{ secrets.REPOSITORY_SECRET }}
 
       - name: Upload test logs and reports
         if: always()
@@ -47,7 +47,3 @@ jobs:
             gradle-test.log
             build/reports/tests/test/
             build/test-results/test/
-
-      - name: Fail if tests failed
-        if: steps.test.outcome != 'success'
-        run: exit 1
