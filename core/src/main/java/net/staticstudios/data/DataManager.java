@@ -1431,12 +1431,18 @@ public class DataManager {
         if (serialized == null || Primitives.isPrimitive(clazz)) {
             return (T) serialized;
         }
+        if (clazz.isEnum()) {
+            return (T) Enum.valueOf((Class<Enum>) clazz, serialized.toString());
+        }
         return (T) deserialize(getValueSerializer(clazz), serialized);
     }
 
     public <T> T serialize(Object deserialized) {
         if (deserialized == null || Primitives.isPrimitive(deserialized.getClass())) {
             return (T) deserialized;
+        }
+        if (deserialized instanceof Enum) {
+            return (T) ((Enum<?>) deserialized).name();
         }
         return (T) serialize(getValueSerializer(deserialized.getClass()), deserialized);
     }
@@ -1452,6 +1458,9 @@ public class DataManager {
     public Class<?> getSerializedType(Class<?> clazz) {
         if (Primitives.isPrimitive(clazz)) {
             return clazz;
+        }
+        if (clazz.isEnum()) {
+            return String.class;
         }
         ValueSerializer<?, ?> serializer = getValueSerializer(clazz);
         return serializer.getSerializedType();
