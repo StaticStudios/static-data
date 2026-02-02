@@ -1,8 +1,10 @@
 name: Publish to private repo
 on:
-  push:
-    branches:
-      - master
+  workflow_run:
+    workflows: ["Test build"]
+    branches: [ "master" ]
+    types: 
+      - completed
 
 jobs:
   build:
