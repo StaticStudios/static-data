@@ -1423,22 +1423,42 @@ public class DataManager {
                 return s;
             }
         }
-
-        throw new IllegalStateException("No ValueSerializer registered for type " + deserializedType.getName());
+        return null;
     }
 
     public <T> T deserialize(Class<T> clazz, Object serialized) {
         if (serialized == null || Primitives.isPrimitive(clazz)) {
             return (T) serialized;
         }
-        return (T) deserialize(getValueSerializer(clazz), serialized);
+
+        ValueSerializer<?, ?> valueSerializer = getValueSerializer(clazz);
+        if (valueSerializer != null) {
+            return (T) deserialize(valueSerializer, serialized);
+        }
+
+        if (clazz.isEnum()) {
+            return (T) Enum.valueOf((Class<Enum>) clazz, serialized.toString());
+        }
+
+        throw new IllegalStateException("No suitable deserializer found for type " + clazz.getName());
     }
 
     public <T> T serialize(Object deserialized) {
         if (deserialized == null || Primitives.isPrimitive(deserialized.getClass())) {
             return (T) deserialized;
         }
-        return (T) serialize(getValueSerializer(deserialized.getClass()), deserialized);
+
+        ValueSerializer<?, ?> valueSerializer = getValueSerializer(deserialized.getClass());
+        if (valueSerializer != null) {
+            return (T) serialize(valueSerializer, deserialized);
+        }
+
+        if (deserialized instanceof Enum) {
+            return (T) ((Enum<?>) deserialized).name();
+        }
+
+        throw new IllegalStateException("No suitable deserializer found for type " + deserialized.getClass().getName());
+
     }
 
     private <D, S> D deserialize(ValueSerializer<D, S> serializer, Object serialized) {
@@ -1453,8 +1473,17 @@ public class DataManager {
         if (Primitives.isPrimitive(clazz)) {
             return clazz;
         }
+
         ValueSerializer<?, ?> serializer = getValueSerializer(clazz);
-        return serializer.getSerializedType();
+        if (serializer != null) {
+            return serializer.getSerializedType();
+        }
+
+        if (clazz.isEnum()) {
+            return String.class;
+        }
+
+        throw new IllegalStateException("No suitable serializer found for type " + clazz.getName());
     }
 
     public <T> T copy(T value, Class<T> dataType) {
