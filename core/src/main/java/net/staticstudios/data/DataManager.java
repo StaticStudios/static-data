@@ -1000,9 +1000,9 @@ public class DataManager {
         Preconditions.checkArgument(hasAllIdColumns, "Not all @IdColumn columnsInReferringTable were provided for UniqueData class %s. Required: %s, Provided: %s", clazz.getName(), metadata.idColumns(), idColumns);
 
         T instance;
-        if (uniqueDataInstanceCache.containsKey(clazz.getName()) && uniqueDataInstanceCache.get(clazz.getName()).containsKey(idColumns)) {
+        Map<ColumnValuePairs, UniqueData> classCache = uniqueDataInstanceCache.get(clazz.getName());
+        if (classCache != null && (instance = (T) classCache.get(idColumns)) != null) {
             logger.trace("Cache hit for UniqueData class {} with ID columnsInReferringTable {}", clazz.getName(), idColumns);
-            instance = (T) uniqueDataInstanceCache.get(clazz.getName()).get(idColumns);
             if (instance.isDeleted()) {
                 return null;
             }
