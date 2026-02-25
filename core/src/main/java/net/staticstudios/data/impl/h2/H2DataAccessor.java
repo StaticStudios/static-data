@@ -671,7 +671,11 @@ public class H2DataAccessor implements DataAccessor {
             RedisUtils.DeconstructedKey deconstructedKey = RedisUtils.deconstruct(key);
             dataManager.callCachedValueUpdateHandlers(deconstructedKey.partialKey(), deconstructedKey.encodedIdNames(), deconstructedKey.encodedIdValues(), entry, redisValue);
         } else if (event == RedisEvent.DEL || event == RedisEvent.EXPIRED) {
-            redisCache.remove(key);
+            String entry = redisCache.remove(key);
+            if (entry != null) {
+                RedisUtils.DeconstructedKey deconstructedKey = RedisUtils.deconstruct(key);
+                dataManager.callCachedValueUpdateHandlers(deconstructedKey.partialKey(), deconstructedKey.encodedIdNames(), deconstructedKey.encodedIdValues(), entry, null);
+            }
         }
     }
 

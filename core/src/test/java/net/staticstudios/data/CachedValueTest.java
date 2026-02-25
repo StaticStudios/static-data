@@ -80,7 +80,6 @@ public class CachedValueTest extends DataTest {
         //the fallback value is false, so we didn't change anything. update handlers shouldn't be fired
         assertEquals(0, user.cooldownUpdates.get());
 
-
         user.onCooldown.set(true);
         assertEquals(true, user.onCooldown.get());
 
@@ -98,6 +97,28 @@ public class CachedValueTest extends DataTest {
         assertEquals(false, user.onCooldown.get());
 
         assertEquals(2, user.cooldownUpdates.get());
+
+        user.onCooldown.set(true);
+        assertEquals(true, user.onCooldown.get());
+        assertEquals(3, user.cooldownUpdates.get());
+
+        user.onCooldown.set(null);
+        assertEquals(false, user.onCooldown.get());
+        assertEquals(4, user.cooldownUpdates.get());
+
+
+        user.onCooldown.set(true);
+        assertEquals(true, user.onCooldown.get());
+        assertEquals(5, user.cooldownUpdates.get());
+
+        Jedis jedis = getJedis();
+        String onCooldownKey = RedisUtils.buildRedisKey("public", "users", "on_cooldown", user.getIdColumns());
+        jedis.del(onCooldownKey);
+
+        waitForDataPropagation();
+
+        assertEquals(false, user.onCooldown.get());
+        assertEquals(6, user.cooldownUpdates.get());
     }
 
     @Test
@@ -182,8 +203,8 @@ public class CachedValueTest extends DataTest {
         Jedis jedis = getJedis();
         assertFalse(jedis.exists(counterKey));
 
-        assertEquals(2, user.counter.get()); //trigger a refresh
+        assertEquals(0, user.counter.get()); //trigger a refresh
         waitForDataPropagation();
-        assertEquals("2", gson.fromJson(jedis.get(counterKey), RedisEncodedValue.class).value());
+        assertEquals("0", gson.fromJson(jedis.get(counterKey), RedisEncodedValue.class).value());
     }
 }
