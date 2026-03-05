@@ -23,17 +23,27 @@ public class SQLTransaction {
 
     public SQLTransaction query(Statement statement, Supplier<List<Object>> valuesSupplier, @NotNull Consumer<ResultSet> resultHandler) {
         Preconditions.checkNotNull(resultHandler, "Use update() method for statements without result handlers");
-        operations.add(new Operation(statement, valuesSupplier, resultHandler));
+        operations.add(new Operation(statement, valuesSupplier, resultHandler, () -> true));
         return this;
     }
 
     public SQLTransaction update(Statement statement, Supplier<List<Object>> valuesSupplier) {
-        operations.add(new Operation(statement, valuesSupplier, null));
+        operations.add(new Operation(statement, valuesSupplier, null, () -> true));
         return this;
     }
 
     public SQLTransaction update(Statement statement, List<Object> values) {
-        operations.add(new Operation(statement, () -> values, null));
+        operations.add(new Operation(statement, () -> values, null, () -> true));
+        return this;
+    }
+
+    public SQLTransaction update(Statement statement, Supplier<List<Object>> valuesSupplier, Supplier<Boolean> shouldRun) {
+        operations.add(new Operation(statement, valuesSupplier, null, shouldRun));
+        return this;
+    }
+
+    public SQLTransaction update(Statement statement, List<Object> values, Supplier<Boolean> shouldRun) {
+        operations.add(new Operation(statement, () -> values, null, shouldRun));
         return this;
     }
 
@@ -41,11 +51,13 @@ public class SQLTransaction {
         private final Statement statement;
         private final Supplier<List<Object>> valuesSupplier;
         private final @Nullable Consumer<ResultSet> resultHandler;
+        private final Supplier<Boolean> shouldRun;
 
-        public Operation(Statement statement, Supplier<List<Object>> valuesSupplier, @Nullable Consumer<ResultSet> resultHandler) {
+        public Operation(Statement statement, Supplier<List<Object>> valuesSupplier, @Nullable Consumer<ResultSet> resultHandler, Supplier<Boolean> shouldRun) {
             this.statement = statement;
             this.valuesSupplier = valuesSupplier;
             this.resultHandler = resultHandler;
+            this.shouldRun = shouldRun;
         }
 
         public Statement getStatement() {
@@ -59,6 +71,11 @@ public class SQLTransaction {
         public @Nullable Consumer<ResultSet> getResultHandler() {
             return resultHandler;
         }
+
+        public boolean shouldRun() {
+            return shouldRun.get();
+        }
+
     }
 
     public static class Statement {

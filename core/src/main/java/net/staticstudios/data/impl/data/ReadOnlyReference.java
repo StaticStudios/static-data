@@ -20,14 +20,14 @@ public class ReadOnlyReference<T extends UniqueData> implements Reference<T> {
         ReadOnlyReference<T> delegate = new ReadOnlyReference<>(
                 proxy.getHolder(),
                 proxy.getReferenceType(),
-                ReferenceImpl.create(proxy.getHolder(), proxy.getReferenceType(), metadata.links()).getReferencedColumnValuePairs()
+                ReferenceImpl.create(proxy.getHolder(), proxy.getReferenceType(), metadata.links(), metadata.updateReferencedTable()).getReferencedColumnValuePairs()
         );
 
         proxy.setDelegate(metadata, delegate);
     }
 
     private static <T extends UniqueData> Reference<T> create(UniqueData holder, Class<T> referenceType, ReferenceMetadata metadata) {
-        return new ReadOnlyReference<>(holder, referenceType, ReferenceImpl.create(holder, referenceType, metadata.links()).getReferencedColumnValuePairs());
+        return new ReadOnlyReference<>(holder, referenceType, ReferenceImpl.create(holder, referenceType, metadata.links(), metadata.updateReferencedTable()).getReferencedColumnValuePairs());
     }
 
     public static <U extends UniqueData> void delegate(U instance) {

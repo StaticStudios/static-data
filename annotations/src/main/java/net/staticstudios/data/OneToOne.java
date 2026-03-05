@@ -26,4 +26,11 @@ public @interface OneToOne {
      */
     boolean fkey() default true;
 
+    /**
+     * When making an update to this relaction via #set(T), should the columns in the referenced table be updated instead of the local columns?
+     *
+     * @return Whether to update the referenced columns instead of the local columns when updating this relation
+     */
+    boolean updateReferencedColumns() default false;
+
 }
