@@ -1,7 +1,7 @@
 plugins {
     id 'java-library'
     id 'maven-publish'
-    id 'com.gradleup.shadow' version '8.3.3'
+    id 'com.gradleup.shadow' version '8.3.10'
 }
 
 dependencies {
@@ -29,6 +29,8 @@ dependencies {
 }
 
 shadowJar {
+    relocate 'io.netty', 'net.staticstudios.shadow.io.netty'
+
     archiveClassifier.set('')
 }
 
