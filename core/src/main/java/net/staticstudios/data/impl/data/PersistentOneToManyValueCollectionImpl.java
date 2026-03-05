@@ -1,6 +1,7 @@
 package net.staticstudios.data.impl.data;
 
 import com.google.common.base.Preconditions;
+import net.staticstudios.data.DataManager;
 import net.staticstudios.data.OneToMany;
 import net.staticstudios.data.PersistentCollection;
 import net.staticstudios.data.UniqueData;
@@ -304,7 +305,8 @@ public class PersistentOneToManyValueCollectionImpl<T> implements PersistentColl
             return;
         }
 
-        DataAccessor dataAccessor = holder.getDataManager().getDataAccessor();
+        DataManager dataManager = holder.getDataManager();
+        DataAccessor dataAccessor = dataManager.getDataAccessor();
 
         SQLTransaction.Statement selectDataIdsStatement = buildSelectDataIdsStatement();
         SQLTransaction.Statement removeStatement = buildRemoveStatement();
@@ -319,8 +321,8 @@ public class PersistentOneToManyValueCollectionImpl<T> implements PersistentColl
                 Preconditions.checkState(rs.next(), "Could not find holder row in database");
                 for (Link entry : link) {
                     String dataColumn = entry.columnInReferringTable();
-                    Object value = rs.getObject(dataColumn);
-                    holderLinkingValues.add(value);
+                    Object serialized = rs.getObject(dataColumn);
+                    holderLinkingValues.add(serialized);
                 }
             } catch (SQLException e) {
                 throw new RuntimeException(e);
@@ -330,7 +332,7 @@ public class PersistentOneToManyValueCollectionImpl<T> implements PersistentColl
         for (T value : values) {
             transaction.update(removeStatement, () -> {
                 List<Object> statementValues = new ArrayList<>(holderLinkingValues);
-                statementValues.add(value);
+                statementValues.add(dataManager.serialize(value));
                 return statementValues;
             });
         }
