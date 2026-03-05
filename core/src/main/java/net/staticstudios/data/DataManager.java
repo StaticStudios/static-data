@@ -941,6 +941,11 @@ public class DataManager {
         UniqueDataMetadata metadata = getMetadata(clazz);
         Preconditions.checkNotNull(metadata, "UniqueData class %s has not been parsed yet", clazz.getName());
 
+        List<Object> serializedValues = new ArrayList<>();
+        for (Object value : values) {
+            serializedValues.add(serialize(value));
+        }
+
         StringBuilder sb = new StringBuilder();
         sb.append("SELECT ");
         for (ColumnMetadata idColumn : metadata.idColumns()) {
@@ -951,7 +956,7 @@ public class DataManager {
         sb.append(where);
         @Language("SQL") String sql = sb.toString();
         List<T> results = new ArrayList<>();
-        try (ResultSet rs = dataAccessor.executeQuery(sql, values)) {
+        try (ResultSet rs = dataAccessor.executeQuery(sql, serializedValues)) {
             while (rs.next()) {
                 ColumnValuePair[] idColumns = new ColumnValuePair[metadata.idColumns().size()];
                 for (int i = 0; i < metadata.idColumns().size(); i++) {
