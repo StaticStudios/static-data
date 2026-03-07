@@ -110,18 +110,27 @@ public class H2DataAccessor implements DataAccessor {
                             return; // nothing changed
                         }
 
+                        int tracking = 0;
                         for (Pair<String, String> changed : changedValues) {
-                            if (changed == null) break;
+                            if (changed == null) {
+                                continue;
+                            }
                             String column = changed.first();
                             String encoded = changed.second();
                             SQLColumn sqlColumn = sqlTable.getColumn(column);
                             if (sqlColumn == null) {
-                                return; // we don't care about this column
+                                continue; // we don't care about this column
                             }
                             Object decoded = encoded == null ? null : Primitives.decodePrimitive(sqlColumn.getType(), encoded);
                             values.add(decoded);
                             sb.append("\"").append(column).append("\" = ?, ");
+                            tracking++;
                         }
+
+                        if (tracking == 0) {
+                            return; // nothing we care about changed
+                        }
+
                         sb.setLength(sb.length() - 2);
                         sb.append(" WHERE ");
                         for (ColumnMetadata idColumnMetadata : sqlTable.getIdColumns()) {
@@ -158,7 +167,7 @@ public class H2DataAccessor implements DataAccessor {
                             String encoded = entry.getValue();
                             SQLColumn sqlColumn = sqlTable.getColumn(column);
                             if (sqlColumn == null) {
-                                return; // we don't care about this column
+                                continue; // we don't care about this column
                             }
                             Object decoded = encoded == null ? null : Primitives.decodePrimitive(sqlColumn.getType(), encoded);
                             values.add(decoded);
