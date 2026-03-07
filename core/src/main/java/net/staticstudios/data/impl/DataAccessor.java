@@ -1,6 +1,7 @@
 package net.staticstudios.data.impl;
 
 import net.staticstudios.data.InsertMode;
+import net.staticstudios.data.StaticDataStatistics;
 import net.staticstudios.data.parse.DDLStatement;
 import net.staticstudios.data.util.SQLTransaction;
 import net.staticstudios.data.util.SQlStatement;
@@ -10,6 +11,7 @@ import org.jetbrains.annotations.Nullable;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Optional;
 
 public interface DataAccessor {
 
@@ -34,4 +36,6 @@ public interface DataAccessor {
     void discoverRedisKeys(List<String> partialRedisKeys);
 
     void resync();
+
+    Optional<StaticDataStatistics> getStatistics();
 }

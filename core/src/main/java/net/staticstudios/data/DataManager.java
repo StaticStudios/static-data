@@ -1529,4 +1529,8 @@ public class DataManager {
             //Ignore
         }).join();
     }
+
+    public Optional<StaticDataStatistics> getStatistics() {
+        return dataAccessor.getStatistics();
+    }
 }

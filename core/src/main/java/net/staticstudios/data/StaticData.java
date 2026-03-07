@@ -5,6 +5,8 @@ import net.staticstudios.data.insert.BatchInsert;
 import net.staticstudios.data.query.QueryBuilder;
 import org.jetbrains.annotations.Blocking;
 
+import java.util.Optional;
+
 /**
  * Entry point for initializing and interacting with the StaticData system.
  */
@@ -89,5 +91,16 @@ public class StaticData {
     public static void flushTaskQueue() {
         assertInit();
         DataManager.getInstance().flushTaskQueue();
+    }
+
+
+    /**
+     * Retrieves the current performance statistics of the StaticData system, including metrics such as queries per second and updates per second.
+     *
+     * @return an Optional containing the StaticDataStatistics if available, or an empty Optional if statistics cannot be retrieved at this time
+     */
+    public static Optional<StaticDataStatistics> getStatistics() {
+        assertInit();
+        return DataManager.getInstance().getStatistics();
     }
 }

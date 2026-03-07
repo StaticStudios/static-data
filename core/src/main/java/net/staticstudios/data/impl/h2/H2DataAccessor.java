@@ -5,6 +5,7 @@ import com.google.gson.Gson;
 import com.impossibl.postgres.api.jdbc.PGConnection;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.InsertMode;
+import net.staticstudios.data.StaticDataStatistics;
 import net.staticstudios.data.impl.DataAccessor;
 import net.staticstudios.data.impl.h2.trigger.H2UpdateHandlerTrigger;
 import net.staticstudios.data.impl.pg.PostgresListener;
@@ -66,6 +67,9 @@ public class H2DataAccessor implements DataAccessor {
 
     private final ThreadLocal<LinkedList<Runnable>> commitCallbacks = ThreadLocal.withInitial(LinkedList::new);
     private final ThreadLocal<LinkedList<Runnable>> rollbackCallbacks = ThreadLocal.withInitial(LinkedList::new);
+
+    private final SlidingWindowCounter h2QueryCounter = new SlidingWindowCounter(10_000, 20);
+    private final SlidingWindowCounter h2UpdateCounter = new SlidingWindowCounter(10_000, 20);
 
     public H2DataAccessor(DataManager dataManager, PostgresListener postgresListener, RedisListener redisListener, TaskQueue taskQueue) {
         try {
@@ -153,6 +157,7 @@ public class H2DataAccessor implements DataAccessor {
                             }
                             logger.debug("[H2] [HANDLE POSTGRES UPDATE] {}", sql);
                             preparedStatement.executeUpdate();
+                            h2UpdateCounter.increment();
                             if (!connection.getAutoCommit()) {
                                 connection.commit();
                             }
@@ -187,6 +192,7 @@ public class H2DataAccessor implements DataAccessor {
                             }
                             logger.debug("[H2] [HANDLE POSTGRES INSERT] {}", sql);
                             preparedStatement.executeUpdate();
+                            h2UpdateCounter.increment();
                             if (!connection.getAutoCommit()) {
                                 connection.commit();
                             }
@@ -215,6 +221,7 @@ public class H2DataAccessor implements DataAccessor {
                             }
                             logger.debug("[H2] [HANDLE POSTGRES DELETE] {}", sql);
                             preparedStatement.executeUpdate();
+                            h2UpdateCounter.increment();
                             if (!connection.getAutoCommit()) {
                                 connection.commit();
                             }
@@ -386,6 +393,7 @@ public class H2DataAccessor implements DataAccessor {
                     }
                     logger.trace("[H2] {}", sqlStatement.getH2Sql());
                     preparedStatement.executeUpdate();
+                    h2UpdateCounter.increment();
                 }
             }
 
@@ -437,6 +445,7 @@ public class H2DataAccessor implements DataAccessor {
             cachePreparedStatement.setObject(i + 1, values.get(i));
         }
         logger.trace("[H2] {}", sql);
+        h2QueryCounter.increment();
         return cachePreparedStatement.executeQuery();
     }
 
@@ -459,7 +468,9 @@ public class H2DataAccessor implements DataAccessor {
                 Consumer<ResultSet> resultHandler = operation.getResultHandler();
                 if (resultHandler == null) {
                     cachePreparedStatement.executeUpdate();
+                    h2UpdateCounter.increment();
                 } else {
+                    h2QueryCounter.increment();
                     try (ResultSet rs = cachePreparedStatement.executeQuery()) {
                         resultHandler.accept(rs);
                     }
@@ -688,6 +699,14 @@ public class H2DataAccessor implements DataAccessor {
         }
     }
 
+    public double getH2QueriesPerSecond() {
+        return h2QueryCounter.getPerSecond();
+    }
+
+    public double getH2UpdatesPerSecond() {
+        return h2UpdateCounter.getPerSecond();
+    }
+
     public void onCommit(Runnable callback) {
         commitCallbacks.get().add(callback);
     }
@@ -732,5 +751,10 @@ public class H2DataAccessor implements DataAccessor {
 
     private RedisEncodedValue decodeRedis(String encoded) {
         return GSON.fromJson(encoded, RedisEncodedValue.class);
+    }
+
+    @Override
+    public Optional<StaticDataStatistics> getStatistics() {
+        return Optional.of(new StaticDataStatistics((long) h2QueryCounter.getPerSecond(), (long) h2UpdateCounter.getPerSecond()));
     }
 }
