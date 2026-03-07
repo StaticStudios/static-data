@@ -2,8 +2,12 @@ package net.staticstudios.data.impl.data;
 
 import net.staticstudios.data.PersistentValue;
 import net.staticstudios.data.UniqueData;
-import net.staticstudios.data.util.*;
-import org.jetbrains.annotations.Nullable;
+import net.staticstudios.data.util.PersistentValueMetadata;
+import net.staticstudios.data.util.ReflectionUtils;
+import net.staticstudios.data.util.UniqueDataMetadata;
+import net.staticstudios.data.util.ValueUpdateHandler;
+
+import java.lang.reflect.Field;
 
 public class ReadOnlyPersistentValue<T> implements PersistentValue<T> {
     private final T value;
@@ -32,18 +36,20 @@ public class ReadOnlyPersistentValue<T> implements PersistentValue<T> {
 
     public static <U extends UniqueData> void delegate(U instance) {
         UniqueDataMetadata metadata = instance.getDataManager().getMetadata(instance.getClass());
-        for (FieldInstancePair<@Nullable PersistentValue> pair : ReflectionUtils.getFieldInstancePairs(instance, PersistentValue.class)) {
-            PersistentValueMetadata pvMetadata = metadata.persistentValueMetadata().get(pair.field());
-            if (pair.instance() instanceof PersistentValue.ProxyPersistentValue<?> proxyPv) {
-                createAndDelegate(proxyPv, pvMetadata);
-            } else {
-                pair.field().setAccessible(true);
-                try {
-                    pair.field().set(instance, create(instance, ReflectionUtils.getGenericType(pair.field()), pvMetadata));
-                } catch (IllegalAccessException e) {
-                    throw new RuntimeException(e);
+        try {
+            for (var entry : metadata.persistentValueMetadata().entrySet()) {
+                Field field = entry.getKey();
+                PersistentValueMetadata pvMetadata = entry.getValue();
+
+                Object value = field.get(instance);
+                if (value instanceof PersistentValue.ProxyPersistentValue<?> proxyPv) {
+                    ReadOnlyPersistentValue.createAndDelegate(proxyPv, pvMetadata);
+                } else {
+                    field.set(instance, ReadOnlyPersistentValue.create(instance, ReflectionUtils.getGenericType(field), pvMetadata));
                 }
             }
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
         }
     }
 

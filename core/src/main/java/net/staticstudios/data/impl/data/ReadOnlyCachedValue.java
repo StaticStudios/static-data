@@ -5,6 +5,7 @@ import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.util.*;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.reflect.Field;
 import java.util.function.Supplier;
 
 public class ReadOnlyCachedValue<T> extends AbstractCachedValue<T> {
@@ -34,18 +35,20 @@ public class ReadOnlyCachedValue<T> extends AbstractCachedValue<T> {
 
     public static <U extends UniqueData> void delegate(U instance) {
         UniqueDataMetadata metadata = instance.getDataManager().getMetadata(instance.getClass());
-        for (FieldInstancePair<@Nullable CachedValue> pair : ReflectionUtils.getFieldInstancePairs(instance, CachedValue.class)) {
-            CachedValueMetadata cvMetadata = metadata.cachedValueMetadata().get(pair.field());
-            if (pair.instance() instanceof CachedValue.ProxyCachedValue<?> proxyPv) {
-                createAndDelegate(proxyPv, cvMetadata);
-            } else {
-                pair.field().setAccessible(true);
-                try {
-                    pair.field().set(instance, create(instance, ReflectionUtils.getGenericType(pair.field()), cvMetadata));
-                } catch (IllegalAccessException e) {
-                    throw new RuntimeException(e);
+        try {
+            for (var entry : metadata.cachedValueMetadata().entrySet()) {
+                Field field = entry.getKey();
+                CachedValueMetadata cvMetadata = entry.getValue();
+
+                Object value = field.get(instance);
+                if (value instanceof CachedValue.ProxyCachedValue<?> proxyCv) {
+                    ReadOnlyCachedValue.createAndDelegate(proxyCv, cvMetadata);
+                } else {
+                    field.set(instance, ReadOnlyCachedValue.create(instance, ReflectionUtils.getGenericType(field), cvMetadata));
                 }
             }
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
         }
     }
 

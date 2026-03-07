@@ -11,7 +11,6 @@ import net.staticstudios.data.util.*;
 import net.staticstudios.data.utils.Link;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
@@ -45,20 +44,21 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
 
     public static <T extends UniqueData> void delegate(T instance) {
         UniqueDataMetadata metadata = instance.getDataManager().getMetadata(instance.getClass());
-        for (FieldInstancePair<@Nullable PersistentCollection> pair : ReflectionUtils.getFieldInstancePairs(instance, PersistentCollection.class)) {
-            PersistentCollectionMetadata collectionMetadata = metadata.persistentCollectionMetadata().get(pair.field());
-            if (!(collectionMetadata instanceof PersistentOneToManyCollectionMetadata oneToManyMetadata)) continue;
+        try {
+            for (var entry : metadata.persistentCollectionMetadata().entrySet()) {
+                Field field = entry.getKey();
+                PersistentCollectionMetadata pcMetadata = entry.getValue();
 
-            if (pair.instance() instanceof PersistentCollection.ProxyPersistentCollection<?> proxyCollection) {
-                createAndDelegate((PersistentCollection.ProxyPersistentCollection<? extends UniqueData>) proxyCollection, oneToManyMetadata.getLinks(), oneToManyMetadata);
-            } else {
-                pair.field().setAccessible(true);
-                try {
-                    pair.field().set(instance, create(instance, oneToManyMetadata.getReferencedType(), oneToManyMetadata.getLinks()));
-                } catch (IllegalAccessException e) {
-                    throw new RuntimeException(e);
+                if (!(pcMetadata instanceof PersistentOneToManyCollectionMetadata oneToManyMetadata)) continue;
+                Object value = field.get(instance);
+                if (value instanceof PersistentCollection.ProxyPersistentCollection<?> proxyCollection) {
+                    PersistentOneToManyCollectionImpl.createAndDelegate((PersistentCollection.ProxyPersistentCollection<? extends UniqueData>) proxyCollection, oneToManyMetadata.getLinks(), oneToManyMetadata);
+                } else {
+                    field.set(instance, PersistentOneToManyCollectionImpl.create(instance, oneToManyMetadata.getReferencedType(), oneToManyMetadata.getLinks()));
                 }
             }
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -70,6 +70,7 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
             Class<?> genericType = ReflectionUtils.getGenericType(field);
             if (genericType == null || !UniqueData.class.isAssignableFrom(genericType)) continue;
             Class<? extends UniqueData> referencedClass = genericType.asSubclass(UniqueData.class);
+            field.setAccessible(true);
             metadataMap.put(field, new PersistentOneToManyCollectionMetadata(dataManager, clazz, referencedClass, SQLBuilder.parseLinks(oneToManyAnnotation.link())));
         }
 

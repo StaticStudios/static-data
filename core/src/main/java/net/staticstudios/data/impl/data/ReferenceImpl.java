@@ -1,6 +1,7 @@
 package net.staticstudios.data.impl.data;
 
 import com.google.common.base.Preconditions;
+import net.staticstudios.data.DataManager;
 import net.staticstudios.data.OneToOne;
 import net.staticstudios.data.Reference;
 import net.staticstudios.data.UniqueData;
@@ -14,59 +15,58 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.reflect.Field;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
     private final UniqueData holder;
     private final Class<T> type;
     private final List<Link> link;
     private final boolean updateReferencedTable;
+    private final ReferenceMetadata metadata;
 
-    public ReferenceImpl(UniqueData holder, Class<T> type, List<Link> link, boolean updateReferencedTable) {
+    public ReferenceImpl(UniqueData holder, ReferenceMetadata metadata) {
         this.holder = holder;
-        this.type = type;
-        this.link = link;
-        this.updateReferencedTable = updateReferencedTable;
+        this.type = (Class<T>) metadata.referencedClass();
+        this.link = metadata.links();
+        this.updateReferencedTable = metadata.updateReferencedTable();
+        this.metadata = metadata;
     }
 
     public static <T extends UniqueData> void createAndDelegate(Reference.ProxyReference<T> proxy, ReferenceMetadata metadata) {
         ReferenceImpl<T> delegate = new ReferenceImpl<>(
                 proxy.getHolder(),
-                proxy.getReferenceType(),
-                metadata.links(),
-                metadata.updateReferencedTable()
+                metadata
         );
         proxy.setDelegate(metadata, delegate);
     }
 
-    public static <T extends UniqueData> ReferenceImpl<T> create(UniqueData holder, Class<T> type, List<Link> link, boolean updateReferencedTable) {
-        return new ReferenceImpl<>(holder, type, link, updateReferencedTable);
+    public static <T extends UniqueData> ReferenceImpl<T> create(UniqueData holder, Class<T> type, ReferenceMetadata metadata) {
+        return new ReferenceImpl<>(holder, metadata);
     }
 
     public static <T extends UniqueData> void delegate(T instance) {
         UniqueDataMetadata metadata = instance.getDataManager().getMetadata(instance.getClass());
-        for (FieldInstancePair<@Nullable Reference> pair : ReflectionUtils.getFieldInstancePairs(instance, Reference.class)) {
-            ReferenceMetadata refMetadata = metadata.referenceMetadata().get(pair.field());
+        try {
+            for (var entry : metadata.referenceMetadata().entrySet()) {
+                Field field = entry.getKey();
+                ReferenceMetadata referenceMetadata = entry.getValue();
 
-            if (pair.instance() instanceof Reference.ProxyReference<?> proxyRef) {
-                createAndDelegate(proxyRef, refMetadata);
-            } else {
-                pair.field().setAccessible(true);
-                try {
-                    pair.field().set(instance, create(instance, refMetadata.referencedClass(), refMetadata.links(), refMetadata.updateReferencedTable()));
-                } catch (IllegalAccessException e) {
-                    throw new RuntimeException(e);
+                Object value = field.get(instance);
+                if (value instanceof Reference.ProxyReference<?> proxyRef) {
+                    ReferenceImpl.createAndDelegate(proxyRef, referenceMetadata);
+                } else {
+                    field.set(instance, ReferenceImpl.create(instance, referenceMetadata.referencedClass(), referenceMetadata));
                 }
             }
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
         }
     }
 
     public static <T extends UniqueData> Map<Field, ReferenceMetadata> extractMetadata(Class<T> clazz) {
         Map<Field, ReferenceMetadata> metadataMap = new HashMap<>();
         for (Field field : ReflectionUtils.getFields(clazz, Reference.class)) {
+            field.setAccessible(true);
             OneToOne oneToOneAnnotation = field.getAnnotation(OneToOne.class);
             Preconditions.checkNotNull(oneToOneAnnotation, "Field %s in class %s is missing @OneToOne annotation".formatted(field.getName(), clazz.getName()));
             Class<?> referencedClass = ReflectionUtils.getGenericType(field);
@@ -103,39 +103,36 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
 
     public ColumnValuePairs getReferencedColumnValuePairs() {
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot get reference on a deleted UniqueData instance");
-        UniqueDataMetadata holderMetadata = holder.getMetadata();
         UniqueDataMetadata referencedMetadata = holder.getDataManager().getMetadata(type);
         DataAccessor dataAccessor = holder.getDataManager().getDataAccessor();
-        StringBuilder sqlBuilder = new StringBuilder();
-        sqlBuilder.append("SELECT ");
-        for (ColumnMetadata idColumn : referencedMetadata.idColumns()) {
-            sqlBuilder.append("_referenced.\"").append(idColumn.name()).append("\", ");
-        }
-        for (Link entry : link) {
-            String myColumn = entry.columnInReferringTable();
-            sqlBuilder.append("_referring.\"").append(myColumn).append("\", ");
-        }
-        sqlBuilder.setLength(sqlBuilder.length() - 2);
 
-        sqlBuilder.append(" FROM \"").append(referencedMetadata.schema()).append("\".\"").append(referencedMetadata.table()).append("\" _referenced");
-        sqlBuilder.append(" INNER JOIN \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\" _referring ON ");
-        for (Link entry : link) {
-            String myColumn = entry.columnInReferringTable();
-            String theirColumn = entry.columnInReferencedTable();
-            sqlBuilder.append("_referenced.\"").append(theirColumn).append("\" = ");
-            sqlBuilder.append("_referring.\"").append(myColumn).append("\" AND ");
-        }
-        sqlBuilder.setLength(sqlBuilder.length() - 5);
+        DataManager dataManager = holder.getDataManager();
 
-        sqlBuilder.append(" WHERE ");
 
+        List<Object> values = new ArrayList<>(holder.getIdColumns().getPairs().length);
         for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
-            sqlBuilder.append("_referring.\"").append(columnValuePair.column()).append("\" = ? AND ");
+            values.add(columnValuePair.value());
         }
-        sqlBuilder.setLength(sqlBuilder.length() - 5);
 
-        @Language("SQL") String sql = sqlBuilder.toString();
-        try (ResultSet rs = dataAccessor.executeQuery(sql, holder.getIdColumns().stream().map(ColumnValuePair::value).toList())) {
+        SelectQuery query = metadata.buildSelectReferencedColumnValuePairsSelectQuery(holder.getDataManager(), values);
+
+        ReadCacheResult cached = dataManager.getReadCacheResult(query);
+
+        if (cached != null) {
+            List<ColumnMetadata> refIdColumns = referencedMetadata.idColumns();
+            ColumnValuePair[] idColumns = new ColumnValuePair[refIdColumns.size()];
+            for (int i = 0; i < refIdColumns.size(); i++) {
+                ColumnMetadata idColumn = refIdColumns.get(i);
+                Object val = cached.getValue(idColumn.name());
+                if (val == null) {
+                    return null;
+                }
+                idColumns[i] = new ColumnValuePair(idColumn.name(), val);
+            }
+            return new ColumnValuePairs(idColumns);
+        }
+
+        try (ResultSet rs = dataAccessor.executeQuery(query.getSql(), query.getValues())) {
             if (!rs.next()) {
                 return null;
             }
@@ -157,7 +154,28 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
                 }
                 idColumns[i] = new ColumnValuePair(idColumn.name(), val);
             }
-            return new ColumnValuePairs(idColumns);
+
+            ColumnValuePairs theirIdColumns = new ColumnValuePairs(idColumns);
+
+            Set<Cell> dependencies = new HashSet<>();
+            for (Link entry : link) {
+                String myColumn = entry.columnInReferringTable();
+                String theirColumn = entry.columnInReferencedTable();
+                dependencies.add(new Cell(holder.getMetadata().schema(), holder.getMetadata().table(), myColumn, holder.getIdColumns()));
+                dependencies.add(new Cell(referencedMetadata.schema(), referencedMetadata.table(), theirColumn, theirIdColumns));
+            }
+
+            for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
+                dependencies.add(new Cell(holder.getMetadata().schema(), holder.getMetadata().table(), columnValuePair.column(), holder.getIdColumns()));
+            }
+            for (ColumnValuePair columnValuePair : theirIdColumns) {
+                dependencies.add(new Cell(referencedMetadata.schema(), referencedMetadata.table(), columnValuePair.column(), theirIdColumns));
+            }
+
+            ReadCacheResult cacheResult = new ReadCacheResult(theirIdColumns, dependencies);
+            dataManager.putReadCacheResult(query, cacheResult);
+
+            return theirIdColumns;
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
