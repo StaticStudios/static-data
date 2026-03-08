@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.stream.Stream;
 
 public final class ColumnValuePairs implements Iterable<ColumnValuePair> {
+    public static final ColumnValuePairs EMPTY = new ColumnValuePairs();
+
     private final ColumnValuePair[] pairs;
 
     public ColumnValuePairs(ColumnValuePair... pairs) {

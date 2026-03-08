@@ -1044,19 +1044,45 @@ public class DataManager {
         String schema = metadata.schema();
         String table = metadata.table();
 
-        StringBuilder sqlBuilder = new StringBuilder();
+        boolean exists;
+
+        StringBuilder sqlBuilder = new StringBuilder(); //todo: this query should be cached in the unique data metadata. no need to constantly allocate strings
         sqlBuilder.append("SELECT 1 FROM \"").append(schema).append("\".\"").append(table).append("\" WHERE ");
         for (ColumnValuePair columnValuePair : idColumns) {
             sqlBuilder.append("\"").append(columnValuePair.column()).append("\" = ? AND ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 5);
         @Language("SQL") String sql = sqlBuilder.toString();
-        try (ResultSet rs = dataAccessor.executeQuery(sql, idColumns.stream().map(ColumnValuePair::value).toList())) {
-            if (!rs.next()) {
-                return null;
+
+        List<Object> values = new ArrayList<>();
+        for (ColumnValuePair columnValuePair : idColumns) {
+            values.add(columnValuePair.value());
+        }
+        SelectQuery selectQuery = new SelectQuery(sql, values);
+
+        ReadCacheResult cacheResult = getReadCacheResult(selectQuery);
+        if (cacheResult != null) {
+            exists = true;
+        } else {
+            try (ResultSet rs = dataAccessor.executeQuery(sql, idColumns.stream().map(ColumnValuePair::value).toList())) {
+                exists = rs.next();
+
+                if (exists) {
+                    Set<Cell> dependencies = new HashSet<>();
+                    for (ColumnValuePair columnValuePair : idColumns) {
+                        dependencies.add(new Cell(schema, table, columnValuePair.column(), idColumns));
+                    }
+                    ReadCacheResult result = new ReadCacheResult(ColumnValuePairs.EMPTY, dependencies);
+                    putReadCacheResult(selectQuery, result);
+                }
+
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
             }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
+        }
+
+        if (!exists) {
+            return null;
         }
 
         PersistentValueImpl.delegate(instance);
