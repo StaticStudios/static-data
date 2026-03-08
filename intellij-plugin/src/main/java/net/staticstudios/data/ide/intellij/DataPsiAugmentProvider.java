@@ -15,12 +15,13 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
 
 public class DataPsiAugmentProvider extends PsiAugmentProvider {
     //TODO: I'm not sure if the following is possible, but if it is it would be cool:
-    // 1. When I ctrl+click on a builder method or query where clause method, it should take me to the field definition in the data class.
     // 2. When I refactor a field in the data class, the corresponding builder method and query where clause methods should also be refactored.
 
     //TODO: This seems to work fine, but tests should probably be added just in case.
@@ -29,9 +30,13 @@ public class DataPsiAugmentProvider extends PsiAugmentProvider {
 
     private static final Key<CachedValue<PsiClass>> BUILDER_CLASS_KEY = Key.create("synthetic.class.builder");
     private static final Key<CachedValue<PsiMethod>> BUILDER_METHOD_KEY = Key.create("synthetic.method.builder");
+    private static final Key<CachedValue<PsiMethod>> BUILDER_METHOD_2_KEY = Key.create("synthetic.method.builder2");
     private static final Key<CachedValue<PsiClass>> QUERY_CLASS_KEY = Key.create("synthetic.class.query");
     private static final Key<CachedValue<PsiMethod>> QUERY_METHOD_KEY = Key.create("synthetic.method.query");
+    private static final Key<CachedValue<PsiMethod>> QUERY_METHOD_2_KEY = Key.create("synthetic.method.query2");
     private static final Key<CachedValue<PsiClass>> QUERY_WHERE_CLASS_KEY = Key.create("synthetic.class.query.where");
+
+    private static final ThreadLocal<Set<PsiClass>> IN_PROGRESS = ThreadLocal.withInitial(HashSet::new);
 
 
     @Override
@@ -40,6 +45,18 @@ public class DataPsiAugmentProvider extends PsiAugmentProvider {
             return Collections.emptyList();
         }
 
+        Set<PsiClass> inProgress = IN_PROGRESS.get();
+        if (!inProgress.add(psiClass)) {
+            return Collections.emptyList();
+        }
+        try {
+            return doGetAugments(psiClass, type);
+        } finally {
+            inProgress.remove(psiClass);
+        }
+    }
+
+    private @NotNull <Psi extends PsiElement> List<Psi> doGetAugments(@NotNull PsiClass psiClass, @NotNull Class<Psi> type) {
         if (!IntelliJPluginUtils.extendsClass(psiClass, Constants.UNIQUE_DATA_FQN)) {
             return Collections.emptyList();
         }
@@ -81,81 +98,61 @@ public class DataPsiAugmentProvider extends PsiAugmentProvider {
     }
 
     private PsiMethod getBuilderMethod(PsiClass parent) {
-//        return CachedValuesManager.getCachedValue(parent, () -> {
-//            PsiClass builderClass = getBuilderClass(parent);
-//            PsiType returnType = JavaPsiFacade.getElementFactory(parent.getProject())
-//                    .createType(builderClass, PsiSubstitutor.EMPTY);
-//            SyntheticBuilderMethod builderMethod = new SyntheticBuilderMethod(parent, "builder", returnType);
-//            return CachedValueProvider.Result.create(builderMethod, parent);
-//        });
-        PsiClass builderClass = getBuilderClass(parent);
-        PsiType returnType = JavaPsiFacade.getElementFactory(parent.getProject())
-                .createType(builderClass, PsiSubstitutor.EMPTY);
-        SyntheticMethod builderMethod = new SyntheticMethod(parent, parent, "builder", returnType);
-        builderMethod.addModifier(PsiModifier.PUBLIC);
-        builderMethod.addModifier(PsiModifier.STATIC);
-        builderMethod.addModifier(PsiModifier.FINAL);
-        return builderMethod;
+        return CachedValuesManager.getCachedValue(parent, BUILDER_METHOD_KEY, () -> {
+            PsiClass builderClass = getBuilderClass(parent);
+            PsiType returnType = JavaPsiFacade.getElementFactory(parent.getProject())
+                    .createType(builderClass, PsiSubstitutor.EMPTY);
+            SyntheticMethod builderMethod = new SyntheticMethod(parent, parent, "builder", returnType);
+            builderMethod.addModifier(PsiModifier.PUBLIC);
+            builderMethod.addModifier(PsiModifier.STATIC);
+            builderMethod.addModifier(PsiModifier.FINAL);
+            return CachedValueProvider.Result.create(builderMethod, parent);
+        });
     }
 
     private PsiMethod getBuilderMethod2(PsiClass parent) {
-//        return CachedValuesManager.getCachedValue(parent, () -> {
-//            PsiClass builderClass = getBuilderClass(parent);
-//            PsiType returnType = JavaPsiFacade.getElementFactory(parent.getProject())
-//                    .createType(builderClass, PsiSubstitutor.EMPTY);
-//            SyntheticBuilderMethod builderMethod = new SyntheticBuilderMethod(parent, "builder", returnType);
-//            return CachedValueProvider.Result.create(builderMethod, parent);
-//        });
-        PsiClass builderClass = getBuilderClass(parent);
-        PsiType returnType = JavaPsiFacade.getElementFactory(parent.getProject())
-                .createType(builderClass, PsiSubstitutor.EMPTY);
-        SyntheticMethod builderMethod = new SyntheticMethod(parent, parent, "builder", returnType);
-        PsiType dataManagerType = JavaPsiFacade.getElementFactory(parent.getProject())
-                .createTypeFromText("net.staticstudios.data.DataManager", parent);
-        builderMethod.addParameter("dataManager", dataManagerType);
-        builderMethod.addModifier(PsiModifier.PUBLIC);
-        builderMethod.addModifier(PsiModifier.STATIC);
-        builderMethod.addModifier(PsiModifier.FINAL);
-        return builderMethod;
+        return CachedValuesManager.getCachedValue(parent, BUILDER_METHOD_2_KEY, () -> {
+            PsiClass builderClass = getBuilderClass(parent);
+            PsiType returnType = JavaPsiFacade.getElementFactory(parent.getProject())
+                    .createType(builderClass, PsiSubstitutor.EMPTY);
+            SyntheticMethod builderMethod = new SyntheticMethod(parent, parent, "builder", returnType);
+            PsiType dataManagerType = JavaPsiFacade.getElementFactory(parent.getProject())
+                    .createTypeFromText("net.staticstudios.data.DataManager", parent);
+            builderMethod.addParameter("dataManager", dataManagerType);
+            builderMethod.addModifier(PsiModifier.PUBLIC);
+            builderMethod.addModifier(PsiModifier.STATIC);
+            builderMethod.addModifier(PsiModifier.FINAL);
+            return CachedValueProvider.Result.create(builderMethod, parent);
+        });
     }
 
     private PsiMethod getQueryMethod(PsiClass parent) {
-//        return CachedValuesManager.getCachedValue(parent, () -> {
-//            PsiClass builderClass = getBuilderClass(parent);
-//            PsiType returnType = JavaPsiFacade.getElementFactory(parent.getProject())
-//                    .createType(builderClass, PsiSubstitutor.EMPTY);
-//            SyntheticBuilderMethod builderMethod = new SyntheticBuilderMethod(parent, "builder", returnType);
-//            return CachedValueProvider.Result.create(builderMethod, parent);
-//        });
-        PsiClass queryClass = getQueryClass(parent);
-        PsiType returnType = JavaPsiFacade.getElementFactory(parent.getProject())
-                .createType(queryClass, PsiSubstitutor.EMPTY);
-        SyntheticMethod builderMethod = new SyntheticMethod(parent, parent, "query", returnType);
-        builderMethod.addModifier(PsiModifier.PUBLIC);
-        builderMethod.addModifier(PsiModifier.STATIC);
-        builderMethod.addModifier(PsiModifier.FINAL);
-        return builderMethod;
+        return CachedValuesManager.getCachedValue(parent, QUERY_METHOD_KEY, () -> {
+            PsiClass queryClass = getQueryClass(parent);
+            PsiType returnType = JavaPsiFacade.getElementFactory(parent.getProject())
+                    .createType(queryClass, PsiSubstitutor.EMPTY);
+            SyntheticMethod queryMethod = new SyntheticMethod(parent, parent, "query", returnType);
+            queryMethod.addModifier(PsiModifier.PUBLIC);
+            queryMethod.addModifier(PsiModifier.STATIC);
+            queryMethod.addModifier(PsiModifier.FINAL);
+            return CachedValueProvider.Result.create(queryMethod, parent);
+        });
     }
 
     private PsiMethod getQueryMethod2(PsiClass parent) {
-//        return CachedValuesManager.getCachedValue(parent, () -> {
-//            PsiClass builderClass = getBuilderClass(parent);
-//            PsiType returnType = JavaPsiFacade.getElementFactory(parent.getProject())
-//                    .createType(builderClass, PsiSubstitutor.EMPTY);
-//            SyntheticBuilderMethod builderMethod = new SyntheticBuilderMethod(parent, "builder", returnType);
-//            return CachedValueProvider.Result.create(builderMethod, parent);
-//        });
-        PsiClass queryClass = getQueryClass(parent);
-        PsiType returnType = JavaPsiFacade.getElementFactory(parent.getProject())
-                .createType(queryClass, PsiSubstitutor.EMPTY);
-        SyntheticMethod builderMethod = new SyntheticMethod(parent, parent, "query", returnType);
-        PsiType dataManagerType = JavaPsiFacade.getElementFactory(parent.getProject())
-                .createTypeFromText("net.staticstudios.data.DataManager", parent);
-        builderMethod.addParameter("dataManager", dataManagerType);
-        builderMethod.addModifier(PsiModifier.PUBLIC);
-        builderMethod.addModifier(PsiModifier.STATIC);
-        builderMethod.addModifier(PsiModifier.FINAL);
-        return builderMethod;
+        return CachedValuesManager.getCachedValue(parent, QUERY_METHOD_2_KEY, () -> {
+            PsiClass queryClass = getQueryClass(parent);
+            PsiType returnType = JavaPsiFacade.getElementFactory(parent.getProject())
+                    .createType(queryClass, PsiSubstitutor.EMPTY);
+            SyntheticMethod queryMethod = new SyntheticMethod(parent, parent, "query", returnType);
+            PsiType dataManagerType = JavaPsiFacade.getElementFactory(parent.getProject())
+                    .createTypeFromText("net.staticstudios.data.DataManager", parent);
+            queryMethod.addParameter("dataManager", dataManagerType);
+            queryMethod.addModifier(PsiModifier.PUBLIC);
+            queryMethod.addModifier(PsiModifier.STATIC);
+            queryMethod.addModifier(PsiModifier.FINAL);
+            return CachedValueProvider.Result.create(queryMethod, parent);
+        });
     }
 
     private SyntheticBuilderClass createBuilderBuilderClass(PsiClass parentClass) {
@@ -170,6 +167,7 @@ public class DataPsiAugmentProvider extends PsiAugmentProvider {
             PsiType innerType = IntelliJPluginUtils.getGenericParameter(psiClassType, parentClass.getManager());
             if (IntelliJPluginUtils.isValidPersistentValue(psiField)) {
                 SyntheticMethod setterMethod = new SyntheticMethod(parentClass, builderClass, psiField.getName(), builderType);
+                setterMethod.setSourceField(psiField);
                 setterMethod.addParameter(psiField.getName(), innerType);
                 setterMethod.addModifier(PsiModifier.PUBLIC);
                 setterMethod.addModifier(PsiModifier.FINAL);
@@ -251,6 +249,7 @@ public class DataPsiAugmentProvider extends PsiAugmentProvider {
         for (PsiField psiField : parentClass.getAllFields()) {
             if (IntelliJPluginUtils.isValidPersistentValue(psiField)) {
                 SyntheticMethod orderByMethod = new SyntheticMethod(parentClass, queryClass, "orderBy" + StringUtil.capitalize(psiField.getName()), queryType);
+                orderByMethod.setSourceField(psiField);
                 orderByMethod.addParameter("order", orderType);
                 orderByMethod.addModifier(PsiModifier.PUBLIC);
                 orderByMethod.addModifier(PsiModifier.FINAL);
@@ -331,6 +330,7 @@ public class DataPsiAugmentProvider extends PsiAugmentProvider {
             for (QueryClause clause : clauses) {
                 String methodName = clause.getMethodName(psiField.getName());
                 SyntheticMethod queryMethod = new SyntheticMethod(parentClass, whereClass, methodName, whereType);
+                queryMethod.setSourceField(psiField);
                 List<PsiParameter> parameterTypes = clause.getMethodParamTypes(parentClass.getManager(), innerType, queryMethod);
                 for (PsiParameter parameterType : parameterTypes) {
                     queryMethod.addParameter(parameterType);
