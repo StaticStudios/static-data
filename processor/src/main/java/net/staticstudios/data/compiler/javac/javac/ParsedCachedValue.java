@@ -80,7 +80,7 @@ public class ParsedCachedValue extends ParsedValue {
 
     @Override
     public String toString() {
-        return "PersistentValue{" +
+        return "ParsedCacheValue{" +
                 "fieldName='" + fieldName + '\'' +
                 ", schema='" + schema + '\'' +
                 ", table='" + table + '\'' +
