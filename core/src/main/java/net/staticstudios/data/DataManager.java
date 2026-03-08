@@ -43,7 +43,7 @@ import java.util.function.Consumer;
 
 @ApiStatus.Internal
 public class DataManager {
-    private static final Map<UUID, DataManager> DATA_MANAGER_INSTANCES = new HashMap<>();
+    private static final Map<UUID, DataManager> DATA_MANAGER_INSTANCES = new ConcurrentHashMap<>();
     private static Boolean useGlobal = null;
     private static DataManager instance;
     private final Logger logger = LoggerFactory.getLogger(this.getClass());
