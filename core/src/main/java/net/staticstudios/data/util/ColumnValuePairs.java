@@ -16,6 +16,15 @@ public final class ColumnValuePairs implements Iterable<ColumnValuePair> {
         Arrays.sort(this.pairs, Comparator.comparing(ColumnValuePair::column));
     }
 
+    public static Object getValue(String column, ColumnValuePairs pairs) {
+        for (ColumnValuePair pair : pairs) {
+            if (pair.column().equals(column)) {
+                return pair.value();
+            }
+        }
+        return null;
+    }
+
     public ColumnValuePair[] getPairs() {
         return pairs;
     }

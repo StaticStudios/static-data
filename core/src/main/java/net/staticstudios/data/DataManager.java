@@ -64,8 +64,10 @@ public class DataManager {
     private final Set<CachedValueMetadata> registeredUpdateHandlersForRedis = ConcurrentHashMap.newKeySet();
     private final Set<PersistentCollectionMetadata> registeredChangeHandlersForCollection = ConcurrentHashMap.newKeySet();
     private final Set<ReferenceMetadata> registeredUpdateHandlersForReference = ConcurrentHashMap.newKeySet();
-    private final Cache<SelectQuery, ReadCacheResult> readCache;
-    private final Map<Cell, Set<SelectQuery>> dependencyToCacheMapping = new ConcurrentHashMap<>();
+    private final Cache<SelectQuery, ReadCacheResult> relationCache;
+    private final Map<Cell, Set<SelectQuery>> dependencyToRelationCacheMapping = new ConcurrentHashMap<>();
+    private final Cache<SelectQuery, ReadCacheResult> cellCache;
+    private final Map<Cell, Set<SelectQuery>> dependencyToCellCacheMapping = new ConcurrentHashMap<>();
 
     private final List<ValueSerializer<?, ?>> valueSerializers = new CopyOnWriteArrayList<>();
     private final Consumer<Runnable> updateHandlerExecutor;
@@ -104,13 +106,15 @@ public class DataManager {
         dataAccessor = new H2DataAccessor(this, postgresListener, redisListener, taskQueue);
 
         //todo: params for cache should be configurable
-        this.readCache = Caffeine.newBuilder()
-                .maximumSize(50_000)
+        this.relationCache = Caffeine.newBuilder()
+                .maximumSize(10_000)
                 .expireAfterWrite(5, TimeUnit.MINUTES)
-                .removalListener((SelectQuery selectQuery, ReadCacheResult result, RemovalCause cause) -> {
-                    cleanupReadCacheEntry(selectQuery, result);
-
-                })
+                .removalListener((SelectQuery selectQuery, ReadCacheResult result, RemovalCause cause) -> cleanupRelationCacheEntry(selectQuery, result))
+                .build();
+        this.cellCache = Caffeine.newBuilder()
+                .maximumSize(20_000)
+                .expireAfterWrite(5, TimeUnit.MINUTES)
+                .removalListener((SelectQuery selectQuery, ReadCacheResult result, RemovalCause cause) -> cleanupCellCacheEntry(selectQuery, result))
                 .build();
 
         //todo: when we reconnect to postgres, refresh the internal cache from the source
@@ -1062,7 +1066,7 @@ public class DataManager {
 
         boolean exists;
 
-        StringBuilder sqlBuilder = new StringBuilder(); //todo: this query should be cached in the unique data metadata. no need to constantly allocate strings
+        StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("SELECT 1 FROM \"").append(schema).append("\".\"").append(table).append("\" WHERE ");
         for (ColumnValuePair columnValuePair : idColumns) {
             sqlBuilder.append("\"").append(columnValuePair.column()).append("\" = ? AND ");
@@ -1076,7 +1080,7 @@ public class DataManager {
         }
         SelectQuery selectQuery = new SelectQuery(sql, values);
 
-        ReadCacheResult cacheResult = getReadCacheResult(selectQuery);
+        ReadCacheResult cacheResult = getRelationCacheResult(selectQuery);
         if (cacheResult != null) {
             exists = true;
         } else {
@@ -1089,7 +1093,7 @@ public class DataManager {
                         dependencies.add(new Cell(schema, table, columnValuePair.column(), idColumns));
                     }
                     ReadCacheResult result = new ReadCacheResult(ColumnValuePairs.EMPTY, dependencies);
-                    putReadCacheResult(selectQuery, result);
+                    putRelationCacheResult(selectQuery, result);
                 }
 
             } catch (SQLException e) {
@@ -1279,7 +1283,6 @@ public class DataManager {
     }
 
     public <T> T get(String schema, String table, String column, ColumnValuePairs idColumns, List<Link> idColumnLinks, Class<T> dataType) {
-        //todo: caffeine cache for these as well.
         StringBuilder sqlBuilder = new StringBuilder().append("SELECT \"").append(column).append("\" FROM \"").append(schema).append("\".\"").append(table).append("\" WHERE ");
         for (ColumnValuePair columnValuePair : idColumns) {
             String name = columnValuePair.column();
@@ -1293,13 +1296,43 @@ public class DataManager {
         }
         sqlBuilder.setLength(sqlBuilder.length() - 5);
         @Language("SQL") String sql = sqlBuilder.toString();
-        try (ResultSet rs = dataAccessor.executeQuery(sql, idColumns.stream().map(ColumnValuePair::value).toList())) {
+
+        List<Object> values = new ArrayList<>();
+        for (ColumnValuePair columnValuePair : idColumns) {
+            values.add(columnValuePair.value());
+        }
+
+        SelectQuery selectQuery = new SelectQuery(sql, values);
+        if (idColumnLinks.isEmpty()) {
+            ReadCacheResult cacheResult = getCellCacheResult(selectQuery);
+            if (cacheResult != null) {
+                return (T) cacheResult.getValue();
+            }
+        }
+
+        try (ResultSet rs = dataAccessor.executeQuery(sql, values)) {
             Object serializedValue = null;
             if (rs.next()) {
                 serializedValue = rs.getObject(column, getSerializedType(dataType));
             }
             //todo: do some type validation here, either on the serialized or un serialized type. this method will be exposed so we need to be careful
-            return deserialize(dataType, serializedValue);
+            T deserialized = deserialize(dataType, serializedValue);
+
+            if (!idColumnLinks.isEmpty()) {
+                return deserialized; // it is less trivial to invalidate columns in another table/with links.
+            }
+
+            Set<Cell> dependencies = new HashSet<>();
+
+            for (ColumnValuePair columnValuePair : idColumns) {
+                String name = columnValuePair.column();
+                dependencies.add(new Cell(schema, table, name, idColumns));
+            }
+            dependencies.add(new Cell(schema, table, column, idColumns));
+            ReadCacheResult result = new ReadCacheResult(deserialized, dependencies);
+            putCellCacheResult(selectQuery, result);
+            return deserialized;
+
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
@@ -1586,24 +1619,30 @@ public class DataManager {
         }).join();
     }
 
-    public Optional<StaticDataStatistics> getStatistics() {
-        return dataAccessor.getStatistics();
+    public StaticDataStatistics getStatistics() {
+        StaticDataStatistics stats = new StaticDataStatistics();
+        dataAccessor.populateStatistics(stats);
+        stats.setRelationCacheSize((int) relationCache.estimatedSize());
+        stats.setDependenciesToRelationsCacheMappingSize(dependencyToRelationCacheMapping.size());
+        stats.setCellCacheSize((int) cellCache.estimatedSize());
+        stats.setDependenciesToCellCacheMappingSize(dependencyToCellCacheMapping.size());
+        return stats;
     }
 
-    public @Nullable ReadCacheResult getReadCacheResult(SelectQuery query) {
-        return readCache.getIfPresent(query);
+    public @Nullable ReadCacheResult getRelationCacheResult(SelectQuery query) {
+        return relationCache.getIfPresent(query);
     }
 
-    public void putReadCacheResult(SelectQuery query, @NotNull ReadCacheResult result) {
-        logger.trace("Putting result in read cache for query {} with result {}", query, result);
-        readCache.put(query, result);
+    public void putRelationCacheResult(SelectQuery query, @NotNull ReadCacheResult result) {
+        logger.trace("Putting result in relation cache for query {} with result {}", query, result);
+        relationCache.put(query, result);
         for (Cell cell : result.getDependencies()) {
-            dependencyToCacheMapping.computeIfAbsent(cell, k -> new HashSet<>())
+            dependencyToRelationCacheMapping.computeIfAbsent(cell, k -> ConcurrentHashMap.newKeySet())
                     .add(query);
         }
     }
 
-    public void invalidateReadCache(List<String> columnNames, String schema, String table, List<String> changedColumns, Object[] oldValues) {
+    public void invalidateRelationCache(List<String> columnNames, String schema, String table, List<String> changedColumns, Object[] oldValues) {
         for (UniqueDataMetadata metadata : uniqueDataMetadataMap.values()) {
             if (metadata.schema().equals(schema) && metadata.table().equals(table)) {
                 ColumnValuePair[] idColumns = new ColumnValuePair[metadata.idColumns().size()];
@@ -1622,17 +1661,11 @@ public class DataManager {
                 ColumnValuePairs idCols = new ColumnValuePairs(idColumns);
                 for (String changedColumn : changedColumns) {
                     Cell cell = new Cell(schema, table, changedColumn, idCols);
-                    Set<SelectQuery> queries = dependencyToCacheMapping.remove(cell);
+                    Set<SelectQuery> queries = dependencyToRelationCacheMapping.remove(cell);
                     if (queries != null) {
                         for (SelectQuery query : queries) {
-                            ReadCacheResult res = readCache.getIfPresent(query);
-                            readCache.invalidate(query);
-
-                            if (res != null) {
-                                cleanupReadCacheEntry(query, res);
-                            }
-
-                            logger.trace("Invalidated read cache for query {} due to change in cell {}", query, cell);
+                            relationCache.invalidate(query);
+                            logger.trace("Invalidated relation cache for query {} due to change in cell {}", query, cell);
                         }
                     }
                 }
@@ -1640,13 +1673,69 @@ public class DataManager {
         }
     }
 
-    private void cleanupReadCacheEntry(@NotNull SelectQuery query, @NotNull ReadCacheResult res) {
+    private void cleanupRelationCacheEntry(@NotNull SelectQuery query, @NotNull ReadCacheResult res) {
         for (Cell dependency : res.getDependencies()) {
-            Set<SelectQuery> dependentQueries = dependencyToCacheMapping.get(dependency);
+            Set<SelectQuery> dependentQueries = dependencyToRelationCacheMapping.get(dependency);
             if (dependentQueries != null) {
                 dependentQueries.remove(query);
                 if (dependentQueries.isEmpty()) {
-                    dependencyToCacheMapping.remove(dependency);
+                    dependencyToRelationCacheMapping.remove(dependency);
+                }
+            }
+        }
+    }
+
+    public @Nullable ReadCacheResult getCellCacheResult(SelectQuery query) {
+        return cellCache.getIfPresent(query);
+    }
+
+    public void putCellCacheResult(SelectQuery query, @NotNull ReadCacheResult result) {
+        logger.trace("Putting result in cell cache for query {} with result {}", query, result);
+        cellCache.put(query, result);
+        for (Cell cell : result.getDependencies()) {
+            dependencyToCellCacheMapping.computeIfAbsent(cell, k -> ConcurrentHashMap.newKeySet())
+                    .add(query);
+        }
+    }
+
+    public void invalidateCellCache(List<String> columnNames, String schema, String table, List<String> changedColumns, Object[] oldValues) {
+        for (UniqueDataMetadata metadata : uniqueDataMetadataMap.values()) {
+            if (metadata.schema().equals(schema) && metadata.table().equals(table)) {
+                ColumnValuePair[] idColumns = new ColumnValuePair[metadata.idColumns().size()];
+                for (ColumnMetadata idColumn : metadata.idColumns()) {
+                    boolean found = false;
+                    for (int i = 0; i < columnNames.size(); i++) {
+                        if (idColumn.name().equals(columnNames.get(i))) {
+                            idColumns[metadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), oldValues[i]);
+                            found = true;
+                            break;
+                        }
+                    }
+                    Preconditions.checkArgument(found, "Not all ID columnsInReferringTable were provided for UniqueData class %s. Required: %s, Provided: %s", metadata.clazz().getName(), metadata.idColumns(), Arrays.toString(oldValues));
+                }
+
+                ColumnValuePairs idCols = new ColumnValuePairs(idColumns);
+                for (String changedColumn : changedColumns) {
+                    Cell cell = new Cell(schema, table, changedColumn, idCols);
+                    Set<SelectQuery> queries = dependencyToCellCacheMapping.remove(cell);
+                    if (queries != null) {
+                        for (SelectQuery query : queries) {
+                            cellCache.invalidate(query);
+                            logger.trace("Invalidated cell cache for query {} due to change in cell {}", query, cell);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private void cleanupCellCacheEntry(@NotNull SelectQuery query, @NotNull ReadCacheResult res) {
+        for (Cell dependency : res.getDependencies()) {
+            Set<SelectQuery> dependentQueries = dependencyToCellCacheMapping.get(dependency);
+            if (dependentQueries != null) {
+                dependentQueries.remove(query);
+                if (dependentQueries.isEmpty()) {
+                    dependencyToCellCacheMapping.remove(dependency);
                 }
             }
         }

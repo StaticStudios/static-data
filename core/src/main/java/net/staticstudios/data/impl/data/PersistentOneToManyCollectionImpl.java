@@ -405,7 +405,6 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
     public Set<ColumnValuePairs> getIds() {
         // note: we need the join since we support linking on non-id columnsInReferringTable
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot get entries on a deleted UniqueData instance");
-        Set<ColumnValuePairs> ids = new HashSet<>();
         UniqueDataMetadata holderMetadata = holder.getMetadata();
         UniqueDataMetadata typeMetadata = holder.getDataManager().getMetadata(type);
         DataAccessor dataAccessor = holder.getDataManager().getDataAccessor();
@@ -429,17 +428,28 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         sqlBuilder.setLength(sqlBuilder.length() - 5);
         sqlBuilder.append(" WHERE ");
 
-        for (Link entry : link) {
-            String theirColumn = entry.columnInReferencedTable();
-            sqlBuilder.append("\"").append(typeMetadata.schema()).append("\".\"").append(typeMetadata.table()).append("\".\"").append(theirColumn).append("\" = \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\".\"").append(entry.columnInReferringTable()).append("\" AND ");
-        }
         for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
             sqlBuilder.append("\"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\".\"").append(columnValuePair.column()).append("\" = ? AND ");
         }
         sqlBuilder.setLength(sqlBuilder.length() - 5);
 
         @Language("SQL") String sql = sqlBuilder.toString();
-        try (ResultSet rs = dataAccessor.executeQuery(sql, holder.getIdColumns().stream().map(ColumnValuePair::value).toList())) {
+
+        List<Object> values = new ArrayList<>();
+        for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
+            values.add(columnValuePair.value());
+        }
+//
+//        SelectQuery query = new SelectQuery(sql, values);
+//        ReadCacheResult result = holder.getDataManager().getRelationCacheResult(query);
+//
+//        if (result != null) {
+//            Set<ColumnValuePairs> cachedIds = (Set<ColumnValuePairs>) result.getValues();
+//            return cachedIds;
+//        }
+
+        Set<ColumnValuePairs> ids = new HashSet<>();
+        try (ResultSet rs = dataAccessor.executeQuery(sql, values)) {
             while (rs.next()) {
                 int i = 0;
                 ColumnValuePair[] idColumns = new ColumnValuePair[typeMetadata.idColumns().size()];
@@ -452,6 +462,26 @@ public class PersistentOneToManyCollectionImpl<T extends UniqueData> implements 
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+
+//        Set<Cell> dependencies = new HashSet<>();
+//        for (Link entry : link) {
+//            String myColumn = entry.columnInReferringTable();
+//            String theirColumn = entry.columnInReferencedTable();
+//            dependencies.add(new Cell(holderMetadata.schema(), holderMetadata.table(), myColumn, holder.getIdColumns()));
+//            for (ColumnValuePairs themIdColumns : ids) {
+//                dependencies.add(new Cell(typeMetadata.schema(), typeMetadata.table(), theirColumn, themIdColumns));
+//            }
+//        }
+//
+//        for (ColumnValuePairs themIdColumns : ids) {
+//            for (ColumnMetadata idColumn : typeMetadata.idColumns()) {
+//                dependencies.add(new Cell(typeMetadata.schema(), typeMetadata.table(), idColumn.name(), themIdColumns));
+//            }
+//        }
+//
+//        holder.getDataManager().putRelationCacheResult(query, new ReadCacheResult(ids, dependencies));
+
+        //note about caching: we need a way to invalidate entries when a new row is now a valid part of the collection.
 
         return ids;
     }

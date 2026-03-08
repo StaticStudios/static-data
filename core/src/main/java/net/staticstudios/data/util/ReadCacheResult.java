@@ -1,25 +1,18 @@
 package net.staticstudios.data.util;
 
-import org.jetbrains.annotations.Nullable;
-
 import java.util.Set;
 
 public class ReadCacheResult {
-    private final ColumnValuePairs columnValuePairs;
+    private final Object value;
     private final Set<Cell> dependencies;
 
-    public ReadCacheResult(ColumnValuePairs columnValuePairs, Set<Cell> dependencies) {
-        this.columnValuePairs = columnValuePairs;
+    public ReadCacheResult(Object value, Set<Cell> dependencies) {
+        this.value = value;
         this.dependencies = dependencies;
     }
 
-    public @Nullable Object getValue(String column) {
-        for (ColumnValuePair pair : columnValuePairs) {
-            if (pair.column().equals(column)) {
-                return pair.value();
-            }
-        }
-        return null;
+    public Object getValue() {
+        return value;
     }
 
     public Set<Cell> getDependencies() {
@@ -29,7 +22,7 @@ public class ReadCacheResult {
     @Override
     public String toString() {
         return "ReadCacheResult[" +
-                "columnValuePairs=" + columnValuePairs + ", " +
-                "dependencies=" + dependencies + ']';
+                "values=" + value +
+                ", dependencies=" + dependencies + ']';
     }
 }

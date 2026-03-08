@@ -116,14 +116,15 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
 
         SelectQuery query = metadata.buildSelectReferencedColumnValuePairsSelectQuery(holder.getDataManager(), values);
 
-        ReadCacheResult cached = dataManager.getReadCacheResult(query);
+        ReadCacheResult cached = dataManager.getRelationCacheResult(query);
 
         if (cached != null) {
+            ColumnValuePairs columnValuePairs = (ColumnValuePairs) cached.getValue();
             List<ColumnMetadata> refIdColumns = referencedMetadata.idColumns();
             ColumnValuePair[] idColumns = new ColumnValuePair[refIdColumns.size()];
             for (int i = 0; i < refIdColumns.size(); i++) {
                 ColumnMetadata idColumn = refIdColumns.get(i);
-                Object val = cached.getValue(idColumn.name());
+                Object val = ColumnValuePairs.getValue(idColumn.name(), columnValuePairs);
                 if (val == null) {
                     return null;
                 }
@@ -173,7 +174,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
             }
 
             ReadCacheResult cacheResult = new ReadCacheResult(theirIdColumns, dependencies);
-            dataManager.putReadCacheResult(query, cacheResult);
+            dataManager.putRelationCacheResult(query, cacheResult);
 
             return theirIdColumns;
         } catch (SQLException e) {

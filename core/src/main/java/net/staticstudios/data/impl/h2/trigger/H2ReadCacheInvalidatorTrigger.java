@@ -76,10 +76,16 @@ public class H2ReadCacheInvalidatorTrigger implements Trigger {
             }
         }
 
-        dataAccessor.onCommit(() -> dataManager.invalidateReadCache(columnNames, schema, table, changedColumns, oldRow));
+        dataAccessor.onCommit(() -> {
+            dataManager.invalidateRelationCache(columnNames, schema, table, changedColumns, oldRow);
+            dataManager.invalidateCellCache(columnNames, schema, table, changedColumns, oldRow);
+        });
     }
 
     private void handleDelete(Object[] oldRow) {
-        dataAccessor.onCommit(() -> dataManager.invalidateReadCache(columnNames, schema, table, columnNames, oldRow));
+        dataAccessor.onCommit(() -> {
+            dataManager.invalidateRelationCache(columnNames, schema, table, columnNames, oldRow);
+            dataManager.invalidateCellCache(columnNames, schema, table, columnNames, oldRow);
+        });
     }
 }

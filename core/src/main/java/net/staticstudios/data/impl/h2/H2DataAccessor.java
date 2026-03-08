@@ -912,7 +912,8 @@ public class H2DataAccessor implements DataAccessor {
     }
 
     @Override
-    public Optional<StaticDataStatistics> getStatistics() {
-        return Optional.of(new StaticDataStatistics((long) h2QueryCounter.getPerSecond(), (long) h2UpdateCounter.getPerSecond()));
+    public void populateStatistics(StaticDataStatistics stats) {
+        stats.setQueriesPerSecond((long) getH2QueriesPerSecond());
+        stats.setUpdatesPerSecond((long) getH2UpdatesPerSecond());
     }
 }
