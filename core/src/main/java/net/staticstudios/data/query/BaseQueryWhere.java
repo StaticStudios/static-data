@@ -178,7 +178,7 @@ public abstract class BaseQueryWhere {
     protected void cachedValueNotNullClause(String schema, String table, String identifier) {
         setValueClause(new CachedValueNotNullClause(schema, table, identifier));
     }
-    
+
     private void setConditionalClause(Clause clause) {
         Preconditions.checkState(root != null, "Invalid state! Cannot set conditional clause '" + clause + "' here!");
         if (root.clause instanceof ConditionalClause) {
@@ -234,7 +234,7 @@ public abstract class BaseQueryWhere {
                 columnValuePairs.add(new ColumnValuePair(equalsClause.getColumn(), equalsClause.getValue()));
                 return true;
             }
-        } else if (node.clause instanceof ConditionalClause) {
+        } else if (node.clause instanceof AndClause) {
             return isSpecialOnlyUseIdColumnsRecursive(node.lhs, schema, table, columns, columnValuePairs) && isSpecialOnlyUseIdColumnsRecursive(node.rhs, schema, table, columns, columnValuePairs);
         }
         return false;

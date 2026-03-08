@@ -669,6 +669,9 @@ public class H2DataAccessor implements DataAccessor {
                 logger.trace("[H2] {}", updateSb);
                 preparedStatement.executeUpdate();
                 h2UpdateCounter.increment();
+            } catch (Exception e) {
+                connection.rollback();
+                logger.error("Error updating Redis cache in H2", e);
             } finally {
                 if (autoCommit) {
                     connection.setAutoCommit(true);

@@ -22,7 +22,7 @@ public class ReadCacheResult {
     @Override
     public String toString() {
         return "ReadCacheResult[" +
-                "values=" + value +
+                "value=" + value +
                 ", dependencies=" + dependencies + ']';
     }
 }
