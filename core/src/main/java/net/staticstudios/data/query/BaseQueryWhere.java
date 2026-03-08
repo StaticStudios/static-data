@@ -2,13 +2,14 @@ package net.staticstudios.data.query;
 
 import com.google.common.base.Preconditions;
 import net.staticstudios.data.query.clause.*;
+import net.staticstudios.data.util.ColumnMetadata;
+import net.staticstudios.data.util.ColumnValuePair;
+import net.staticstudios.data.util.ColumnValuePairs;
+import net.staticstudios.data.util.UniqueDataMetadata;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.Stack;
+import java.util.*;
 
 @SuppressWarnings("unused")
 public abstract class BaseQueryWhere {
@@ -178,6 +179,39 @@ public abstract class BaseQueryWhere {
 
     public void buildWhereClause(StringBuilder sb, List<Object> parameters) {
         buildWhereClauseRecursive(root, sb, parameters);
+    }
+
+    public ColumnValuePairs isSpecialOnlyUseIdColumns(UniqueDataMetadata metadata) {
+        if (root == null) {
+            return null;
+        }
+
+        List<String> idColumns = new ArrayList<>(metadata.idColumns().size());
+        for (ColumnMetadata idColumn : metadata.idColumns()) {
+            idColumns.add(idColumn.name());
+        }
+
+        List<ColumnValuePair> columnValuePairs = new ArrayList<>();
+        boolean success = isSpecialOnlyUseIdColumnsRecursive(root, metadata.schema(), metadata.table(), idColumns, columnValuePairs) && idColumns.isEmpty();
+        if (success) {
+            return new ColumnValuePairs(columnValuePairs.toArray(ColumnValuePair[]::new));
+        }
+
+        return null;
+    }
+
+    private boolean isSpecialOnlyUseIdColumnsRecursive(Node node, String schema, String table, List<String> columns, List<ColumnValuePair> columnValuePairs) {
+        if (node.clause instanceof EqualsClause equalsClause) {
+            if (Objects.equals(equalsClause.getSchema(), schema) &&
+                    Objects.equals(equalsClause.getTable(), table) &&
+                    columns.remove(equalsClause.getColumn())) {
+                columnValuePairs.add(new ColumnValuePair(equalsClause.getColumn(), equalsClause.getValue()));
+                return true;
+            }
+        } else if (node.clause instanceof ConditionalClause) {
+            return isSpecialOnlyUseIdColumnsRecursive(node.lhs, schema, table, columns, columnValuePairs) && isSpecialOnlyUseIdColumnsRecursive(node.rhs, schema, table, columns, columnValuePairs);
+        }
+        return false;
     }
 
     static class Node {

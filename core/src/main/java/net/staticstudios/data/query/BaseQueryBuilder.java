@@ -3,6 +3,8 @@ package net.staticstudios.data.query;
 import net.staticstudios.data.DataManager;
 import net.staticstudios.data.Order;
 import net.staticstudios.data.UniqueData;
+import net.staticstudios.data.util.ColumnValuePairs;
+import net.staticstudios.data.util.UniqueDataMetadata;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -43,6 +45,12 @@ public abstract class BaseQueryBuilder<T extends UniqueData, W extends BaseQuery
     }
 
     public @Nullable T findOne() {
+        UniqueDataMetadata metadata = dataManager.getMetadata(type);
+        ColumnValuePairs specialCaseColumnValuePairs = where.isSpecialOnlyUseIdColumns(metadata);
+        if (specialCaseColumnValuePairs != null) {
+            return dataManager.getInstance(type, specialCaseColumnValuePairs);
+        }
+
         ComputedClause computed = compute();
         List<T> result = dataManager.query(type, computed.sql(), computed.parameters());
         if (result.isEmpty()) {
@@ -55,7 +63,6 @@ public abstract class BaseQueryBuilder<T extends UniqueData, W extends BaseQuery
         ComputedClause computed = compute();
         return dataManager.query(type, computed.sql(), computed.parameters());
     }
-
 
     private ComputedClause compute() {
         StringBuilder sb = new StringBuilder();
