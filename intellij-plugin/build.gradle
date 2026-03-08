@@ -25,3 +25,11 @@ java {
         languageVersion = JavaLanguageVersion.of(17)
     }
 }
+
+intellijPlatform {
+    pluginVerification {
+        ides {
+            recommended()
+        }
+    }
+}
