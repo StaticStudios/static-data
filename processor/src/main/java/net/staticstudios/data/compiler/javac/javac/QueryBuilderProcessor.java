@@ -1434,7 +1434,7 @@ public class QueryBuilderProcessor extends AbstractBuilderProcessor {
             ), builderClassDecl);
         }
 
-        public void addCachedValueIsNotInArrayMethod(ParsedCachedValue cv, String schemaFieldName, String tableFieldName, String identifierFieldName) {
+        private void addCachedValueIsNotInArrayMethod(ParsedCachedValue cv, String schemaFieldName, String tableFieldName, String identifierFieldName) {
             createMethod(MethodDef(
                     Modifiers(Flags.PUBLIC | Flags.FINAL),
                     names.fromString(cv.getFieldName() + "IsNotIn"),
@@ -1475,7 +1475,7 @@ public class QueryBuilderProcessor extends AbstractBuilderProcessor {
             ), builderClassDecl);
         }
 
-        public void addCachedValueIsNullMethod(ParsedCachedValue cv, String schemaFieldName, String tableFieldName, String identifierFieldName) {
+        private void addCachedValueIsNullMethod(ParsedCachedValue cv, String schemaFieldName, String tableFieldName, String identifierFieldName) {
             createMethod(MethodDef(
                     Modifiers(Flags.PUBLIC | Flags.FINAL),
                     names.fromString(cv.getFieldName() + "IsNull"),
@@ -1506,7 +1506,7 @@ public class QueryBuilderProcessor extends AbstractBuilderProcessor {
             ), builderClassDecl);
         }
 
-        public void addCachedValueIsNotNullMethod(ParsedCachedValue cv, String schemaFieldName, String tableFieldName, String identifierFieldName) {
+        private void addCachedValueIsNotNullMethod(ParsedCachedValue cv, String schemaFieldName, String tableFieldName, String identifierFieldName) {
             createMethod(MethodDef(
                     Modifiers(Flags.PUBLIC | Flags.FINAL),
                     names.fromString(cv.getFieldName() + "IsNotNull"),
