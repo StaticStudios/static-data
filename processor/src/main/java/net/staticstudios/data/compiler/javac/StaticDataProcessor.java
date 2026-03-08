@@ -8,10 +8,7 @@ import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeMaker;
 import com.sun.tools.javac.util.Names;
 import net.staticstudios.data.Data;
-import net.staticstudios.data.compiler.javac.javac.BuilderProcessor;
-import net.staticstudios.data.compiler.javac.javac.ParsedPersistentValue;
-import net.staticstudios.data.compiler.javac.javac.ParsedReference;
-import net.staticstudios.data.compiler.javac.javac.QueryBuilderProcessor;
+import net.staticstudios.data.compiler.javac.javac.*;
 import net.staticstudios.data.compiler.javac.util.TypeUtils;
 import sun.misc.Unsafe;
 
@@ -151,6 +148,7 @@ public class StaticDataProcessor extends AbstractProcessor {
             if (!BuilderProcessor.hasProcessed(classDecl)) {
                 Data dataAnnotation = e.getAnnotation(Data.class);
                 Collection<ParsedPersistentValue> persistentValues = ParsedPersistentValue.extractPersistentValues(typeElement, dataAnnotation, typeUtils);
+                Collection<ParsedCachedValue> cachedValues = ParsedCachedValue.extractCachedValues(typeElement, dataAnnotation, typeUtils);
                 Collection<ParsedReference> references = ParsedReference.extractReferences(typeElement, dataAnnotation, typeUtils);
                 ProcessorContext processorContext = new ProcessorContext(
                         javacProcessingEnvironment.getContext(),
@@ -160,6 +158,7 @@ public class StaticDataProcessor extends AbstractProcessor {
                         (TypeElement) e,
                         classDecl,
                         persistentValues,
+                        cachedValues,
                         references
                 );
                 new BuilderProcessor(processorContext).runProcessor();

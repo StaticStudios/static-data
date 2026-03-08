@@ -8,7 +8,9 @@ public class Constants {
     public static final String MANY_TO_MANY_ANNOTATION_FQN = "net.staticstudios.data.ManyToMany";
     public static final String ONE_TO_MANY_ANNOTATION_FQN = "net.staticstudios.data.OneToMany";
     public static final String ONE_TO_ONE_ANNOTATION_FQN = "net.staticstudios.data.OneToOne";
+    public static final String IDENTIFIER_ANNOTATION_FQN = "net.staticstudios.data.Identifier";
     public static final String PERSISTENT_VALUE_FQN = "net.staticstudios.data.PersistentValue";
+    public static final String CACHED_VALUE_FQN = "net.staticstudios.data.CachedValue";
     public static final String PERSISTENT_COLLECTION_FQN = "net.staticstudios.data.PersistentCollection";
     public static final String REFERENCE_FQN = "net.staticstudios.data.Reference";
     public static final String UNIQUE_DATA_FQN = "net.staticstudios.data.UniqueData";

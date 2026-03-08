@@ -96,4 +96,9 @@ public class IntelliJPluginUtils {
         return IntelliJPluginUtils.is(psiField.getType(), Constants.REFERENCE_FQN) &&
                 IntelliJPluginUtils.hasAnnotation(psiField, Constants.ONE_TO_ONE_ANNOTATION_FQN);
     }
+
+    public static boolean isValidCachedValue(PsiField psiField) {
+        return IntelliJPluginUtils.is(psiField.getType(), Constants.CACHED_VALUE_FQN) &&
+                IntelliJPluginUtils.hasAnnotation(psiField, Constants.IDENTIFIER_ANNOTATION_FQN);
+    }
 }

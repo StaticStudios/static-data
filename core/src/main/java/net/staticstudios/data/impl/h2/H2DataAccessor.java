@@ -25,6 +25,7 @@ import net.staticstudios.data.util.redis.RedisUtils;
 import net.staticstudios.utils.Pair;
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
+import org.h2.value.Value;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -86,6 +87,12 @@ public class H2DataAccessor implements DataAccessor {
         this.redisListener = redisListener;
         this.jdbcUrl = "jdbc:h2:mem:static-data-cache;DB_CLOSE_DELAY=-1;LOCK_MODE=3;CACHE_SIZE=65536;QUERY_CACHE_SIZE=1024;CACHE_TYPE=SOFT_LRU";
         this.dataManager = dataManager;
+
+        try (Statement statement = getConnection().createStatement()) {
+            statement.execute("CREATE ALIAS CACHED_VALUE FOR \"" + H2DataAccessor.class.getName() + ".cachedValueEquals\"");
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to initialize H2 database", e);
+        }
 
         postgresListener.addHandler(notification -> {
             try {
@@ -257,6 +264,33 @@ public class H2DataAccessor implements DataAccessor {
                 task.run();
             }
         });
+    }
+
+    // called via reflection from h2
+    @SuppressWarnings("unused")
+    public static String cachedValueEquals(UUID dataManagerId, String schema, String table, String identifier, Value... ids) {
+        DataManager dataManager = DataManager.getInstance(dataManagerId);
+
+        SQLSchema sqlSchema = dataManager.getSQLBuilder().getSchema(schema);
+        if (sqlSchema == null) {
+            return null;
+        }
+        SQLTable sqlTable = sqlSchema.getTable(table);
+        if (sqlTable == null) {
+            return null;
+        }
+
+        ColumnValuePair[] columnValuePairs = new ColumnValuePair[sqlTable.getIdColumns().size()];
+
+        for (int i = 0; i < sqlTable.getIdColumns().size(); i++) {
+            ColumnMetadata columnMetadata = sqlTable.getIdColumns().get(i);
+            String columnName = columnMetadata.name();
+            columnValuePairs[i] = new ColumnValuePair(columnName, Primitives.fromValue(columnMetadata.type(), ids[i]));
+        }
+
+        RedisIdentifier redisIdentifier = new RedisIdentifier(schema, table, identifier, new ColumnValuePairs(columnValuePairs));
+
+        return dataManager.getDataAccessor().getRedisValue(redisIdentifier);
     }
 
     public synchronized void sync(List<SchemaTable> schemaTables, List<String> redisPartialKeys) throws SQLException {
@@ -587,40 +621,35 @@ public class H2DataAccessor implements DataAccessor {
 
                 if (!knownTables.contains(schemaTable)) {
                     logger.debug("Discovered new referringTable {}.{}", schema, table);
-                    UUID randomId = UUID.randomUUID();
                     @Language("SQL") String sql = "CREATE TRIGGER IF NOT EXISTS \"insert_update_handler_trg_%s_%s\" AFTER INSERT, UPDATE ON \"%s\".\"%s\" FOR EACH ROW CALL '%s'";
 
                     try (Statement createTrigger = connection.createStatement()) {
-                        String formatted = sql.formatted(table, randomId.toString().replace('-', '_'), schema, table, H2UpdateHandlerTrigger.class.getName());
+                        String formatted = sql.formatted(table, dataManager.getApplicationId().toString().replace('-', '_'), schema, table, H2UpdateHandlerTrigger.class.getName());
                         logger.trace("[H2] {}", formatted);
-                        H2UpdateHandlerTrigger.registerDataManager(randomId, dataManager);
                         createTrigger.execute(formatted);
                     }
 
                     sql = "CREATE TRIGGER IF NOT EXISTS \"delete_handler_trg_%s_%s\" BEFORE DELETE ON \"%s\".\"%s\" FOR EACH ROW CALL '%s'";
 
                     try (Statement createTrigger = connection.createStatement()) {
-                        String formatted = sql.formatted(table, randomId.toString().replace('-', '_'), schema, table, H2UpdateHandlerTrigger.class.getName());
+                        String formatted = sql.formatted(table, dataManager.getApplicationId().toString().replace('-', '_'), schema, table, H2UpdateHandlerTrigger.class.getName());
                         logger.trace("[H2] {}", formatted);
-                        H2UpdateHandlerTrigger.registerDataManager(randomId, dataManager);
                         createTrigger.execute(formatted);
                     }
 
                     sql = "CREATE TRIGGER IF NOT EXISTS \"insert_update_cache_trg_%s_%s\" AFTER INSERT, UPDATE ON \"%s\".\"%s\" FOR EACH ROW CALL '%s'";
 
                     try (Statement createTrigger = connection.createStatement()) {
-                        String formatted = sql.formatted(table, randomId.toString().replace('-', '_'), schema, table, H2ReadCacheInvalidatorTrigger.class.getName());
+                        String formatted = sql.formatted(table, dataManager.getApplicationId().toString().replace('-', '_'), schema, table, H2ReadCacheInvalidatorTrigger.class.getName());
                         logger.trace("[H2] {}", formatted);
-                        H2ReadCacheInvalidatorTrigger.registerDataManager(randomId, dataManager);
                         createTrigger.execute(formatted);
                     }
 
                     sql = "CREATE TRIGGER IF NOT EXISTS \"delete_cache_trg_%s_%s\" BEFORE DELETE ON \"%s\".\"%s\" FOR EACH ROW CALL '%s'";
 
                     try (Statement createTrigger = connection.createStatement()) {
-                        String formatted = sql.formatted(table, randomId.toString().replace('-', '_'), schema, table, H2ReadCacheInvalidatorTrigger.class.getName());
+                        String formatted = sql.formatted(table, dataManager.getApplicationId().toString().replace('-', '_'), schema, table, H2ReadCacheInvalidatorTrigger.class.getName());
                         logger.trace("[H2] {}", formatted);
-                        H2ReadCacheInvalidatorTrigger.registerDataManager(randomId, dataManager);
                         createTrigger.execute(formatted);
                     }
 

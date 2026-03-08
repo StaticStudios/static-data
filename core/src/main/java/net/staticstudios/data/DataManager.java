@@ -44,9 +44,11 @@ import java.util.function.Consumer;
 
 @ApiStatus.Internal
 public class DataManager {
+    private static final Map<UUID, DataManager> DATA_MANAGER_INSTANCES = new HashMap<>();
     private static Boolean useGlobal = null;
     private static DataManager instance;
     private final Logger logger = LoggerFactory.getLogger(this.getClass());
+    private final UUID applicationId;
     private final String applicationName;
     private final DataAccessor dataAccessor;
     private final SQLBuilder sqlBuilder;
@@ -92,7 +94,10 @@ public class DataManager {
             instance = this;
         }
         DataManager.useGlobal = setGlobal;
-        applicationName = "static_data_manager_v3-" + UUID.randomUUID();
+
+        this.applicationId = UUID.randomUUID();
+        DATA_MANAGER_INSTANCES.put(applicationId, this);
+        applicationName = "static_data_manager_v3-" + applicationId;
         postgresListener = new PostgresListener(this, dataSourceConfig);
         this.taskQueue = new TaskQueue(dataSourceConfig, applicationName);
         redisListener = new RedisListener(dataSourceConfig, this.taskQueue);
@@ -117,8 +122,18 @@ public class DataManager {
         return DataManager.instance;
     }
 
+    public static DataManager getInstance(UUID applicationId) {
+        DataManager manager = DATA_MANAGER_INSTANCES.get(applicationId);
+        Preconditions.checkArgument(manager != null, "No DataManager instance found for application ID " + applicationId);
+        return manager;
+    }
+
     public String getApplicationName() {
         return applicationName;
+    }
+
+    public UUID getApplicationId() {
+        return applicationId;
     }
 
     public DataAccessor getDataAccessor() {

@@ -13,11 +13,12 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
 
 public class H2UpdateHandlerTrigger implements Trigger {
-    private static final Map<UUID, DataManager> dataManagerMap = new ConcurrentHashMap<>();
     private final Logger logger = LoggerFactory.getLogger(H2UpdateHandlerTrigger.class);
     private final List<String> columnNames = new ArrayList<>();
     private DataManager dataManager;
@@ -25,15 +26,11 @@ public class H2UpdateHandlerTrigger implements Trigger {
     private String schema;
     private String table;
 
-    public static void registerDataManager(UUID id, DataManager dataManager) {
-        dataManagerMap.put(id, dataManager);
-    }
-
     @Override
     public void init(Connection conn, String schemaName, String triggerName, String tableName, boolean before, int type) throws SQLException {
         UUID dataManagerId = UUID.fromString(triggerName.substring(triggerName.length() - 36).replace('_', '-'));
         this.table = triggerName.substring(triggerName.indexOf("_trg_") + 5, triggerName.length() - 37); //dont use referringTable name since it might be a copy for an internal referringTable (very odd behavior i must say h2)
-        this.dataManager = dataManagerMap.get(dataManagerId);
+        this.dataManager = DataManager.getInstance(dataManagerId);
         this.dataAccessor = (H2DataAccessor) dataManager.getDataAccessor();
         this.schema = schemaName;
     }

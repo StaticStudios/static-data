@@ -81,7 +81,7 @@ public abstract class BaseQueryBuilder<T extends UniqueData, W extends BaseQuery
             }
             sb.append("WHERE ");
 
-            where.buildWhereClause(sb, parameters);
+            where.buildWhereClause(dataManager, dataManager.getMetadata(type), sb, parameters);
         }
         if (limit > 0) {
             sb.append(" LIMIT ").append(limit);

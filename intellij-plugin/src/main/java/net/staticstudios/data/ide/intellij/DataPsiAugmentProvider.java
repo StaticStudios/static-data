@@ -319,7 +319,7 @@ public class DataPsiAugmentProvider extends PsiAugmentProvider {
         for (PsiField psiField : parentClass.getAllFields()) {
             PsiType type = psiField.getType();
             boolean isValidReference = false;
-            if (!IntelliJPluginUtils.isValidPersistentValue(psiField) && !(isValidReference = IntelliJPluginUtils.isValidReference(psiField))) {
+            if (!IntelliJPluginUtils.isValidCachedValue(psiField) && !IntelliJPluginUtils.isValidPersistentValue(psiField) && !(isValidReference = IntelliJPluginUtils.isValidReference(psiField))) {
                 continue; //non-supported field type
             }
             if (!(type instanceof PsiClassType psiClassType)) {

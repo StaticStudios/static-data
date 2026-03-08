@@ -1,6 +1,7 @@
 package net.staticstudios.data.primative;
 
 import com.google.common.base.Preconditions;
+import org.h2.value.Value;
 import org.jetbrains.annotations.Nullable;
 
 import java.sql.Timestamp;
@@ -26,12 +27,14 @@ public class Primitives {
             .encoder(s -> s)
             .decoder(s -> s)
             .copier(s -> s)
+            .valueExtractor(Value::getString)
             .build(Primitives::register);
     public static final Primitive<Integer> INTEGER = Primitive.builder(Integer.class)
             .h2SQLType("INTEGER")
             .pgSQLType("INTEGER")
             .encoder(i -> Integer.toString(i))
             .copier(i -> i)
+            .valueExtractor(Value::getInt)
             .decoder(Integer::parseInt)
             .build(Primitives::register);
     public static final Primitive<Long> LONG = Primitive.builder(Long.class)
@@ -40,6 +43,7 @@ public class Primitives {
             .encoder(l -> Long.toString(l))
             .decoder(Long::parseLong)
             .copier(l -> l)
+            .valueExtractor(Value::getLong)
             .build(Primitives::register);
     public static final Primitive<Float> FLOAT = Primitive.builder(Float.class)
             .h2SQLType("REAL")
@@ -47,6 +51,7 @@ public class Primitives {
             .encoder(f -> Float.toString(f))
             .decoder(Float::parseFloat)
             .copier(f -> f)
+            .valueExtractor(Value::getFloat)
             .build(Primitives::register);
     public static final Primitive<Double> DOUBLE = Primitive.builder(Double.class)
             .h2SQLType("DOUBLE PRECISION")
@@ -54,6 +59,7 @@ public class Primitives {
             .encoder(d -> Double.toString(d))
             .decoder(Double::parseDouble)
             .copier(d -> d)
+            .valueExtractor(Value::getDouble)
             .build(Primitives::register);
     public static final Primitive<Boolean> BOOLEAN = Primitive.builder(Boolean.class)
             .h2SQLType("BOOLEAN")
@@ -61,6 +67,7 @@ public class Primitives {
             .encoder(b -> Boolean.toString(b))
             .decoder(Boolean::parseBoolean)
             .copier(b -> b)
+            .valueExtractor(Value::getBoolean)
             .build(Primitives::register);
     public static final Primitive<java.util.UUID> UUID = Primitive.builder(java.util.UUID.class)
             .h2SQLType("UUID")
@@ -68,6 +75,7 @@ public class Primitives {
             .encoder(java.util.UUID::toString)
             .decoder(java.util.UUID::fromString)
             .copier(uuid -> uuid)
+            .valueExtractor(value -> java.util.UUID.fromString(value.getString()))
             .build(Primitives::register);
     public static final Primitive<Timestamp> TIMESTAMP = Primitive.builder(Timestamp.class)
             .h2SQLType("TIMESTAMP WITH TIME ZONE")
@@ -75,6 +83,7 @@ public class Primitives {
             .encoder(timestamp -> TIMESTAMP_FORMATTER.format(timestamp.toInstant()))
             .decoder(s -> Timestamp.from(OffsetDateTime.parse(s, TIMESTAMP_FORMATTER).toInstant()))
             .copier(timestamp -> new Timestamp(timestamp.getTime()))
+            .valueExtractor(value -> Timestamp.from(OffsetDateTime.parse(value.getString(), TIMESTAMP_FORMATTER).toInstant()))
             .build(Primitives::register);
 
     // dropping support for byte[] for the time being, im running into weird issues on the h2 side. also the javac stuff is having issues parsing ...<byte[]> types.
@@ -114,6 +123,12 @@ public class Primitives {
             return null;
         }
         return encode(value, value.getClass());
+    }
+
+    public static Object fromValue(Class<?> type, Value value) {
+        Primitive<?> primitive = getPrimitive(type);
+        Preconditions.checkNotNull(primitive, "No primitive found for type: " + type.getName());
+        return primitive.fromvalue(value);
     }
 
     public static <T> T copy(T value, Class<T> type) {

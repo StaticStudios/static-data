@@ -262,6 +262,11 @@ public class QueryBuilder<U extends UniqueData> extends BaseQueryBuilder<U, Quer
             return this;
         }
 
+        public final QueryWhere cachedValueEquals(String schema, String table, String identifier, String value) {
+            super.cachedValueEqualsClause(schema, table, identifier, value);
+            return this;
+        }
+
         private void maybeAddInnerJoin(String schema, String table, String column) {
             if (schema.equals(metadata.schema()) && table.equals(metadata.table())) {
                 return;

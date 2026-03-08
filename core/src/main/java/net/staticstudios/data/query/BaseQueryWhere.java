@@ -1,7 +1,9 @@
 package net.staticstudios.data.query;
 
 import com.google.common.base.Preconditions;
+import net.staticstudios.data.DataManager;
 import net.staticstudios.data.query.clause.*;
+import net.staticstudios.data.query.clause.cv.*;
 import net.staticstudios.data.util.ColumnMetadata;
 import net.staticstudios.data.util.ColumnValuePair;
 import net.staticstudios.data.util.ColumnValuePairs;
@@ -17,7 +19,7 @@ public abstract class BaseQueryWhere {
     private final Stack<Node> nonGrouped = new Stack<>();
     private Node root = null;
 
-    private static void buildWhereClauseRecursive(Node node, StringBuilder sb, List<Object> parameters) {
+    private static void buildWhereClauseRecursive(Node node, DataManager dataManager, UniqueDataMetadata holderMetadata, StringBuilder sb, List<Object> parameters) {
         if (node == null) {
             return;
         }
@@ -26,10 +28,10 @@ public abstract class BaseQueryWhere {
             sb.append("(");
         }
 
-        buildWhereClauseRecursive(node.lhs, sb, parameters);
-        List<Object> clauseParams = node.clause.append(sb);
+        buildWhereClauseRecursive(node.lhs, dataManager, holderMetadata, sb, parameters);
+        List<Object> clauseParams = node.clause.append(sb, dataManager, holderMetadata);
         parameters.addAll(clauseParams);
-        buildWhereClauseRecursive(node.rhs, sb, parameters);
+        buildWhereClauseRecursive(node.rhs, dataManager, holderMetadata, sb, parameters);
         if (isConditional) {
             sb.append(")");
         }
@@ -153,6 +155,30 @@ public abstract class BaseQueryWhere {
         setValueClause(new LessThanOrEqualToClause(schema, table, column, o));
     }
 
+    protected void cachedValueEqualsClause(String schema, String table, String identifier, Object o) {
+        setValueClause(new CachedValueEqualsClause(schema, table, identifier, o));
+    }
+
+    protected void cachedValueNotEqualsClause(String schema, String table, String identifier, Object o) {
+        setValueClause(new CachedValueNotEqualsClause(schema, table, identifier, o));
+    }
+
+    protected void cachedValueInClause(String schema, String table, String identifier, Object[] values) {
+        setValueClause(new CachedValueInClause(schema, table, identifier, values));
+    }
+
+    protected void cachedValueNotInClause(String schema, String table, String identifier, Object[] values) {
+        setValueClause(new CachedValueNotInClause(schema, table, identifier, values));
+    }
+
+    protected void cachedValueNullClause(String schema, String table, String identifier) {
+        setValueClause(new CachedValueNullClause(schema, table, identifier));
+    }
+
+    protected void cachedValueNotNullClause(String schema, String table, String identifier) {
+        setValueClause(new CachedValueNotNullClause(schema, table, identifier));
+    }
+    
     private void setConditionalClause(Clause clause) {
         Preconditions.checkState(root != null, "Invalid state! Cannot set conditional clause '" + clause + "' here!");
         if (root.clause instanceof ConditionalClause) {
@@ -177,8 +203,8 @@ public abstract class BaseQueryWhere {
         }
     }
 
-    public void buildWhereClause(StringBuilder sb, List<Object> parameters) {
-        buildWhereClauseRecursive(root, sb, parameters);
+    public void buildWhereClause(DataManager dataManager, UniqueDataMetadata holderMetadata, StringBuilder sb, List<Object> parameters) {
+        buildWhereClauseRecursive(root, dataManager, holderMetadata, sb, parameters);
     }
 
     public ColumnValuePairs isSpecialOnlyUseIdColumns(UniqueDataMetadata metadata) {

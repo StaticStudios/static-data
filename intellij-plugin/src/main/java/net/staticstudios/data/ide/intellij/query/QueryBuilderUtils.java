@@ -4,6 +4,7 @@ import com.intellij.psi.PsiField;
 import com.intellij.psi.PsiType;
 import net.staticstudios.data.ide.intellij.IntelliJPluginUtils;
 import net.staticstudios.data.ide.intellij.query.clause.*;
+import net.staticstudios.data.ide.intellij.query.clause.cv.*;
 
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -11,6 +12,7 @@ import java.util.List;
 
 public class QueryBuilderUtils {
     private static final List<QueryClause> pvClauses;
+    private static final List<QueryClause> cvClauses;
     private static final List<QueryClause> referenceClauses;
 
     static {
@@ -40,6 +42,16 @@ public class QueryBuilderUtils {
         pvClauses.add(new IsBetweenClause());
         pvClauses.add(new IsNotBetweenClause());
 
+        cvClauses = new ArrayList<>();
+        cvClauses.add(new CachedValueIsClause());
+        cvClauses.add(new CachedValueIsNotClause());
+        cvClauses.add(new CachedValueIsNotNullClause());
+        cvClauses.add(new CachedValueIsNullClause());
+        cvClauses.add(new CachedValueIsInArrayClause());
+        cvClauses.add(new CachedValueIsInCollectionClause());
+        cvClauses.add(new CachedValueIsNotInArrayClause());
+        cvClauses.add(new CachedValueIsNotInCollectionClause());
+
         referenceClauses = new ArrayList<>();
         //todo: supporting these clauses in the java-c plugin is more involved than pvs, so until those are implemented
         // these will remain diables. at the time of writing this, uncommenting this will cause IJ to behave as expected.
@@ -62,6 +74,16 @@ public class QueryBuilderUtils {
         if (IntelliJPluginUtils.isValidReference(psiField)) {
             List<QueryClause> applicableClauses = new ArrayList<>();
             for (QueryClause clause : referenceClauses) {
+                if (clause.matches(psiField, nullable)) {
+                    applicableClauses.add(clause);
+                }
+            }
+            return applicableClauses;
+        }
+
+        if (IntelliJPluginUtils.isValidCachedValue(psiField)) {
+            List<QueryClause> applicableClauses = new ArrayList<>();
+            for (QueryClause clause : cvClauses) {
                 if (clause.matches(psiField, nullable)) {
                     applicableClauses.add(clause);
                 }

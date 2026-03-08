@@ -15,12 +15,14 @@ import java.util.Collection;
 
 public class QueryBuilderProcessor extends AbstractBuilderProcessor {
     private final Collection<ParsedPersistentValue> persistentValues;
+    private final Collection<ParsedCachedValue> cachedValues;
     private final Collection<ParsedReference> references;
     private final String whereClassName;
 
     public QueryBuilderProcessor(ProcessorContext processorContext) {
         super(processorContext, "QueryBuilder", "query");
         this.persistentValues = processorContext.persistentValues();
+        this.cachedValues = processorContext.cachedValues();
         this.references = processorContext.references();
 
         QueryWhereProcessor whereProcessor = new QueryWhereProcessor(processorContext);
@@ -62,6 +64,8 @@ public class QueryBuilderProcessor extends AbstractBuilderProcessor {
         for (ParsedPersistentValue pv : persistentValues) {
             processValue(pv);
         }
+
+
     }
 
 
@@ -263,6 +267,10 @@ public class QueryBuilderProcessor extends AbstractBuilderProcessor {
                 processValue(pv);
             }
 
+            for (ParsedCachedValue cv : cachedValues) {
+                processValue(cv);
+            }
+
 //            for (ParsedReference ref : references) {
             //todo: process references and support is, isNot, isNull and isNotNull
 //            }
@@ -306,6 +314,21 @@ public class QueryBuilderProcessor extends AbstractBuilderProcessor {
                 addIsBetweenMethod(pv, schemaFieldName, tableFieldName, columnFieldName);
                 addIsNotBetweenMethod(pv, schemaFieldName, tableFieldName, columnFieldName);
             }
+        }
+
+        private void processValue(ParsedCachedValue cv) {
+            String schemaFieldName = storeSchema(cv.getFieldName(), cv.getSchema());
+            String tableFieldName = storeTable(cv.getFieldName(), cv.getTable());
+            String identifierFieldName = storeColumn(cv.getFieldName(), cv.getIdentifier());
+
+            addCachedValueIsMethod(cv, schemaFieldName, tableFieldName, identifierFieldName);
+            addCachedValueIsNotMethod(cv, schemaFieldName, tableFieldName, identifierFieldName);
+            addCachedValueIsNullMethod(cv, schemaFieldName, tableFieldName, identifierFieldName);
+            addCachedValueIsNotNullMethod(cv, schemaFieldName, tableFieldName, identifierFieldName);
+            addCachedValueIsInCollectionMethod(cv, schemaFieldName, tableFieldName, identifierFieldName);
+            addCachedValueIsInArrayMethod(cv, schemaFieldName, tableFieldName, identifierFieldName);
+            addCachedValueIsNotInCollectionMethod(cv, schemaFieldName, tableFieldName, identifierFieldName);
+            addCachedValueIsNotInArrayMethod(cv, schemaFieldName, tableFieldName, identifierFieldName);
         }
 
         private List<JCTree.JCStatement> clause(ParsedPersistentValue pv, JCTree.JCStatement... statements) {
@@ -1178,6 +1201,332 @@ public class QueryBuilderProcessor extends AbstractBuilderProcessor {
                                                     names.fromString("orClause")
                                             ),
                                             List.nil()
+                                    )
+                            ),
+                            Return(
+                                    Ident(names.fromString("this"))
+                            )
+                    )),
+                    null
+            ), builderClassDecl);
+        }
+
+        private void addCachedValueIsMethod(ParsedCachedValue cv, String schemaFieldName, String tableFieldName, String identifierFieldName) {
+            createMethod(MethodDef(
+                    Modifiers(Flags.PUBLIC | Flags.FINAL),
+                    names.fromString(cv.getFieldName() + "Is"),
+                    Ident(names.fromString(getBuilderClassName())),
+                    List.nil(),
+                    List.of(
+                            VarDef(
+                                    Modifiers(Flags.PARAMETER),
+                                    names.fromString(cv.getFieldName()),
+                                    chainDots(cv.getTypeFQNParts()),
+                                    null
+                            )
+                    ),
+                    List.nil(),
+                    Block(0, List.of(
+                                    Exec(
+                                            Apply(
+                                                    List.nil(),
+                                                    Select(
+                                                            Ident(names.fromString("super")),
+                                                            names.fromString("cachedValueEqualsClause")
+                                                    ),
+                                                    List.of(
+                                                            Ident(names.fromString(schemaFieldName)),
+                                                            Ident(names.fromString(tableFieldName)),
+                                                            Ident(names.fromString(identifierFieldName)),
+                                                            Ident(names.fromString(cv.getFieldName()))
+                                                    )
+                                            )
+                                    ),
+                                    Return(
+                                            Ident(names.fromString("this"))
+                                    )
+                            )
+                    ),
+                    null
+            ), builderClassDecl);
+        }
+
+        private void addCachedValueIsNotMethod(ParsedCachedValue cv, String schemaFieldName, String tableFieldName, String identifierFieldName) {
+            createMethod(MethodDef(
+                    Modifiers(Flags.PUBLIC | Flags.FINAL),
+                    names.fromString(cv.getFieldName() + "IsNot"),
+                    Ident(names.fromString(getBuilderClassName())),
+                    List.nil(),
+                    List.of(
+                            VarDef(
+                                    Modifiers(Flags.PARAMETER),
+                                    names.fromString(cv.getFieldName()),
+                                    chainDots(cv.getTypeFQNParts()),
+                                    null
+                            )
+                    ),
+                    List.nil(),
+                    Block(0, List.of(
+                                    Exec(
+                                            Apply(
+                                                    List.nil(),
+                                                    Select(
+                                                            Ident(names.fromString("super")),
+                                                            names.fromString("cachedValueNotEqualsClause")
+                                                    ),
+                                                    List.of(
+                                                            Ident(names.fromString(schemaFieldName)),
+                                                            Ident(names.fromString(tableFieldName)),
+                                                            Ident(names.fromString(identifierFieldName)),
+                                                            Ident(names.fromString(cv.getFieldName()))
+                                                    )
+                                            )
+                                    ),
+                                    Return(
+                                            Ident(names.fromString("this"))
+                                    )
+                            )
+                    ),
+                    null
+            ), builderClassDecl);
+        }
+
+        private void addCachedValueIsInCollectionMethod(ParsedCachedValue cv, String schemaFieldName, String tableFieldName, String identifierFieldName) {
+            createMethod(MethodDef(
+                    Modifiers(Flags.PUBLIC | Flags.FINAL),
+                    names.fromString(cv.getFieldName() + "IsIn"),
+                    Ident(names.fromString(getBuilderClassName())),
+                    List.nil(),
+                    List.of(
+                            VarDef(
+                                    Modifiers(Flags.PARAMETER),
+                                    names.fromString(cv.getFieldName()),
+                                    TypeApply(
+                                            chainDots("java", "util", "Collection"),
+                                            List.of(
+                                                    chainDots(cv.getTypeFQNParts())
+                                            )
+                                    ),
+                                    null
+                            )
+                    ),
+                    List.nil(),
+                    Block(0, List.of(
+                            Exec(
+                                    Apply(
+                                            List.nil(),
+                                            Select(
+                                                    Ident(names.fromString("super")),
+                                                    names.fromString("cachedValueInClause")
+                                            ),
+                                            List.of(
+                                                    Ident(names.fromString(schemaFieldName)),
+                                                    Ident(names.fromString(tableFieldName)),
+                                                    Ident(names.fromString(identifierFieldName)),
+                                                    Apply(
+                                                            List.nil(),
+                                                            Select(
+                                                                    Ident(names.fromString(cv.getFieldName())),
+                                                                    names.fromString("toArray")
+                                                            ),
+                                                            List.nil()
+                                                    )
+                                            )
+                                    )
+                            ),
+                            Return(
+                                    Ident(names.fromString("this"))
+                            )
+                    )),
+                    null
+            ), builderClassDecl);
+        }
+
+        private void addCachedValueIsInArrayMethod(ParsedCachedValue cv, String schemaFieldName, String tableFieldName, String identifierFieldName) {
+            createMethod(MethodDef(
+                    Modifiers(Flags.PUBLIC | Flags.FINAL),
+                    names.fromString(cv.getFieldName() + "IsIn"),
+                    Ident(names.fromString(getBuilderClassName())),
+                    List.nil(),
+                    List.of(
+                            VarDef(
+                                    Modifiers(Flags.PARAMETER | Flags.VARARGS),
+                                    names.fromString(cv.getFieldName()),
+                                    TypeArray(
+                                            chainDots(cv.getTypeFQNParts())
+                                    ),
+                                    null
+                            )
+                    ),
+                    List.nil(),
+                    Block(0, List.of(
+                            Exec(
+                                    Apply(
+                                            List.nil(),
+                                            Select(
+                                                    Ident(names.fromString("super")),
+                                                    names.fromString("inClause")
+                                            ),
+                                            List.of(
+                                                    Ident(names.fromString(schemaFieldName)),
+                                                    Ident(names.fromString(tableFieldName)),
+                                                    Ident(names.fromString(identifierFieldName)),
+                                                    Ident(names.fromString(cv.getFieldName()))
+                                            )
+                                    )
+                            ),
+                            Return(
+                                    Ident(names.fromString("this"))
+                            )
+                    )),
+                    null
+            ), builderClassDecl);
+        }
+
+        private void addCachedValueIsNotInCollectionMethod(ParsedCachedValue cv, String schemaFieldName, String tableFieldName, String identifierFieldName) {
+            createMethod(MethodDef(
+                    Modifiers(Flags.PUBLIC | Flags.FINAL),
+                    names.fromString(cv.getFieldName() + "IsNotIn"),
+                    Ident(names.fromString(getBuilderClassName())),
+                    List.nil(),
+                    List.of(
+                            VarDef(
+                                    Modifiers(Flags.PARAMETER),
+                                    names.fromString(cv.getFieldName()),
+                                    TypeApply(
+                                            chainDots("java", "util", "Collection"),
+                                            List.of(
+                                                    chainDots(cv.getTypeFQNParts())
+                                            )
+                                    ),
+                                    null
+                            )
+                    ),
+                    List.nil(),
+                    Block(0, List.of(
+                            Exec(
+                                    Apply(
+                                            List.nil(),
+                                            Select(
+                                                    Ident(names.fromString("super")),
+                                                    names.fromString("cachedValueNotInClause")
+                                            ),
+                                            List.of(
+                                                    Ident(names.fromString(schemaFieldName)),
+                                                    Ident(names.fromString(tableFieldName)),
+                                                    Ident(names.fromString(identifierFieldName)),
+                                                    Apply(
+                                                            List.nil(),
+                                                            Select(
+                                                                    Ident(names.fromString(cv.getFieldName())),
+                                                                    names.fromString("toArray")
+                                                            ),
+                                                            List.nil()
+                                                    )
+                                            )
+                                    )
+                            ),
+                            Return(
+                                    Ident(names.fromString("this"))
+                            )
+                    )),
+                    null
+            ), builderClassDecl);
+        }
+
+        public void addCachedValueIsNotInArrayMethod(ParsedCachedValue cv, String schemaFieldName, String tableFieldName, String identifierFieldName) {
+            createMethod(MethodDef(
+                    Modifiers(Flags.PUBLIC | Flags.FINAL),
+                    names.fromString(cv.getFieldName() + "IsNotIn"),
+                    Ident(names.fromString(getBuilderClassName())),
+                    List.nil(),
+                    List.of(
+                            VarDef(
+                                    Modifiers(Flags.PARAMETER | Flags.VARARGS),
+                                    names.fromString(cv.getFieldName()),
+                                    TypeArray(
+                                            chainDots(cv.getTypeFQNParts())
+                                    ),
+                                    null
+                            )
+                    ),
+                    List.nil(),
+                    Block(0, List.of(
+                            Exec(
+                                    Apply(
+                                            List.nil(),
+                                            Select(
+                                                    Ident(names.fromString("super")),
+                                                    names.fromString("notInClause")
+                                            ),
+                                            List.of(
+                                                    Ident(names.fromString(schemaFieldName)),
+                                                    Ident(names.fromString(tableFieldName)),
+                                                    Ident(names.fromString(identifierFieldName)),
+                                                    Ident(names.fromString(cv.getFieldName()))
+                                            )
+                                    )
+                            ),
+                            Return(
+                                    Ident(names.fromString("this"))
+                            )
+                    )),
+                    null
+            ), builderClassDecl);
+        }
+
+        public void addCachedValueIsNullMethod(ParsedCachedValue cv, String schemaFieldName, String tableFieldName, String identifierFieldName) {
+            createMethod(MethodDef(
+                    Modifiers(Flags.PUBLIC | Flags.FINAL),
+                    names.fromString(cv.getFieldName() + "IsNull"),
+                    Ident(names.fromString(getBuilderClassName())),
+                    List.nil(),
+                    List.nil(),
+                    List.nil(),
+                    Block(0, List.of(
+                            Exec(
+                                    Apply(
+                                            List.nil(),
+                                            Select(
+                                                    Ident(names.fromString("super")),
+                                                    names.fromString("cachedValueNullClause")
+                                            ),
+                                            List.of(
+                                                    Ident(names.fromString(schemaFieldName)),
+                                                    Ident(names.fromString(tableFieldName)),
+                                                    Ident(names.fromString(identifierFieldName))
+                                            )
+                                    )
+                            ),
+                            Return(
+                                    Ident(names.fromString("this"))
+                            )
+                    )),
+                    null
+            ), builderClassDecl);
+        }
+
+        public void addCachedValueIsNotNullMethod(ParsedCachedValue cv, String schemaFieldName, String tableFieldName, String identifierFieldName) {
+            createMethod(MethodDef(
+                    Modifiers(Flags.PUBLIC | Flags.FINAL),
+                    names.fromString(cv.getFieldName() + "IsNotNull"),
+                    Ident(names.fromString(getBuilderClassName())),
+                    List.nil(),
+                    List.nil(),
+                    List.nil(),
+                    Block(0, List.of(
+                            Exec(
+                                    Apply(
+                                            List.nil(),
+                                            Select(
+                                                    Ident(names.fromString("super")),
+                                                    names.fromString("cachedValueNotNullClause")
+                                            ),
+                                            List.of(
+                                                    Ident(names.fromString(schemaFieldName)),
+                                                    Ident(names.fromString(tableFieldName)),
+                                                    Ident(names.fromString(identifierFieldName))
+                                            )
                                     )
                             ),
                             Return(

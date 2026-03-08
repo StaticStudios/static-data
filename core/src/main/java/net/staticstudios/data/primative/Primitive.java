@@ -1,5 +1,6 @@
 package net.staticstudios.data.primative;
 
+import org.h2.value.Value;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -10,15 +11,17 @@ public class Primitive<T> {
     private final Function<@NotNull String, @NotNull T> decoder;
     private final Function<@NotNull T, @NotNull String> encoder;
     private final Function<@NotNull T, @NotNull T> copier;
+    private final Function<@NotNull Value, @NotNull T> valueExtractor;
     private final String h2SQLType;
     private final String pgSQLType;
 
-    public Primitive(Class<T> runtimeType, Function<@NotNull String, @NotNull T> decoder, Function<@NotNull T, @NotNull String> encoder, Function<@NotNull T, @NotNull T> copier,
+    public Primitive(Class<T> runtimeType, Function<@NotNull String, @NotNull T> decoder, Function<@NotNull T, @NotNull String> encoder, Function<@NotNull T, @NotNull T> copier, Function<@NotNull Value, @NotNull T> valueExtractor,
                      String h2SQLType, String pgSQLType) {
         this.runtimeType = runtimeType;
         this.decoder = decoder;
         this.encoder = encoder;
         this.copier = copier;
+        this.valueExtractor = valueExtractor;
         this.h2SQLType = h2SQLType;
         this.pgSQLType = pgSQLType;
     }
@@ -46,6 +49,10 @@ public class Primitive<T> {
             return null;
         }
         return copier.apply(value);
+    }
+
+    public @NotNull T fromvalue(@NotNull Value value) {
+        return valueExtractor.apply(value);
     }
 
     public String getH2SQLType() {
