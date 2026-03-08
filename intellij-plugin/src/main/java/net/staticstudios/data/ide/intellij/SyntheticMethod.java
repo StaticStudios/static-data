@@ -142,6 +142,11 @@ public class SyntheticMethod extends LightMethodBuilder implements SyntheticElem
 
     @Override
     public int hashCode() {
-        return Objects.hash(name, containingClass);
+        int result = Objects.hash(name, containingClass);
+        PsiParameter[] params = getParameterList().getParameters();
+        for (PsiParameter param : params) {
+            result = 31 * result + Objects.hash(param.getName(), param.getType().getCanonicalText());
+        }
+        return result;
     }
 }

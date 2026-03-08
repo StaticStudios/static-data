@@ -262,8 +262,78 @@ public class QueryBuilder<U extends UniqueData> extends BaseQueryBuilder<U, Quer
             return this;
         }
 
-        public final QueryWhere cachedValueEquals(String schema, String table, String identifier, String value) {
+        public final QueryWhere cachedValueEquals(String schema, String table, String identifier, Object value) {
             super.cachedValueEqualsClause(schema, table, identifier, value);
+            return this;
+        }
+
+        public final QueryWhere cachedValueEquals(String identifier, Object value) {
+            super.cachedValueEqualsClause(metadata.schema(), metadata.table(), identifier, value);
+            return this;
+        }
+
+        public final QueryWhere cachedValueNotEquals(String schema, String table, String identifier, Object value) {
+            super.cachedValueNotEqualsClause(schema, table, identifier, value);
+            return this;
+        }
+
+        public final QueryWhere cachedValueNotEquals(String identifier, Object value) {
+            super.cachedValueNotEqualsClause(metadata.schema(), metadata.table(), identifier, value);
+            return this;
+        }
+
+        public final QueryWhere cachedValueIn(String schema, String table, String identifier, Object[] in) {
+            super.cachedValueInClause(schema, table, identifier, in);
+            return this;
+        }
+
+        public final QueryWhere cachedValueIn(String identifier, Object[] in) {
+            super.cachedValueInClause(metadata.schema(), metadata.table(), identifier, in);
+            return this;
+        }
+
+        public final QueryWhere cachedValueNotIn(String schema, String table, String identifier, Object[] in) {
+            super.cachedValueNotInClause(schema, table, identifier, in);
+            return this;
+        }
+
+        public final QueryWhere cachedValueNotIn(String identifier, Object[] in) {
+            super.cachedValueNotInClause(metadata.schema(), metadata.table(), identifier, in);
+            return this;
+        }
+
+        public final QueryWhere cachedValueIn(String schema, String table, String identifier, List<Object> in) {
+            super.cachedValueInClause(schema, table, identifier, in.toArray());
+            return this;
+        }
+
+        public final QueryWhere cachedValueNotIn(String schema, String table, String identifier, List<Object> in) {
+            super.cachedValueNotInClause(schema, table, identifier, in.toArray());
+            return this;
+        }
+
+        public final QueryWhere cachedValueNotIn(String identifier, List<Object> in) {
+            super.cachedValueNotInClause(metadata.schema(), metadata.table(), identifier, in.toArray());
+            return this;
+        }
+
+        public final QueryWhere cachedValueIsNull(String schema, String table, String identifier) {
+            super.cachedValueNullClause(schema, table, identifier);
+            return this;
+        }
+
+        public final QueryWhere cachedValueIsNull(String identifier) {
+            super.cachedValueNullClause(metadata.schema(), metadata.table(), identifier);
+            return this;
+        }
+
+        public final QueryWhere cachedValueIsNotNull(String schema, String table, String identifier) {
+            super.cachedValueNotNullClause(schema, table, identifier);
+            return this;
+        }
+
+        public final QueryWhere cachedValueIsNotNull(String identifier) {
+            super.cachedValueNotNullClause(metadata.schema(), metadata.table(), identifier);
             return this;
         }
 
