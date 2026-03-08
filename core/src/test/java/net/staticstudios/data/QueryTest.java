@@ -295,5 +295,62 @@ public class QueryTest extends DataTest {
         dataManager.load(MockUser.class);
         dataManager.finishLoading();
         assertEquals("WHERE \"public\".\"users\".\"__virtual__cv_settings_updates\" = ?", MockUser.query(dataManager).where(w -> w.settingsUpdatesIs(1)).toString());
-    } //todo: test other cached value clauses as well (not in, in, is null, is not null)
+    }
+
+    @Test
+    public void testCachedValueNotEqualsClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        dataManager.finishLoading();
+        assertEquals("WHERE \"public\".\"users\".\"__virtual__cv_settings_updates\" <> ?", MockUser.query(dataManager).where(w -> w.settingsUpdatesIsNot(1)).toString());
+    }
+
+    @Test
+    public void testCachedValueIsNullClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        dataManager.finishLoading();
+        assertEquals("WHERE \"public\".\"users\".\"__virtual__cv_settings_updates\" IS NULL", MockUser.query(dataManager).where(w -> w.settingsUpdatesIsNull()).toString());
+    }
+
+    @Test
+    public void testCachedValueIsNotNullClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        dataManager.finishLoading();
+        assertEquals("WHERE \"public\".\"users\".\"__virtual__cv_settings_updates\" IS NOT NULL", MockUser.query(dataManager).where(w -> w.settingsUpdatesIsNotNull()).toString());
+    }
+
+    @Test
+    public void testCachedValueIsInClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        dataManager.finishLoading();
+        assertEquals("WHERE \"public\".\"users\".\"__virtual__cv_settings_updates\" IN (?, ?, ?)", MockUser.query(dataManager).where(w -> w.settingsUpdatesIsIn(1, 2, 3)).toString());
+    }
+
+    @Test
+    public void testCachedValueIsInListClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        dataManager.finishLoading();
+        assertEquals("WHERE \"public\".\"users\".\"__virtual__cv_settings_updates\" IN (?, ?, ?)", MockUser.query(dataManager).where(w -> w.settingsUpdatesIsIn(List.of(1, 2, 3))).toString());
+    }
+
+    @Test
+    public void testCachedValueIsNotInClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        dataManager.finishLoading();
+        assertEquals("WHERE \"public\".\"users\".\"__virtual__cv_settings_updates\" NOT IN (?, ?, ?)", MockUser.query(dataManager).where(w -> w.settingsUpdatesIsNotIn(1, 2, 3)).toString());
+    }
+
+    @Test
+    public void testCachedValueIsNotInListClause() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        dataManager.finishLoading();
+        assertEquals("WHERE \"public\".\"users\".\"__virtual__cv_settings_updates\" NOT IN (?, ?, ?)", MockUser.query(dataManager).where(w -> w.settingsUpdatesIsNotIn(List.of(1, 2, 3))).toString());
+    }
+
 }

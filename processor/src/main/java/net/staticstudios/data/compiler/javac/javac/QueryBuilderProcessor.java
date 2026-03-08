@@ -1365,7 +1365,7 @@ public class QueryBuilderProcessor extends AbstractBuilderProcessor {
                                             List.nil(),
                                             Select(
                                                     Ident(names.fromString("super")),
-                                                    names.fromString("inClause")
+                                                    names.fromString("cachedValueInClause")
                                             ),
                                             List.of(
                                                     Ident(names.fromString(schemaFieldName)),
@@ -1457,7 +1457,7 @@ public class QueryBuilderProcessor extends AbstractBuilderProcessor {
                                             List.nil(),
                                             Select(
                                                     Ident(names.fromString("super")),
-                                                    names.fromString("notInClause")
+                                                    names.fromString("cachedValueNotInClause")
                                             ),
                                             List.of(
                                                     Ident(names.fromString(schemaFieldName)),

@@ -105,7 +105,6 @@ public class DataManager {
         sqlBuilder = new SQLBuilder(this);
         dataAccessor = new H2DataAccessor(this, postgresListener, redisListener, taskQueue);
 
-        //todo: params for cache should be configurable
         this.relationCache = Caffeine.newBuilder()
                 .maximumSize(10_000)
                 .expireAfterWrite(5, TimeUnit.MINUTES)

@@ -17,7 +17,7 @@ public class CachedValueIsNotInCollectionClause implements QueryClause {
 
     @Override
     public String getMethodName(String fieldName) {
-        return fieldName + "IsIn";
+        return fieldName + "IsNotIn";
     }
 
     @Override
