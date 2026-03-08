@@ -1,10 +1,7 @@
 package net.staticstudios.data;
 
 import com.google.common.base.Preconditions;
-import net.staticstudios.data.util.ReferenceMetadata;
-import net.staticstudios.data.util.ReferenceUpdateHandler;
-import net.staticstudios.data.util.ReferenceUpdateHandlerWrapper;
-import net.staticstudios.data.util.Relation;
+import net.staticstudios.data.util.*;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.AccessFlag;
@@ -71,6 +68,14 @@ public interface Reference<T extends UniqueData> extends Relation<T> {
 
         public void setDelegate(ReferenceMetadata metadata, Reference<T> delegate) {
             Preconditions.checkState(this.delegate == null, "Delegate has already been set");
+
+            if (!metadata.hasValidatedUpdateHandlers()) {
+                for (ReferenceUpdateHandlerWrapper<?, ?> wrapper : updateHandlers) {
+                    LambdaUtils.assertLambdaDoesntCapture(wrapper.getHandler(), List.of(UniqueData.class), null);
+                }
+                metadata.setValidatedUpdateHandlers(true);
+            }
+
             this.delegate = delegate;
             holder.getDataManager().registerReferenceUpdateHandlers(metadata, updateHandlers);
         }

@@ -11,7 +11,6 @@ import net.staticstudios.data.util.*;
 import net.staticstudios.data.utils.Link;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Field;
 import java.sql.ResultSet;
@@ -53,33 +52,34 @@ public class PersistentOneToManyValueCollectionImpl<T> implements PersistentColl
 
     public static <T extends UniqueData> void delegate(T instance) {
         UniqueDataMetadata metadata = instance.getDataManager().getMetadata(instance.getClass());
-        for (FieldInstancePair<@Nullable PersistentCollection> pair : ReflectionUtils.getFieldInstancePairs(instance, PersistentCollection.class)) {
-            PersistentCollectionMetadata collectionMetadata = metadata.persistentCollectionMetadata().get(pair.field());
-            if (!(collectionMetadata instanceof PersistentOneToManyValueCollectionMetadata oneToManyValueMetadata))
-                continue;
+        try {
+            for (var entry : metadata.persistentCollectionMetadata().entrySet()) {
+                Field field = entry.getKey();
+                PersistentCollectionMetadata pcMetadata = entry.getValue();
 
-            if (pair.instance() instanceof PersistentCollection.ProxyPersistentCollection<?> proxyCollection) {
-                createAndDelegate((ProxyPersistentCollection<?>) proxyCollection,
-                        oneToManyValueMetadata.getDataSchema(),
-                        oneToManyValueMetadata.getDataTable(),
-                        oneToManyValueMetadata.getDataColumn(),
-                        oneToManyValueMetadata.getLinks(),
-                        oneToManyValueMetadata
-                );
-            } else {
-                pair.field().setAccessible(true);
-                try {
-                    pair.field().set(instance, create(instance,
+                if (!(pcMetadata instanceof PersistentOneToManyValueCollectionMetadata oneToManyValueMetadata))
+                    continue;
+                Object value = field.get(instance);
+                if (value instanceof PersistentCollection.ProxyPersistentCollection<?> proxyCollection) {
+                    createAndDelegate((ProxyPersistentCollection<?>) proxyCollection,
+                            oneToManyValueMetadata.getDataSchema(),
+                            oneToManyValueMetadata.getDataTable(),
+                            oneToManyValueMetadata.getDataColumn(),
+                            oneToManyValueMetadata.getLinks(),
+                            oneToManyValueMetadata
+                    );
+                } else {
+                    field.set(instance, create(instance,
                             oneToManyValueMetadata.getDataType(),
                             oneToManyValueMetadata.getDataSchema(),
                             oneToManyValueMetadata.getDataTable(),
                             oneToManyValueMetadata.getDataColumn(),
                             oneToManyValueMetadata.getLinks()
                     ));
-                } catch (IllegalAccessException e) {
-                    throw new RuntimeException(e);
                 }
             }
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -100,6 +100,7 @@ public class PersistentOneToManyValueCollectionImpl<T> implements PersistentColl
             Preconditions.checkArgument(!schema.isEmpty(), "OneToMany PersistentCollection field %s in class %s must specify a schema name since the data type %s does not extend UniqueData", field.getName(), clazz.getName(), genericType.getName());
             Preconditions.checkArgument(!table.isEmpty(), "OneToMany PersistentCollection field %s in class %s must specify a table name since the data type %s does not extend UniqueData", field.getName(), clazz.getName(), genericType.getName());
             metadataMap.put(field, new PersistentOneToManyValueCollectionMetadata(clazz, genericType, schema, table, column, SQLBuilder.parseLinks(oneToManyAnnotation.link())));
+            field.setAccessible(true);
         }
 
         return metadataMap;

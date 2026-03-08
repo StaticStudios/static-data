@@ -12,6 +12,7 @@ public class PersistentOneToManyCollectionMetadata implements PersistentCollecti
     private final DataManager dataManager;
     private final Class<? extends UniqueData> referencedType;
     private final List<Link> links;
+    private boolean validatedChangeHandlers = false;
 
     public PersistentOneToManyCollectionMetadata(DataManager dataManager, Class<? extends UniqueData> holderClass, Class<? extends UniqueData> referencedType, List<Link> links) {
         this.dataManager = dataManager;
@@ -31,6 +32,16 @@ public class PersistentOneToManyCollectionMetadata implements PersistentCollecti
     @Override
     public Class<? extends UniqueData> getHolderClass() {
         return holderClass;
+    }
+
+    @Override
+    public boolean hasValidatedChangeHandlers() {
+        return validatedChangeHandlers;
+    }
+
+    @Override
+    public void setValidatedChangeHandlers(boolean validatedChangeHandlers) {
+        this.validatedChangeHandlers = validatedChangeHandlers;
     }
 
     @Override

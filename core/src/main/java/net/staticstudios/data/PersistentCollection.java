@@ -1,10 +1,7 @@
 package net.staticstudios.data;
 
 import com.google.common.base.Preconditions;
-import net.staticstudios.data.util.CollectionChangeHandler;
-import net.staticstudios.data.util.CollectionChangeHandlerWrapper;
-import net.staticstudios.data.util.PersistentCollectionMetadata;
-import net.staticstudios.data.util.Relation;
+import net.staticstudios.data.util.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -65,6 +62,14 @@ public interface PersistentCollection<T> extends Collection<T>, Relation<T> {
 
         public void setDelegate(PersistentCollectionMetadata metadata, PersistentCollection<T> delegate) {
             Preconditions.checkState(this.delegate == null, "Delegate has already been set");
+
+            if (!metadata.hasValidatedChangeHandlers()) {
+                for (CollectionChangeHandlerWrapper<?, ?> wrapper : changeHandlers) {
+                    LambdaUtils.assertLambdaDoesntCapture(wrapper.getHandler(), List.of(UniqueData.class), null);
+                }
+                metadata.setValidatedChangeHandlers(true);
+            }
+
             this.delegate = delegate;
             holder.getDataManager().registerCollectionChangeHandlers(metadata, changeHandlers);
         }

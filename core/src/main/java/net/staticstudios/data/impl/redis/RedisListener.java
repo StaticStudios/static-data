@@ -1,8 +1,8 @@
 package net.staticstudios.data.impl.redis;
 
 import net.staticstudios.data.util.DataSourceConfig;
-import net.staticstudios.data.util.RedisUtils;
 import net.staticstudios.data.util.TaskQueue;
+import net.staticstudios.data.util.redis.RedisUtils;
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
 import org.slf4j.Logger;

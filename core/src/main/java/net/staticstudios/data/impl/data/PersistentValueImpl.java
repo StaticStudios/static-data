@@ -5,7 +5,6 @@ import net.staticstudios.data.*;
 import net.staticstudios.data.util.*;
 import net.staticstudios.data.utils.Link;
 import net.staticstudios.data.utils.StringUtils;
-import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Field;
 import java.util.*;
@@ -37,24 +36,27 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
 
     public static <T extends UniqueData> void delegate(T instance) {
         UniqueDataMetadata metadata = instance.getDataManager().getMetadata(instance.getClass());
-        for (FieldInstancePair<@Nullable PersistentValue> pair : ReflectionUtils.getFieldInstancePairs(instance, PersistentValue.class)) {
-            PersistentValueMetadata pvMetadata = metadata.persistentValueMetadata().get(pair.field());
-            if (pair.instance() instanceof PersistentValue.ProxyPersistentValue<?> proxyPv) {
-                PersistentValueImpl.createAndDelegate(proxyPv, pvMetadata);
-            } else {
-                pair.field().setAccessible(true);
-                try {
-                    pair.field().set(instance, PersistentValueImpl.create(instance, ReflectionUtils.getGenericType(pair.field()), pvMetadata));
-                } catch (IllegalAccessException e) {
-                    throw new RuntimeException(e);
+        try {
+            for (var entry : metadata.persistentValueMetadata().entrySet()) {
+                Field field = entry.getKey();
+                PersistentValueMetadata pvMetadata = entry.getValue();
+
+                Object value = field.get(instance);
+                if (value instanceof PersistentValue.ProxyPersistentValue<?> proxyPv) {
+                    PersistentValueImpl.createAndDelegate(proxyPv, pvMetadata);
+                } else {
+                    field.set(instance, PersistentValueImpl.create(instance, pvMetadata.getColumnMetadata().type(), pvMetadata));
                 }
             }
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
         }
     }
 
     public static <T extends UniqueData> Map<Field, PersistentValueMetadata> extractMetadata(String schema, String table, Class<T> clazz) {
         Map<Field, PersistentValueMetadata> metadataMap = new HashMap<>();
         for (Field field : ReflectionUtils.getFields(clazz, PersistentValue.class)) {
+            field.setAccessible(true);
             metadataMap.put(field, extractMetadata(schema, table, clazz, field));
         }
         return metadataMap;

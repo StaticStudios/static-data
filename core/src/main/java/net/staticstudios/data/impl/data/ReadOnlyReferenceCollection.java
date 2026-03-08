@@ -4,9 +4,9 @@ import net.staticstudios.data.PersistentCollection;
 import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.util.*;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Array;
+import java.lang.reflect.Field;
 import java.util.Collection;
 import java.util.Iterator;
 
@@ -51,31 +51,30 @@ public class ReadOnlyReferenceCollection<T extends UniqueData> implements Persis
 
     public static <U extends UniqueData> void delegate(U instance) {
         UniqueDataMetadata metadata = instance.getDataManager().getMetadata(instance.getClass());
-        for (FieldInstancePair<@Nullable PersistentCollection> pair : ReflectionUtils.getFieldInstancePairs(instance, PersistentCollection.class)) {
-            PersistentCollectionMetadata collectionMetadata = metadata.persistentCollectionMetadata().get(pair.field());
-            if (collectionMetadata instanceof PersistentOneToManyCollectionMetadata oneToManyMetadata) {
-                if (pair.instance() instanceof PersistentCollection.ProxyPersistentCollection proxyCollection) {
-                    createAndDelegate(proxyCollection, oneToManyMetadata);
-                } else {
-                    pair.field().setAccessible(true);
-                    try {
-                        pair.field().set(instance, create(instance, oneToManyMetadata.getReferencedType(), oneToManyMetadata));
-                    } catch (IllegalAccessException e) {
-                        throw new RuntimeException(e);
+        try {
+            for (var entry : metadata.persistentCollectionMetadata().entrySet()) {
+                Field field = entry.getKey();
+                PersistentCollectionMetadata pcMetadata = entry.getValue();
+
+                if (pcMetadata instanceof PersistentOneToManyCollectionMetadata oneToManyMetadata) {
+                    Object value = field.get(instance);
+                    if (value instanceof PersistentCollection.ProxyPersistentCollection proxyCollection) {
+                        createAndDelegate(proxyCollection, oneToManyMetadata);
+                    } else {
+                        field.set(instance, create(instance, oneToManyMetadata.getReferencedType(), oneToManyMetadata));
                     }
-                }
-            } else if (collectionMetadata instanceof PersistentManyToManyCollectionMetadata manyToManyMetadata) {
-                if (pair.instance() instanceof PersistentCollection.ProxyPersistentCollection proxyPv) {
-                    createAndDelegate(proxyPv, manyToManyMetadata);
-                } else {
-                    pair.field().setAccessible(true);
-                    try {
-                        pair.field().set(instance, create(instance, manyToManyMetadata.getReferencedType(), manyToManyMetadata));
-                    } catch (IllegalAccessException e) {
-                        throw new RuntimeException(e);
+
+                } else if (pcMetadata instanceof PersistentManyToManyCollectionMetadata manyToManyMetadata) {
+                    Object value = field.get(instance);
+                    if (value instanceof PersistentCollection.ProxyPersistentCollection proxyCollection) {
+                        createAndDelegate(proxyCollection, manyToManyMetadata);
+                    } else {
+                        field.set(instance, create(instance, manyToManyMetadata.getReferencedType(), manyToManyMetadata));
                     }
                 }
             }
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
         }
     }
 

@@ -11,9 +11,10 @@ public class SQLColumn {
     private final boolean indexed;
     private final boolean unique;
     private final @Nullable String defaultValue;
+    private final boolean virtual;
     private SQLTable table;
 
-    public SQLColumn(SQLTable table, Class<?> type, String name, boolean nullable, boolean indexed, boolean unique, @Nullable String defaultValue) {
+    public SQLColumn(SQLTable table, Class<?> type, String name, boolean nullable, boolean indexed, boolean unique, @Nullable String defaultValue, boolean virtual) {
         this.table = table;
         this.type = type;
         this.name = name;
@@ -21,6 +22,7 @@ public class SQLColumn {
         this.indexed = indexed;
         this.unique = unique;
         this.defaultValue = defaultValue;
+        this.virtual = virtual;
     }
 
     public void setTable(SQLTable table) {
@@ -55,6 +57,10 @@ public class SQLColumn {
         return defaultValue;
     }
 
+    public boolean isVirtual() {
+        return virtual;
+    }
+
     @Override
     public int hashCode() {
         return Objects.hash(table, type, name, nullable, indexed, unique, defaultValue);
@@ -70,7 +76,8 @@ public class SQLColumn {
                 unique == other.unique &&
                 Objects.equals(defaultValue, other.defaultValue) &&
                 Objects.equals(type, other.type) &&
-                Objects.equals(name, other.name);
+                Objects.equals(name, other.name) &&
+                Objects.equals(virtual, other.virtual);
     }
 
     @Override
@@ -82,6 +89,7 @@ public class SQLColumn {
                 ", indexed=" + indexed +
                 ", unique=" + unique +
                 ", defaultValue='" + defaultValue + '\'' +
+                ", virtual=" + virtual +
                 '}';
     }
 }

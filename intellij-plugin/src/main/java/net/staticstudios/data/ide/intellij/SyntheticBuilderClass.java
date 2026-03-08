@@ -13,6 +13,7 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * A synthetic builder class generated for data classes.
@@ -134,5 +135,18 @@ public class SyntheticBuilderClass extends LightPsiClassBase {
     @Override
     public boolean isEquivalentTo(PsiElement another) {
         return PsiClassImplUtil.isClassEquivalentTo(this, another);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof SyntheticBuilderClass other)) return false;
+        return Objects.equals(getName(), other.getName())
+                && Objects.equals(parentClass.get(), other.parentClass.get());
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(getName(), parentClass.get());
     }
 }

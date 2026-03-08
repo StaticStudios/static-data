@@ -4,6 +4,7 @@ import com.sun.source.util.Trees;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.util.Context;
 import net.staticstudios.data.Data;
+import net.staticstudios.data.compiler.javac.javac.ParsedCachedValue;
 import net.staticstudios.data.compiler.javac.javac.ParsedPersistentValue;
 import net.staticstudios.data.compiler.javac.javac.ParsedReference;
 import net.staticstudios.data.compiler.javac.util.TypeUtils;
@@ -19,6 +20,7 @@ public record ProcessorContext(
         TypeElement dataClassElement,
         JCTree.JCClassDecl dataClassDecl,
         Collection<ParsedPersistentValue> persistentValues,
+        Collection<ParsedCachedValue> cachedValues,
         Collection<ParsedReference> references
 ) {
 }

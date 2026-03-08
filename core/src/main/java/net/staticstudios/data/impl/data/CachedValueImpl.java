@@ -41,24 +41,27 @@ public class CachedValueImpl<T> extends AbstractCachedValue<T> {
 
     public static <T extends UniqueData> void delegate(T instance) {
         UniqueDataMetadata metadata = instance.getDataManager().getMetadata(instance.getClass());
-        for (FieldInstancePair<@Nullable CachedValue> pair : ReflectionUtils.getFieldInstancePairs(instance, CachedValue.class)) {
-            CachedValueMetadata pvMetadata = metadata.cachedValueMetadata().get(pair.field());
-            if (pair.instance() instanceof CachedValue.ProxyCachedValue<?> proxyCv) {
-                CachedValueImpl.createAndDelegate(proxyCv, pvMetadata);
-            } else {
-                pair.field().setAccessible(true);
-                try {
-                    pair.field().set(instance, CachedValueImpl.create(instance, ReflectionUtils.getGenericType(pair.field()), pvMetadata));
-                } catch (IllegalAccessException e) {
-                    throw new RuntimeException(e);
+        try {
+            for (var entry : metadata.cachedValueMetadata().entrySet()) {
+                Field field = entry.getKey();
+                CachedValueMetadata cvMetadata = entry.getValue();
+
+                Object value = field.get(instance);
+                if (value instanceof CachedValue.ProxyCachedValue<?> proxyCv) {
+                    CachedValueImpl.createAndDelegate(proxyCv, cvMetadata);
+                } else {
+                    field.set(instance, CachedValueImpl.create(instance, cvMetadata.type(), cvMetadata));
                 }
             }
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
         }
     }
 
     public static <T extends UniqueData> Map<Field, CachedValueMetadata> extractMetadata(String holderSchema, String holderTable, Class<T> clazz) {
         Map<Field, CachedValueMetadata> metadataMap = new HashMap<>();
         for (Field field : ReflectionUtils.getFields(clazz, CachedValue.class)) {
+            field.setAccessible(true);
             metadataMap.put(field, extractMetadata(holderSchema, holderTable, clazz, field));
         }
         return metadataMap;
@@ -76,7 +79,8 @@ public class CachedValueImpl<T> extends AbstractCachedValue<T> {
             expireAfterSeconds = expireAfterAnnotation.value();
         }
 
-        return new CachedValueMetadata(clazz, holderSchema, holderTable, ValueUtils.parseValue(identifierAnnotation.value()), expireAfterSeconds);
+
+        return new CachedValueMetadata(clazz, holderSchema, holderTable, ValueUtils.parseValue(identifierAnnotation.value()), ReflectionUtils.getGenericType(field), expireAfterSeconds);
     }
 
 

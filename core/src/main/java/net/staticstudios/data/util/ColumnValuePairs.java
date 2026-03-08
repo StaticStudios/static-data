@@ -2,19 +2,27 @@ package net.staticstudios.data.util;
 
 import org.jetbrains.annotations.NotNull;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.List;
 import java.util.stream.Stream;
 
 public final class ColumnValuePairs implements Iterable<ColumnValuePair> {
+    public static final ColumnValuePairs EMPTY = new ColumnValuePairs();
+
     private final ColumnValuePair[] pairs;
 
     public ColumnValuePairs(ColumnValuePair... pairs) {
-        List<ColumnValuePair> pairList = new ArrayList<>(List.of(pairs));
-        pairList.sort(Comparator.comparing(ColumnValuePair::column));
-        this.pairs = pairList.toArray(new ColumnValuePair[0]);
+        this.pairs = pairs.clone();
+        Arrays.sort(this.pairs, Comparator.comparing(ColumnValuePair::column));
+    }
+
+    public static Object getValue(String column, ColumnValuePairs pairs) {
+        for (ColumnValuePair pair : pairs) {
+            if (pair.column().equals(column)) {
+                return pair.value();
+            }
+        }
+        return null;
     }
 
     public ColumnValuePair[] getPairs() {

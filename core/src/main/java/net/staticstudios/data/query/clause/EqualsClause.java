@@ -15,6 +15,22 @@ public class EqualsClause implements ValueClause {
         this.value = value;
     }
 
+    public String getSchema() {
+        return schema;
+    }
+
+    public String getTable() {
+        return table;
+    }
+
+    public String getColumn() {
+        return column;
+    }
+
+    public Object getValue() {
+        return value;
+    }
+
     @Override
     public List<Object> append(StringBuilder sb) {
         sb.append("\"").append(schema).append("\".\"").append(table).append("\".\"").append(column).append("\" = ?");

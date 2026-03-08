@@ -1,7 +1,9 @@
 package net.staticstudios.data.impl;
 
 import net.staticstudios.data.InsertMode;
+import net.staticstudios.data.StaticDataStatistics;
 import net.staticstudios.data.parse.DDLStatement;
+import net.staticstudios.data.util.ColumnValuePairs;
 import net.staticstudios.data.util.SQLTransaction;
 import net.staticstudios.data.util.SQlStatement;
 import org.intellij.lang.annotations.Language;
@@ -27,11 +29,13 @@ public interface DataAccessor {
 
     void postDDL() throws SQLException;
 
-    @Nullable String getRedisValue(String key);
+    @Nullable String getRedisValue(String holderSchema, String holderTable, String identifier, ColumnValuePairs idColumns);
 
-    void setRedisValue(String key, String value, int expirationSeconds);
+    void setRedisValue(String holderSchema, String holderTable, String identifier, ColumnValuePairs idColumns, String value, int expirationSeconds);
 
     void discoverRedisKeys(List<String> partialRedisKeys);
 
     void resync();
+
+    void populateStatistics(StaticDataStatistics stats);
 }

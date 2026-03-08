@@ -90,4 +90,15 @@ public class StaticData {
         assertInit();
         DataManager.getInstance().flushTaskQueue();
     }
+
+
+    /**
+     * Retrieves the current performance statistics of the StaticData system, including metrics such as queries per second and updates per second.
+     *
+     * @return a StaticDataStatistics object containing the current performance metrics of the StaticData system
+     */
+    public static StaticDataStatistics getStatistics() {
+        assertInit();
+        return DataManager.getInstance().getStatistics();
+    }
 }

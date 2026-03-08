@@ -12,4 +12,6 @@ import java.lang.annotation.Target;
 @Target(ElementType.FIELD)
 public @interface Identifier {
     String value();
+
+    boolean index() default false;
 }

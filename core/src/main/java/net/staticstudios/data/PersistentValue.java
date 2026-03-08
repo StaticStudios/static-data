@@ -1,10 +1,7 @@
 package net.staticstudios.data;
 
 import com.google.common.base.Preconditions;
-import net.staticstudios.data.util.PersistentValueMetadata;
-import net.staticstudios.data.util.Value;
-import net.staticstudios.data.util.ValueUpdateHandler;
-import net.staticstudios.data.util.ValueUpdateHandlerWrapper;
+import net.staticstudios.data.util.*;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -16,7 +13,6 @@ import java.util.List;
  * @param <T>
  */
 public interface PersistentValue<T> extends Value<T> {
-    //todo: use caffeine to further cache pvs, provided we are using the H2 data accessor. allow us to toggle this on and off when setting up the data manager
 
     static <T> PersistentValue<T> of(UniqueData holder, Class<T> dataType) {
         return new ProxyPersistentValue<>(holder, dataType);
@@ -42,6 +38,14 @@ public interface PersistentValue<T> extends Value<T> {
         public void setDelegate(PersistentValueMetadata metadata, PersistentValue<T> delegate) {
             Preconditions.checkNotNull(delegate, "Delegate cannot be null");
             Preconditions.checkState(this.delegate == null, "Delegate is already set");
+
+            if (!metadata.hasValidatedUpdateHandlers()) {
+                for (ValueUpdateHandlerWrapper<?, ?> wrapper : updateHandlers) {
+                    LambdaUtils.assertLambdaDoesntCapture(wrapper.getHandler(), List.of(UniqueData.class), null);
+                }
+                metadata.setValidatedUpdateHandlers(true);
+            }
+
             this.delegate = delegate;
             holder.getDataManager().registerPersistentValueUpdateHandlers(metadata, updateHandlers);
         }

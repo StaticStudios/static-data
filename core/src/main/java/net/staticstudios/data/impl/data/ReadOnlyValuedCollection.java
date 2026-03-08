@@ -4,8 +4,8 @@ import net.staticstudios.data.PersistentCollection;
 import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.util.*;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
+import java.lang.reflect.Field;
 import java.util.*;
 
 public class ReadOnlyValuedCollection<T> implements PersistentCollection<T> {
@@ -37,21 +37,22 @@ public class ReadOnlyValuedCollection<T> implements PersistentCollection<T> {
 
     public static <U extends UniqueData> void delegate(U instance) {
         UniqueDataMetadata metadata = instance.getDataManager().getMetadata(instance.getClass());
-        for (FieldInstancePair<@Nullable PersistentCollection> pair : ReflectionUtils.getFieldInstancePairs(instance, PersistentCollection.class)) {
-            PersistentCollectionMetadata collectionMetadata = metadata.persistentCollectionMetadata().get(pair.field());
-            if (!(collectionMetadata instanceof PersistentOneToManyValueCollectionMetadata oneToManyValueMetadata))
-                continue;
+        try {
+            for (var entry : metadata.persistentCollectionMetadata().entrySet()) {
+                Field field = entry.getKey();
+                PersistentCollectionMetadata pcMetadata = entry.getValue();
 
-            if (pair.instance() instanceof PersistentCollection.ProxyPersistentCollection<?> proxyPv) {
-                createAndDelegate(proxyPv, oneToManyValueMetadata);
-            } else {
-                pair.field().setAccessible(true);
-                try {
-                    pair.field().set(instance, create(instance, ReflectionUtils.getGenericType(pair.field()), oneToManyValueMetadata));
-                } catch (IllegalAccessException e) {
-                    throw new RuntimeException(e);
+                if (!(pcMetadata instanceof PersistentOneToManyValueCollectionMetadata oneToManyValueMetadata))
+                    continue;
+                Object value = field.get(instance);
+                if (value instanceof PersistentCollection.ProxyPersistentCollection<?> proxyCollection) {
+                    createAndDelegate(proxyCollection, oneToManyValueMetadata);
+                } else {
+                    field.set(instance, create(instance, ReflectionUtils.getGenericType(field), oneToManyValueMetadata));
                 }
             }
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
         }
     }
 

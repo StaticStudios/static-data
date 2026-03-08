@@ -3,8 +3,6 @@ package net.staticstudios.data.ide.intellij;
 import com.intellij.psi.*;
 import net.staticstudios.data.utils.Constants;
 
-import java.util.Objects;
-
 public class IntelliJPluginUtils {
     public static boolean genericTypeIs(PsiType type, String classFqn) {
         if (!(type instanceof PsiClassType psiClassType)) {
@@ -22,29 +20,23 @@ public class IntelliJPluginUtils {
         if (!(type instanceof PsiClassType psiClassType)) {
             return false;
         }
-        PsiClass resolvedClass = psiClassType.resolve();
-        if (resolvedClass == null) {
-            return false;
-        }
-        return classFqn.equals(resolvedClass.getQualifiedName());
+        String canonicalText = psiClassType.rawType().getCanonicalText();
+        return classFqn.equals(canonicalText);
     }
 
     public static boolean extendsClass(PsiClass psiClass, String classFqn) {
-        boolean extendsClass = false;
-        for (PsiClassType superType : psiClass.getSuperTypes()) {
-            String superTypeFqn = superType.resolve() != null ? Objects.requireNonNull(superType.resolve()).getQualifiedName() : null;
-            if (classFqn.equals(superTypeFqn)) {
-                extendsClass = true;
-                break;
+        for (PsiClass superClass : psiClass.getSupers()) {
+            String superFqn = superClass.getQualifiedName();
+            if (classFqn.equals(superFqn)) {
+                return true;
             }
-            PsiClass superClass = superType.resolve();
-            if (superClass != null && extendsClass(superClass, classFqn)) {
-                extendsClass = true;
-                break;
+            if (superFqn != null
+                    && !superFqn.equals(Object.class.getName())
+                    && extendsClass(superClass, classFqn)) {
+                return true;
             }
         }
-
-        return extendsClass;
+        return false;
     }
 
     public static boolean hasAnnotation(PsiModifierListOwner element, String annotationFqn) {
@@ -95,5 +87,10 @@ public class IntelliJPluginUtils {
     public static boolean isValidReference(PsiField psiField) {
         return IntelliJPluginUtils.is(psiField.getType(), Constants.REFERENCE_FQN) &&
                 IntelliJPluginUtils.hasAnnotation(psiField, Constants.ONE_TO_ONE_ANNOTATION_FQN);
+    }
+
+    public static boolean isValidCachedValue(PsiField psiField) {
+        return IntelliJPluginUtils.is(psiField.getType(), Constants.CACHED_VALUE_FQN) &&
+                IntelliJPluginUtils.hasAnnotation(psiField, Constants.IDENTIFIER_ANNOTATION_FQN);
     }
 }

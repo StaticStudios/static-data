@@ -2,8 +2,12 @@ package net.staticstudios.data.impl.data;
 
 import net.staticstudios.data.Reference;
 import net.staticstudios.data.UniqueData;
-import net.staticstudios.data.util.*;
-import org.jetbrains.annotations.Nullable;
+import net.staticstudios.data.util.ColumnValuePairs;
+import net.staticstudios.data.util.ReferenceMetadata;
+import net.staticstudios.data.util.ReferenceUpdateHandler;
+import net.staticstudios.data.util.UniqueDataMetadata;
+
+import java.lang.reflect.Field;
 
 public class ReadOnlyReference<T extends UniqueData> implements Reference<T> {
     private final ColumnValuePairs referencedColumnValuePairs;
@@ -20,30 +24,32 @@ public class ReadOnlyReference<T extends UniqueData> implements Reference<T> {
         ReadOnlyReference<T> delegate = new ReadOnlyReference<>(
                 proxy.getHolder(),
                 proxy.getReferenceType(),
-                ReferenceImpl.create(proxy.getHolder(), proxy.getReferenceType(), metadata.links(), metadata.updateReferencedTable()).getReferencedColumnValuePairs()
+                ReferenceImpl.create(proxy.getHolder(), proxy.getReferenceType(), metadata).getReferencedColumnValuePairs()
         );
 
         proxy.setDelegate(metadata, delegate);
     }
 
     private static <T extends UniqueData> Reference<T> create(UniqueData holder, Class<T> referenceType, ReferenceMetadata metadata) {
-        return new ReadOnlyReference<>(holder, referenceType, ReferenceImpl.create(holder, referenceType, metadata.links(), metadata.updateReferencedTable()).getReferencedColumnValuePairs());
+        return new ReadOnlyReference<>(holder, referenceType, ReferenceImpl.create(holder, referenceType, metadata).getReferencedColumnValuePairs());
     }
 
     public static <U extends UniqueData> void delegate(U instance) {
         UniqueDataMetadata metadata = instance.getDataManager().getMetadata(instance.getClass());
-        for (FieldInstancePair<@Nullable Reference> pair : ReflectionUtils.getFieldInstancePairs(instance, Reference.class)) {
-            ReferenceMetadata refMetadata = metadata.referenceMetadata().get(pair.field());
-            if (pair.instance() instanceof Reference.ProxyReference<?> proxyRef) {
-                createAndDelegate(proxyRef, refMetadata);
-            } else {
-                pair.field().setAccessible(true);
-                try {
-                    pair.field().set(instance, create(instance, refMetadata.referencedClass(), refMetadata));
-                } catch (IllegalAccessException e) {
-                    throw new RuntimeException(e);
+        try {
+            for (var entry : metadata.referenceMetadata().entrySet()) {
+                Field field = entry.getKey();
+                ReferenceMetadata referenceMetadata = entry.getValue();
+
+                Object value = field.get(instance);
+                if (value instanceof Reference.ProxyReference<?> proxyRef) {
+                    ReadOnlyReference.createAndDelegate(proxyRef, referenceMetadata);
+                } else {
+                    field.set(instance, ReadOnlyReference.create(instance, referenceMetadata.referencedClass(), referenceMetadata));
                 }
             }
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
         }
     }
 

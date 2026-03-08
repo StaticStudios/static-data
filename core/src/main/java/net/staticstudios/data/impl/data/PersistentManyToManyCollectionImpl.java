@@ -11,7 +11,6 @@ import net.staticstudios.data.util.*;
 import net.staticstudios.data.utils.Link;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
@@ -42,20 +41,21 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
 
     public static <T extends UniqueData> void delegate(T instance) {
         UniqueDataMetadata metadata = instance.getDataManager().getMetadata(instance.getClass());
-        for (FieldInstancePair<@Nullable PersistentCollection> pair : ReflectionUtils.getFieldInstancePairs(instance, PersistentCollection.class)) {
-            PersistentCollectionMetadata collectionMetadata = metadata.persistentCollectionMetadata().get(pair.field());
-            if (!(collectionMetadata instanceof PersistentManyToManyCollectionMetadata oneToManyMetadata)) continue;
+        try {
+            for (var entry : metadata.persistentCollectionMetadata().entrySet()) {
+                Field field = entry.getKey();
+                PersistentCollectionMetadata pcMetadata = entry.getValue();
 
-            if (pair.instance() instanceof PersistentCollection.ProxyPersistentCollection<?> proxyCollection) {
-                createAndDelegate((PersistentCollection.ProxyPersistentCollection<? extends UniqueData>) proxyCollection, oneToManyMetadata);
-            } else {
-                pair.field().setAccessible(true);
-                try {
-                    pair.field().set(instance, create(instance, oneToManyMetadata));
-                } catch (IllegalAccessException e) {
-                    throw new RuntimeException(e);
+                if (!(pcMetadata instanceof PersistentManyToManyCollectionMetadata manyToManyMetadata)) continue;
+                Object value = field.get(instance);
+                if (value instanceof PersistentCollection.ProxyPersistentCollection<?> proxyCollection) {
+                    PersistentManyToManyCollectionImpl.createAndDelegate((PersistentCollection.ProxyPersistentCollection<? extends UniqueData>) proxyCollection, manyToManyMetadata);
+                } else {
+                    field.set(instance, PersistentManyToManyCollectionImpl.create(instance, manyToManyMetadata));
                 }
             }
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -72,6 +72,7 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
             String links = manyToManyAnnotation.link();
             PersistentManyToManyCollectionMetadata metadata = new PersistentManyToManyCollectionMetadata(clazz, referencedClass, parsedJoinTableSchemaName, parsedJoinTableName, links);
             metadataMap.put(field, metadata);
+            field.setAccessible(true);
         }
 
         return metadataMap;
@@ -512,7 +513,6 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
      * @return set of id column value pairs for the referenced type
      */
     public Set<ColumnValuePairs> getIds() {
-        //todo: this method is slow, plan to cache this later.
         Preconditions.checkArgument(!holder.isDeleted(), "Cannot get entries on a deleted UniqueData instance");
         Set<ColumnValuePairs> ids = new HashSet<>();
         UniqueDataMetadata holderMetadata = holder.getMetadata();
@@ -527,8 +527,23 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         StringBuilder sqlBuilder = new StringBuilder();
         sqlBuilder.append("SELECT ");
         for (ColumnMetadata columnMetadata : target.idColumns()) {
-            sqlBuilder.append("_target.\"").append(columnMetadata.name()).append("\", ");
+            sqlBuilder.append("_target.\"").append(columnMetadata.name()).append("\" AS \"t_").append(columnMetadata.name()).append("\", ");
         }
+
+        for (Link entry : joinTableToDataTableLinks) {
+            String joinColumn = entry.columnInReferringTable();
+            sqlBuilder.append("\"").append(joinTableSchema).append("\".\"").append(joinTableName)
+                    .append("\".\"").append(joinColumn).append("\" AS \"jd_")
+                    .append(joinColumn).append("\", ");
+        }
+
+        for (Link entry : joinTableToReferencedTableLinks) {
+            String joinColumn = entry.columnInReferringTable();
+            sqlBuilder.append("\"").append(joinTableSchema).append("\".\"").append(joinTableName)
+                    .append("\".\"").append(joinColumn).append("\" AS \"jr_")
+                    .append(joinColumn).append("\", ");
+        }
+
         sqlBuilder.setLength(sqlBuilder.length() - 2);
         sqlBuilder.append(" FROM \"").append(joinTableSchema).append("\".\"").append(joinTableName).append("\" ");
         sqlBuilder.append("INNER JOIN \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\" _data ON ");
@@ -554,19 +569,81 @@ public class PersistentManyToManyCollectionImpl<T extends UniqueData> implements
         sqlBuilder.setLength(sqlBuilder.length() - 5);
 
         @Language("SQL") String sql = sqlBuilder.toString();
-        try (ResultSet rs = dataAccessor.executeQuery(sql, holder.getIdColumns().stream().map(ColumnValuePair::value).toList())) {
+
+        List<Object> values = new ArrayList<>();
+        for (ColumnValuePair columnValuePair : holder.getIdColumns()) {
+            values.add(columnValuePair.value());
+        }
+
+//        SelectQuery query = new SelectQuery(sql, values);
+//
+//        ReadCacheResult result = holder.getDataManager().getRelationCacheResult(query);
+//        if (result != null) {
+//            return (Set<ColumnValuePairs>) result.getValues();
+//        }
+//
+//
+//        Set<Cell> dependencies = new HashSet<>();
+//
+//        for (Link entry : joinTableToDataTableLinks) {
+//            String dataColumn = entry.columnInReferencedTable();
+//            dependencies.add(new Cell(holderMetadata.schema(), holderMetadata.table(), dataColumn, holder.getIdColumns()));
+//        }
+
+        try (ResultSet rs = dataAccessor.executeQuery(sql, values)) {
             while (rs.next()) {
                 int i = 0;
                 ColumnValuePair[] idColumns = new ColumnValuePair[target.idColumns().size()];
                 for (ColumnMetadata columnMetadata : target.idColumns()) {
-                    Object value = rs.getObject(columnMetadata.name());
+                    Object value = rs.getObject("t_" + columnMetadata.name());
                     idColumns[i++] = new ColumnValuePair(columnMetadata.name(), value);
                 }
-                ids.add(new ColumnValuePairs(idColumns));
+                ColumnValuePairs entryIds = new ColumnValuePairs(idColumns);
+                ids.add(entryIds);
+
+//                ColumnValuePair[] joinIds = new ColumnValuePair[joinTableToDataTableLinks.size() + joinTableToReferencedTableLinks.size()];
+//
+//                int j = 0;
+//
+//                for (Link entry : joinTableToDataTableLinks) {
+//                    String joinColumn = entry.columnInReferringTable();
+//                    Object value = rs.getObject("jd_" + joinColumn);
+//                    joinIds[j++] = new ColumnValuePair(joinColumn, value);
+//                }
+//
+//                for (Link entry : joinTableToReferencedTableLinks) {
+//                    String joinColumn = entry.columnInReferringTable();
+//                    Object value = rs.getObject("jr_" + joinColumn);
+//                    joinIds[j++] = new ColumnValuePair(joinColumn, value);
+//                }
+//
+//                ColumnValuePairs joinIdColumns = new ColumnValuePairs(joinIds);
+//
+//                for (Link link : joinTableToDataTableLinks) {
+//                    String joinColumn = link.columnInReferringTable();
+//                    dependencies.add(new Cell(joinTableSchema, joinTableName, joinColumn, joinIdColumns));
+//                }
+//                for (Link link : joinTableToReferencedTableLinks) {
+//                    String joinColumn = link.columnInReferringTable();
+//                    String referencedColumn = link.columnInReferencedTable();
+//                    dependencies.add(new Cell(target.schema(), target.table(), referencedColumn, entryIds));
+//                    dependencies.add(new Cell(joinTableSchema, joinTableName, joinColumn, joinIdColumns));
+//                }
+//
+//                for (ColumnMetadata theirIdColumns : target.idColumns()) {
+//                    String column = theirIdColumns.name();
+//                    dependencies.add(new Cell(target.schema(), target.table(), column, entryIds));
+//                }
+
             }
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+
+//        ReadCacheResult newResult = new ReadCacheResult(ids, dependencies);
+//        holder.getDataManager().putRelationCacheResult(query, newResult);
+
+        //note about caching: we need a way to invalidate entries when a new row is now a valid part of the collection.
 
         return ids;
     }
