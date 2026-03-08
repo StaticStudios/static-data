@@ -76,7 +76,8 @@ public class SQLColumn {
                 unique == other.unique &&
                 Objects.equals(defaultValue, other.defaultValue) &&
                 Objects.equals(type, other.type) &&
-                Objects.equals(name, other.name);
+                Objects.equals(name, other.name) &&
+                Objects.equals(virtual, other.virtual);
     }
 
     @Override
@@ -88,6 +89,7 @@ public class SQLColumn {
                 ", indexed=" + indexed +
                 ", unique=" + unique +
                 ", defaultValue='" + defaultValue + '\'' +
+                ", virtual=" + virtual +
                 '}';
     }
 }
