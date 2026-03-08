@@ -307,6 +307,11 @@ public class QueryBuilder<U extends UniqueData> extends BaseQueryBuilder<U, Quer
             return this;
         }
 
+        public final QueryWhere cachedValueIn(String identifier, List<Object> in) {
+            super.cachedValueInClause(metadata.schema(), metadata.table(), identifier, in.toArray());
+            return this;
+        }
+
         public final QueryWhere cachedValueNotIn(String schema, String table, String identifier, List<Object> in) {
             super.cachedValueNotInClause(schema, table, identifier, in.toArray());
             return this;
