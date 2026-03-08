@@ -3,7 +3,6 @@ package net.staticstudios.data.impl.data;
 import net.staticstudios.data.PersistentValue;
 import net.staticstudios.data.UniqueData;
 import net.staticstudios.data.util.PersistentValueMetadata;
-import net.staticstudios.data.util.ReflectionUtils;
 import net.staticstudios.data.util.UniqueDataMetadata;
 import net.staticstudios.data.util.ValueUpdateHandler;
 
@@ -45,7 +44,7 @@ public class ReadOnlyPersistentValue<T> implements PersistentValue<T> {
                 if (value instanceof PersistentValue.ProxyPersistentValue<?> proxyPv) {
                     ReadOnlyPersistentValue.createAndDelegate(proxyPv, pvMetadata);
                 } else {
-                    field.set(instance, ReadOnlyPersistentValue.create(instance, ReflectionUtils.getGenericType(field), pvMetadata));
+                    field.set(instance, ReadOnlyPersistentValue.create(instance, pvMetadata.getColumnMetadata().type(), pvMetadata));
                 }
             }
         } catch (IllegalAccessException e) {

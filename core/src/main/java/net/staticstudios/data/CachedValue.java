@@ -52,6 +52,24 @@ public interface CachedValue<T> extends Value<T> {
         public void setDelegate(CachedValueMetadata metadata, AbstractCachedValue<T> delegate) {
             Preconditions.checkNotNull(delegate, "Delegate cannot be null");
             Preconditions.checkState(this.delegate == null, "Delegate is already set");
+
+            if (fallback != null && !metadata.hasValidatedFallbackSupplier()) {
+                LambdaUtils.assertLambdaDoesntCapture(fallback, List.of(UniqueData.class), null);
+                metadata.setValidatedFallbackSupplier(true);
+            }
+
+            if (refresher != null && !metadata.hasValidatedRefresher()) {
+                LambdaUtils.assertLambdaDoesntCapture(refresher, List.of(UniqueData.class), null);
+                metadata.setValidatedRefresher(true);
+            }
+
+            if (!metadata.hasValidatedUpdateHandlers()) {
+                for (ValueUpdateHandlerWrapper<?, T> handler : updateHandlers) {
+                    LambdaUtils.assertLambdaDoesntCapture(handler.getHandler(), List.of(UniqueData.class), null);
+                }
+                metadata.setValidatedUpdateHandlers(true);
+            }
+
             delegate.setFallback(this.fallback);
             delegate.setRefresher(refresher);
             this.delegate = delegate;
@@ -89,7 +107,6 @@ public interface CachedValue<T> extends Value<T> {
                 throw new UnsupportedOperationException("Cannot set fallback after initialization");
             }
             Preconditions.checkNotNull(fallback, "Fallback supplier cannot be null");
-            LambdaUtils.assertLambdaDoesntCapture(fallback, List.of(UniqueData.class), null);
             this.fallback = fallback;
             return this;
         }
@@ -98,7 +115,6 @@ public interface CachedValue<T> extends Value<T> {
         @Override
         public <U extends UniqueData> CachedValue<T> refresher(Class<U> clazz, CachedValueRefresher<U, T> refresher) {
             Preconditions.checkArgument(delegate == null, "Cannot dynamically add a refresher after the holder has been initialized!");
-            LambdaUtils.assertLambdaDoesntCapture(refresher, List.of(UniqueData.class), null);
             this.refresher = (CachedValueRefresher<UniqueData, T>) refresher;
             return this;
         }

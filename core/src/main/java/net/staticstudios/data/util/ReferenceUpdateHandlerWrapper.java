@@ -9,10 +9,6 @@ public class ReferenceUpdateHandlerWrapper<U extends UniqueData, T extends Uniqu
     private ReferenceMetadata referenceMetadata;
 
     public ReferenceUpdateHandlerWrapper(ReferenceUpdateHandler<U, T> handler) {
-        LambdaUtils.assertLambdaDoesntCapture(handler, "Use thr provided instance to access member variables.");
-        // we don't want to hold a reference to a UniqueData instances, since it won't get GCed
-        // and the handler may be called for any holder instance.
-
         this.handler = handler;
     }
 

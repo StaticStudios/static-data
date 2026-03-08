@@ -10,10 +10,6 @@ public class ValueUpdateHandlerWrapper<U extends UniqueData, T> {
     private final Class<? extends UniqueData> holderClass;
 
     public ValueUpdateHandlerWrapper(ValueUpdateHandler<U, T> handler, Class<T> dataType, Class<? extends UniqueData> holderClass) {
-        LambdaUtils.assertLambdaDoesntCapture(handler, "Use thr provided instance to access member variables.");
-        // we don't want to hold a reference to a UniqueData instances, since it won't get GCed
-        // and the handler may be called for any holder instance.
-
         this.handler = handler;
         this.dataType = dataType;
         this.holderClass = holderClass;

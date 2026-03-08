@@ -16,6 +16,7 @@ public final class ReferenceMetadata {
     private final boolean generateFkey;
     private final boolean updateReferencedTable;
     private @Nullable String selectReferencedColumnValuePairsQuery;
+    private boolean validatedUpdateHandlers = false;
 
     public ReferenceMetadata(Class<? extends UniqueData> holderClass, Class<? extends UniqueData> referencedClass,
                              List<Link> links, boolean generateFkey, boolean updateReferencedTable) {
@@ -86,6 +87,14 @@ public final class ReferenceMetadata {
 
     public boolean updateReferencedTable() {
         return updateReferencedTable;
+    }
+
+    public boolean hasValidatedUpdateHandlers() {
+        return validatedUpdateHandlers;
+    }
+
+    public void setValidatedUpdateHandlers(boolean validatedUpdateHandlers) {
+        this.validatedUpdateHandlers = validatedUpdateHandlers;
     }
 
     @Override

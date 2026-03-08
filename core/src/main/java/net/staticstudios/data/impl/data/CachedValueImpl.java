@@ -50,7 +50,7 @@ public class CachedValueImpl<T> extends AbstractCachedValue<T> {
                 if (value instanceof CachedValue.ProxyCachedValue<?> proxyCv) {
                     CachedValueImpl.createAndDelegate(proxyCv, cvMetadata);
                 } else {
-                    field.set(instance, CachedValueImpl.create(instance, ReflectionUtils.getGenericType(field), cvMetadata));
+                    field.set(instance, CachedValueImpl.create(instance, cvMetadata.type(), cvMetadata));
                 }
             }
         } catch (IllegalAccessException e) {
@@ -79,7 +79,8 @@ public class CachedValueImpl<T> extends AbstractCachedValue<T> {
             expireAfterSeconds = expireAfterAnnotation.value();
         }
 
-        return new CachedValueMetadata(clazz, holderSchema, holderTable, ValueUtils.parseValue(identifierAnnotation.value()), expireAfterSeconds);
+
+        return new CachedValueMetadata(clazz, holderSchema, holderTable, ValueUtils.parseValue(identifierAnnotation.value()), ReflectionUtils.getGenericType(field), expireAfterSeconds);
     }
 
 

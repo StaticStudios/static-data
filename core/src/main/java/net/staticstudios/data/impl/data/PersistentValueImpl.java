@@ -45,7 +45,7 @@ public class PersistentValueImpl<T> implements PersistentValue<T> {
                 if (value instanceof PersistentValue.ProxyPersistentValue<?> proxyPv) {
                     PersistentValueImpl.createAndDelegate(proxyPv, pvMetadata);
                 } else {
-                    field.set(instance, PersistentValueImpl.create(instance, ReflectionUtils.getGenericType(field), pvMetadata));
+                    field.set(instance, PersistentValueImpl.create(instance, pvMetadata.getColumnMetadata().type(), pvMetadata));
                 }
             }
         } catch (IllegalAccessException e) {

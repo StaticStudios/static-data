@@ -13,6 +13,7 @@ public class PersistentOneToManyValueCollectionMetadata implements PersistentCol
     private final String dataTable;
     private final String dataColumn;
     private final List<Link> links;
+    private boolean validatedChangeHandlers = false;
 
     public PersistentOneToManyValueCollectionMetadata(Class<? extends UniqueData> holderClass, Class<?> dataType, String dataSchema, String dataTable, String dataColumn, List<Link> links) {
         this.holderClass = holderClass;
@@ -46,6 +47,16 @@ public class PersistentOneToManyValueCollectionMetadata implements PersistentCol
 
     public List<Link> getLinks() {
         return links;
+    }
+
+    @Override
+    public boolean hasValidatedChangeHandlers() {
+        return validatedChangeHandlers;
+    }
+
+    @Override
+    public void setValidatedChangeHandlers(boolean validatedChangeHandlers) {
+        this.validatedChangeHandlers = validatedChangeHandlers;
     }
 
     @Override

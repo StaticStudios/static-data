@@ -62,7 +62,7 @@ public class ReflectionUtils {
     }
 
 
-    public static @Nullable Class<?> getGenericType(Field field) { //todo: this is called a lot at runtime, this should not be the case. it is only valid to call this during metadata extraction
+    public static @Nullable Class<?> getGenericType(Field field) {
         if (field.getGenericType() instanceof Class<?>) {
             return (Class<?>) field.getGenericType();
         } else if (field.getGenericType() instanceof java.lang.reflect.ParameterizedType parameterizedType) {

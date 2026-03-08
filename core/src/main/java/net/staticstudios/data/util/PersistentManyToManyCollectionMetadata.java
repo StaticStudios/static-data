@@ -18,6 +18,7 @@ public class PersistentManyToManyCollectionMetadata implements PersistentCollect
     private String joinTableName;
     private List<Link> joinTableToDataTableLinks;
     private List<Link> joinTableToReferencedTableLinks;
+    private boolean validatedChangeHandlers = false;
 
     public PersistentManyToManyCollectionMetadata(Class<? extends UniqueData> holderClass, Class<? extends UniqueData> referencedType, String parsedJoinTableSchema, String parsedJoinTableName, String rawLinks) {
         this.holderClass = holderClass;
@@ -63,6 +64,16 @@ public class PersistentManyToManyCollectionMetadata implements PersistentCollect
             joinTableToReferencedTableLinks = PersistentManyToManyCollectionImpl.getJoinTableToReferencedTableLinks(holderMetadata.table(), referencedMetadata.table(), rawLinks);
         }
         return joinTableToReferencedTableLinks;
+    }
+
+    @Override
+    public boolean hasValidatedChangeHandlers() {
+        return validatedChangeHandlers;
+    }
+
+    @Override
+    public void setValidatedChangeHandlers(boolean validatedChangeHandlers) {
+        this.validatedChangeHandlers = validatedChangeHandlers;
     }
 
     @Override

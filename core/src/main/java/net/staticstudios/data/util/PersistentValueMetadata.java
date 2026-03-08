@@ -8,6 +8,7 @@ public class PersistentValueMetadata {
     private final Class<? extends UniqueData> holderClass;
     private final ColumnMetadata columnMetadata;
     private final int updateInterval;
+    private boolean validatedUpdateHandlers = false;
 
     public PersistentValueMetadata(Class<? extends UniqueData> holderClass, ColumnMetadata columnMetadata, int updateInterval) {
         this.holderClass = holderClass;
@@ -33,6 +34,14 @@ public class PersistentValueMetadata {
 
     public int getUpdateInterval() {
         return updateInterval;
+    }
+
+    public boolean hasValidatedUpdateHandlers() {
+        return validatedUpdateHandlers;
+    }
+
+    public void setValidatedUpdateHandlers(boolean validatedUpdateHandlers) {
+        this.validatedUpdateHandlers = validatedUpdateHandlers;
     }
 
     @Override

@@ -1,10 +1,7 @@
 package net.staticstudios.data;
 
 import com.google.common.base.Preconditions;
-import net.staticstudios.data.util.PersistentValueMetadata;
-import net.staticstudios.data.util.Value;
-import net.staticstudios.data.util.ValueUpdateHandler;
-import net.staticstudios.data.util.ValueUpdateHandlerWrapper;
+import net.staticstudios.data.util.*;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -42,6 +39,14 @@ public interface PersistentValue<T> extends Value<T> {
         public void setDelegate(PersistentValueMetadata metadata, PersistentValue<T> delegate) {
             Preconditions.checkNotNull(delegate, "Delegate cannot be null");
             Preconditions.checkState(this.delegate == null, "Delegate is already set");
+
+            if (!metadata.hasValidatedUpdateHandlers()) {
+                for (ValueUpdateHandlerWrapper<?, ?> wrapper : updateHandlers) {
+                    LambdaUtils.assertLambdaDoesntCapture(wrapper.getHandler(), List.of(UniqueData.class), null);
+                }
+                metadata.setValidatedUpdateHandlers(true);
+            }
+
             this.delegate = delegate;
             holder.getDataManager().registerPersistentValueUpdateHandlers(metadata, updateHandlers);
         }
