@@ -4,6 +4,7 @@ import com.google.common.base.Preconditions;
 import net.staticstudios.data.*;
 import net.staticstudios.data.impl.data.PersistentManyToManyCollectionImpl;
 import net.staticstudios.data.util.*;
+import net.staticstudios.data.util.redis.RedisUtils;
 import net.staticstudios.data.utils.Link;
 import net.staticstudios.data.utils.StringUtils;
 import org.intellij.lang.annotations.Language;
@@ -68,6 +69,9 @@ public class SQLBuilder {
         // shouldn't matter the order of the new classes since we parse relations only after creating tables. so dependencies will always exist
         for (Class<? extends UniqueData> visitedClass : visited) {
             parseIndividualColumns(visitedClass, schemas);
+        }
+        for (Class<? extends UniqueData> visitedClass : visited) {
+            parseIndividualCachedValues(visitedClass, schemas);
         }
         for (Class<? extends UniqueData> visitedClass : visited) {
             parseIndividualRelations(visitedClass, schemas);
@@ -158,6 +162,11 @@ public class SQLBuilder {
 
                         h2Sb.append(";");
                         pgSb.append(";");
+
+                        if (column.isVirtual()) {
+                            pgSb.setLength(0);
+                        }
+
                         statements.add(DDLStatement.of(h2Sb.toString(), pgSb.toString()));
                     }
                 }
@@ -170,7 +179,11 @@ public class SQLBuilder {
                     if (column.isIndexed() && !column.isUnique()) {
                         String indexName = "idx_" + schema.getName() + "_" + table.getName() + "_" + column.getName();
                         @Language("SQL") String h2 = "CREATE INDEX IF NOT EXISTS " + indexName + " ON \"" + schema.getName() + "\".\"" + table.getName() + "\" (\"" + column.getName() + "\");";
-                        statements.add(DDLStatement.both(h2));
+                        if (column.isVirtual()) {
+                            statements.add(DDLStatement.of(h2, ""));
+                        } else {
+                            statements.add(DDLStatement.both(h2));
+                        }
                     }
                 }
             }
@@ -291,6 +304,21 @@ public class SQLBuilder {
         }
     }
 
+    private void parseIndividualCachedValues(Class<? extends UniqueData> clazz, Map<String, SQLSchema> schemas) {
+        logger.trace("Parsing cached values for class {}", clazz.getName());
+        UniqueDataMetadata metadata = dataManager.getMetadata(clazz);
+        if (!clazz.isAnnotationPresent(Data.class)) {
+            throw new IllegalArgumentException("Class " + clazz.getName() + " is not annotated with @Data");
+        }
+
+        Data dataAnnotation = clazz.getAnnotation(Data.class);
+        Preconditions.checkNotNull(dataAnnotation, "Data annotation is null for class " + clazz.getName());
+
+        for (Field field : ReflectionUtils.getFields(clazz)) {
+            parseCachedValue(clazz, schemas, dataAnnotation, metadata, field);
+        }
+    }
+
     private void parseIndividualRelations(Class<? extends UniqueData> clazz, Map<String, SQLSchema> schemas) {
         logger.trace("Parsing relations for class {}", clazz.getName());
         UniqueDataMetadata metadata = dataManager.getMetadata(clazz);
@@ -405,7 +433,7 @@ public class SQLBuilder {
             if (foreignColumn != null) {
                 for (ColumnMetadata idCol : table.getIdColumns()) {
                     Preconditions.checkState(table.getColumn(idCol.name()) == null, "ID column name " + idCol.name() + " in referringTable " + tableName + " is duplicated!");
-                    SQLColumn sqlColumn = new SQLColumn(table, idCol.type(), idCol.name(), false, false, true, null);
+                    SQLColumn sqlColumn = new SQLColumn(table, idCol.type(), idCol.name(), false, false, true, null, false);
                     table.addColumn(sqlColumn);
                 }
             }
@@ -456,11 +484,40 @@ public class SQLBuilder {
         }
 
         Class<?> type = dataManager.getSerializedType(ReflectionUtils.getGenericType(field));
-        SQLColumn sqlColumn = new SQLColumn(table, type, columnName, nullable, indexed, unique, defaultValue.isEmpty() ? null : SQLUtils.parseDefaultValue(type, defaultValue));
+        SQLColumn sqlColumn = new SQLColumn(table, type, columnName, nullable, indexed, unique, defaultValue.isEmpty() ? null : SQLUtils.parseDefaultValue(type, defaultValue), false);
 
         SQLColumn existingColumn = table.getColumn(columnName);
         if (existingColumn != null) {
             Preconditions.checkState(existingColumn.equals(sqlColumn), "Column " + columnName + " in referringTable " + tableName + " has conflicting definitions! Existing: " + existingColumn + ", New: " + sqlColumn);
+            return;
+        }
+
+        table.addColumn(sqlColumn);
+    }
+
+    private void parseCachedValue(Class<? extends UniqueData> clazz, Map<String, SQLSchema> schemas, Data dataAnnotation, UniqueDataMetadata metadata, Field field) {
+        if (!field.getType().equals(CachedValue.class)) {
+            return;
+        }
+        String dataSchema = ValueUtils.parseValue(dataAnnotation.schema());
+        String dataTable = ValueUtils.parseValue(dataAnnotation.table());
+
+        Identifier identifier = field.getAnnotation(Identifier.class);
+        Preconditions.checkNotNull(identifier, "CachedValue field " + field.getName() + " in class " + clazz.getName() + " must be annotated with @Identifier");
+        String identifierValue = ValueUtils.parseValue(identifier.value());
+
+        SQLSchema schema = schemas.computeIfAbsent(dataSchema, SQLSchema::new);
+        SQLTable table = schema.getTable(dataTable);
+
+        if (table == null) {
+            table = new SQLTable(schema, dataTable, metadata.idColumns());
+            schema.addTable(table);
+        }
+
+        SQLColumn sqlColumn = new SQLColumn(table, String.class, RedisUtils.getVirtualColumnName(identifierValue), true, identifier.index(), false, null, true);
+        SQLColumn existingColumn = table.getColumn(sqlColumn.getName());
+        if (existingColumn != null) {
+            Preconditions.checkState(existingColumn.equals(sqlColumn), "CachedValue column " + sqlColumn.getName() + " in referringTable " + table.getName() + " has conflicting definitions! Existing: " + existingColumn + ", New: " + sqlColumn);
             return;
         }
 
@@ -560,11 +617,11 @@ public class SQLBuilder {
             referencedTable = new SQLTable(referencedSchema, referencedTableName, idColumns);
             for (ColumnMetadata idCol : referencedTable.getIdColumns()) {
                 Preconditions.checkState(referencedTable.getColumn(idCol.name()) == null, "ID column name " + idCol.name() + " in referringTable " + referencedTableName + " is duplicated!");
-                SQLColumn sqlColumn = new SQLColumn(referencedTable, dataManager.getSerializedType(idCol.type()), idCol.name(), false, false, true, null);
+                SQLColumn sqlColumn = new SQLColumn(referencedTable, dataManager.getSerializedType(idCol.type()), idCol.name(), false, false, true, null, false);
                 referencedTable.addColumn(sqlColumn);
             }
             referencedSchema.addTable(referencedTable);
-            referencedTable.addColumn(new SQLColumn(referencedTable, dataManager.getSerializedType(genericType), referencedColumnName, oneToMany.nullable(), oneToMany.indexed(), oneToMany.unique(), null));
+            referencedTable.addColumn(new SQLColumn(referencedTable, dataManager.getSerializedType(genericType), referencedColumnName, oneToMany.nullable(), oneToMany.indexed(), oneToMany.unique(), null, false));
             for (Link link : parseLinks(oneToMany.link())) {
                 Class<?> columnType = null;
                 SQLColumn columnInReferringTable = table.getColumn(link.columnInReferringTable());
@@ -572,7 +629,7 @@ public class SQLBuilder {
                     columnType = columnInReferringTable.getType();
                 }
                 Preconditions.checkNotNull(columnType, "Link name %s in OneToMany annotation on field %s in class %s is not an ID name", link.columnInReferringTable(), field.getName(), clazz.getName());
-                SQLColumn linkingColumn = new SQLColumn(referencedTable, dataManager.getSerializedType(columnType), link.columnInReferencedTable(), false, false, false, null);
+                SQLColumn linkingColumn = new SQLColumn(referencedTable, dataManager.getSerializedType(columnType), link.columnInReferencedTable(), false, false, false, null, false);
                 referencedTable.addColumn(linkingColumn);
             }
 
@@ -683,7 +740,7 @@ public class SQLBuilder {
             joinTable = new SQLTable(joinSchema, joinTableName, joinTableIdColumns);
             for (ColumnMetadata idCol : joinTable.getIdColumns()) {
                 Preconditions.checkState(joinTable.getColumn(idCol.name()) == null, "ID column name " + idCol.name() + " in referringTable " + joinTableName + " is duplicated!");
-                SQLColumn sqlColumn = new SQLColumn(joinTable, dataManager.getSerializedType(idCol.type()), idCol.name(), false, false, true, null);
+                SQLColumn sqlColumn = new SQLColumn(joinTable, dataManager.getSerializedType(idCol.type()), idCol.name(), false, false, true, null, false);
                 joinTable.addColumn(sqlColumn);
             }
             joinSchema.addTable(joinTable);

@@ -3,6 +3,7 @@ package net.staticstudios.data;
 import com.google.gson.Gson;
 import net.staticstudios.data.impl.redis.RedisEncodedValue;
 import net.staticstudios.data.misc.DataTest;
+import net.staticstudios.data.misc.MockEnvironment;
 import net.staticstudios.data.mock.user.MockUser;
 import net.staticstudios.data.util.ColumnValuePair;
 import net.staticstudios.data.util.ColumnValuePairs;
@@ -162,22 +163,29 @@ public class CachedValueTest extends DataTest {
 
         Jedis jedis = getJedis();
 
-        String onCooldownKey = RedisUtils.buildRedisKey("public", "users", "on_cooldown", columnValuePairs);
-        String cooldownUpdatesKey = RedisUtils.buildRedisKey("public", "users", "cooldown_updates", columnValuePairs);
-
-        jedis.set(onCooldownKey, gson.toJson(new RedisEncodedValue(null, "true")));
-        jedis.set(cooldownUpdatesKey, gson.toJson(new RedisEncodedValue(null, "5")));
-
-        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
-        dataManager.load(MockUser.class);
-        dataManager.finishLoading();
-        MockUser user = MockUser.builder(dataManager)
+        DataManager dataManager1 = getMockEnvironments().getFirst().dataManager();
+        dataManager1.load(MockUser.class);
+        dataManager1.finishLoading();
+        MockUser user1 = MockUser.builder(dataManager1)
                 .id(userId)
                 .name("john doe")
                 .insert(InsertMode.ASYNC);
 
-        assertEquals(true, user.onCooldown.get());
-        assertEquals(5, user.cooldownUpdates.get());
+        String cooldownUpdatesKey = RedisUtils.buildRedisKey("public", "users", "cooldown_updates", columnValuePairs);
+
+        jedis.set(cooldownUpdatesKey, gson.toJson(new RedisEncodedValue(null, "5")));
+
+        waitForDataPropagation();
+
+        assertEquals(5, user1.cooldownUpdates.get());
+
+        MockEnvironment env2 = createMockEnvironment();
+        DataManager dataManager2 = env2.dataManager();
+        dataManager2.load(MockUser.class);
+        dataManager2.finishLoading();
+        MockUser user2 = MockUser.query(dataManager2).findAll().getFirst();
+
+        assertEquals(5, user2.cooldownUpdates.get());
     }
 
     @Test

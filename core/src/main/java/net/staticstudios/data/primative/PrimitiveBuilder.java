@@ -1,7 +1,6 @@
 package net.staticstudios.data.primative;
 
 import com.google.common.base.Preconditions;
-import org.h2.value.Value;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.function.Consumer;
@@ -12,7 +11,6 @@ public class PrimitiveBuilder<T> {
     private Function<String, T> decoder;
     private Function<T, String> encoder;
     private Function<T, T> copier;
-    private Function<Value, T> valueExtractor;
     private String h2SQLType;
     private String pgSQLType;
 
@@ -41,11 +39,6 @@ public class PrimitiveBuilder<T> {
         return this;
     }
 
-    public PrimitiveBuilder<T> valueExtractor(Function<@NotNull Value, @NotNull T> valueExtractor) {
-        this.valueExtractor = valueExtractor;
-        return this;
-    }
-
     public PrimitiveBuilder<T> h2SQLType(String h2SQLType) {
         this.h2SQLType = h2SQLType;
         return this;
@@ -61,12 +54,11 @@ public class PrimitiveBuilder<T> {
         Preconditions.checkNotNull(decoder, "Decoder is null");
         Preconditions.checkNotNull(encoder, "Encoder is null");
         Preconditions.checkNotNull(copier, "Copier is null");
-        Preconditions.checkNotNull(valueExtractor, "Value extractor is null");
         Preconditions.checkNotNull(consumer, "Consumer is null");
         Preconditions.checkNotNull(h2SQLType, "H2 SQL Type is null");
         Preconditions.checkNotNull(pgSQLType, "Postgres SQL Type is null");
 
-        Primitive<T> primitive = new Primitive<>(runtimeType, decoder, encoder, copier, valueExtractor, h2SQLType, pgSQLType);
+        Primitive<T> primitive = new Primitive<>(runtimeType, decoder, encoder, copier, h2SQLType, pgSQLType);
         consumer.accept(primitive);
 
         return primitive;

@@ -294,6 +294,6 @@ public class QueryTest extends DataTest {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);
         dataManager.finishLoading();
-        assertEquals("WHERE CACHED_VALUE(UUID '%s', 'public', 'users', 'settings_updates', \"id\") = ?".formatted(dataManager.getApplicationId()), MockUser.query(dataManager).where(w -> w.settingsUpdatesIs(1)).toString());
+        assertEquals("WHERE \"public\".\"users\".\"__virtual__cv_settings_updates\" = ?", MockUser.query(dataManager).where(w -> w.settingsUpdatesIs(1)).toString());
     } //todo: test other cached value clauses as well (not in, in, is null, is not null)
 }

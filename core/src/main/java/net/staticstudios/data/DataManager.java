@@ -20,7 +20,6 @@ import net.staticstudios.data.parse.SQLTable;
 import net.staticstudios.data.primative.Primitives;
 import net.staticstudios.data.util.*;
 import net.staticstudios.data.util.TaskQueue;
-import net.staticstudios.data.util.redis.RedisIdentifier;
 import net.staticstudios.data.util.redis.RedisUtils;
 import net.staticstudios.data.utils.Link;
 import org.intellij.lang.annotations.Language;
@@ -1418,7 +1417,7 @@ public class DataManager {
 
 
     public <T> @Nullable T getRedis(String holderSchema, String holderTable, String identifier, ColumnValuePairs idColumns, Class<T> type) {
-        String encoded = dataAccessor.getRedisValue(new RedisIdentifier(holderSchema, holderTable, identifier, idColumns));
+        String encoded = dataAccessor.getRedisValue(holderSchema, holderTable, identifier, idColumns);
         if (encoded == null) {
             return null;
         }
@@ -1429,7 +1428,7 @@ public class DataManager {
     public void setRedis(String holderSchema, String holderTable, String identifier, ColumnValuePairs idColumns, int expireAfterSeconds, @Nullable Object value) {
         Object serialized = serialize(value);
         String encoded = Primitives.encode(serialized);
-        dataAccessor.setRedisValue(new RedisIdentifier(holderSchema, holderTable, identifier, idColumns), encoded, expireAfterSeconds);
+        dataAccessor.setRedisValue(holderSchema, holderTable, identifier, idColumns, encoded, expireAfterSeconds);
     }
 
     private boolean hasCycle(SQLTable table, Map<String, Set<SQLTable>> dependencyGraph, Set<SQLTable> visited, Set<SQLTable> stack) {

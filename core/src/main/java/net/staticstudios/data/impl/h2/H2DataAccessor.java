@@ -20,12 +20,10 @@ import net.staticstudios.data.parse.SQLTable;
 import net.staticstudios.data.primative.Primitives;
 import net.staticstudios.data.util.*;
 import net.staticstudios.data.util.TaskQueue;
-import net.staticstudios.data.util.redis.RedisIdentifier;
 import net.staticstudios.data.util.redis.RedisUtils;
 import net.staticstudios.utils.Pair;
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
-import org.h2.value.Value;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -66,7 +64,6 @@ public class H2DataAccessor implements DataAccessor {
         return t;
     });
     private final RedisListener redisListener;
-    private final Map<RedisIdentifier, String> redisCache = new ConcurrentHashMap<>();
     private final Set<String> knownRedisPartialKeys = ConcurrentHashMap.newKeySet();
 
     private final ThreadLocal<LinkedList<Runnable>> commitCallbacks = ThreadLocal.withInitial(LinkedList::new);
@@ -87,12 +84,6 @@ public class H2DataAccessor implements DataAccessor {
         this.redisListener = redisListener;
         this.jdbcUrl = "jdbc:h2:mem:static-data-cache;DB_CLOSE_DELAY=-1;LOCK_MODE=3;CACHE_SIZE=65536;QUERY_CACHE_SIZE=1024;CACHE_TYPE=SOFT_LRU";
         this.dataManager = dataManager;
-
-        try (Statement statement = getConnection().createStatement()) {
-            statement.execute("CREATE ALIAS CACHED_VALUE FOR \"" + H2DataAccessor.class.getName() + ".cachedValueEquals\"");
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to initialize H2 database", e);
-        }
 
         postgresListener.addHandler(notification -> {
             try {
@@ -266,33 +257,6 @@ public class H2DataAccessor implements DataAccessor {
         });
     }
 
-    // called via reflection from h2
-    @SuppressWarnings("unused")
-    public static String cachedValueEquals(UUID dataManagerId, String schema, String table, String identifier, Value... ids) {
-        DataManager dataManager = DataManager.getInstance(dataManagerId);
-
-        SQLSchema sqlSchema = dataManager.getSQLBuilder().getSchema(schema);
-        if (sqlSchema == null) {
-            return null;
-        }
-        SQLTable sqlTable = sqlSchema.getTable(table);
-        if (sqlTable == null) {
-            return null;
-        }
-
-        ColumnValuePair[] columnValuePairs = new ColumnValuePair[sqlTable.getIdColumns().size()];
-
-        for (int i = 0; i < sqlTable.getIdColumns().size(); i++) {
-            ColumnMetadata columnMetadata = sqlTable.getIdColumns().get(i);
-            String columnName = columnMetadata.name();
-            columnValuePairs[i] = new ColumnValuePair(columnName, Primitives.fromValue(columnMetadata.type(), ids[i]));
-        }
-
-        RedisIdentifier redisIdentifier = new RedisIdentifier(schema, table, identifier, new ColumnValuePairs(columnValuePairs));
-
-        return dataManager.getDataAccessor().getRedisValue(redisIdentifier);
-    }
-
     public synchronized void sync(List<SchemaTable> schemaTables, List<String> redisPartialKeys) throws SQLException {
         taskQueue.submitTask((realDbConnection, jedis) -> {
             if (!schemaTables.isEmpty()) {
@@ -361,11 +325,12 @@ public class H2DataAccessor implements DataAccessor {
                     cursor = scanResult.getCursor();
 
                     for (String key : scanResult.getResult()) {
-                        RedisIdentifier identifier = RedisUtils.fromKey(key, dataManager);
-                        if (identifier == null) {
+                        RedisUtils.FullyDeconstructedKey fullyDeconstructedKey = RedisUtils.fullyDeconstruct(key, dataManager);
+                        if (fullyDeconstructedKey == null) {
                             continue; // we aren't tracking this table
                         }
-                        redisCache.put(identifier, decodeRedis(jedis.get(key)).value());
+
+                        setRedisValueCache(fullyDeconstructedKey.holderSchema(), fullyDeconstructedKey.holderTable(), fullyDeconstructedKey.identifier(), fullyDeconstructedKey.idColumns(), decodeRedis(jedis.get(key)).value());
                     }
                 } while (!cursor.equals(ScanParams.SCAN_POINTER_START));
 
@@ -561,21 +526,49 @@ public class H2DataAccessor implements DataAccessor {
     }
 
     @Override
-    public @Nullable String getRedisValue(RedisIdentifier identifier) {
-        return redisCache.get(identifier);
+    public @Nullable String getRedisValue(String holderSchema, String holderTable, String identifier, ColumnValuePairs idColumns) {
+        String columnName = RedisUtils.getVirtualColumnName(identifier);
+
+        StringBuilder sqlBuilder = new StringBuilder().append("SELECT \"").append(columnName).append("\" FROM \"").append(holderSchema).append("\".\"").append(holderTable).append("\" WHERE ");
+        for (ColumnValuePair columnValuePair : idColumns) {
+            String name = columnValuePair.column();
+            sqlBuilder.append("\"").append(name).append("\" = ? AND ");
+        }
+        sqlBuilder.setLength(sqlBuilder.length() - 5);
+        @Language("SQL") String sql = sqlBuilder.toString();
+
+        try {
+            PreparedStatement preparedStatement = prepareStatement(sql);
+            int i = 1;
+            for (ColumnValuePair columnValuePair : idColumns) {
+                preparedStatement.setObject(i++, columnValuePair.value());
+            }
+            logger.trace("[H2] {}", sql);
+            h2QueryCounter.increment();
+            try (ResultSet rs = preparedStatement.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString(1);
+                } else {
+                    return null;
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
-    public void setRedisValue(RedisIdentifier identifier, String value, int expirationSeconds) {
-        String key = RedisUtils.toKey(identifier);
-        String prev;
+    public void setRedisValue(String holderSchema, String holderTable, String identifier, ColumnValuePairs idColumns, String value, int expirationSeconds) {
+        String prev = getAndSetRedisValueCache(holderSchema, holderTable, identifier, idColumns, value);
+        if (Objects.equals(prev, value)) {
+            return; // no change
+        }
+        String key = RedisUtils.buildRedisKey(holderSchema, holderTable, identifier, idColumns);
         if (value == null) {
-            prev = redisCache.remove(identifier);
             taskQueue.submitTask((connection, jedis) -> {
                 jedis.del(key);
             });
         } else {
-            prev = redisCache.put(identifier, value);
             taskQueue.submitTask((connection, jedis) -> {
                 if (expirationSeconds > 0) {
                     jedis.setex(key, expirationSeconds, encodeRedis(value));
@@ -587,6 +580,107 @@ public class H2DataAccessor implements DataAccessor {
 
         RedisUtils.DeconstructedKey deconstructedKey = RedisUtils.deconstruct(key);
         dataManager.callCachedValueUpdateHandlers(deconstructedKey.partialKey(), deconstructedKey.encodedIdNames(), deconstructedKey.encodedIdValues(), prev, value);
+    }
+
+    private void setRedisValueCache(String holderSchema, String holderTable, String identifier, ColumnValuePairs idColumns, String value) {
+        String columnName = RedisUtils.getVirtualColumnName(identifier);
+
+        StringBuilder sqlBuilder = new StringBuilder().append("UPDATE \"").append(holderSchema).append("\".\"").append(holderTable).append("\" SET \"").append(columnName).append("\" = ? WHERE ");
+        for (ColumnValuePair columnValuePair : idColumns) {
+            String name = columnValuePair.column();
+            sqlBuilder.append("\"").append(name).append("\" = ? AND ");
+        }
+        sqlBuilder.setLength(sqlBuilder.length() - 5);
+        @Language("SQL") String sql = sqlBuilder.toString();
+
+        try {
+            PreparedStatement preparedStatement = prepareStatement(sql);
+            preparedStatement.setString(1, value);
+            int i = 2;
+            for (ColumnValuePair columnValuePair : idColumns) {
+                preparedStatement.setObject(i++, columnValuePair.value());
+            }
+            logger.trace("[H2] {}", sql);
+            preparedStatement.executeUpdate();
+            h2UpdateCounter.increment();
+
+            if (!getConnection().getAutoCommit()) {
+                getConnection().commit();
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private @Nullable String getAndSetRedisValueCache(String holderSchema, String holderTable, String identifier, ColumnValuePairs idColumns, @Nullable String value) {
+        String columnName = RedisUtils.getVirtualColumnName(identifier);
+        try {
+            String oldValue = null;
+
+            Connection connection = getConnection();
+
+            boolean autoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+
+            try {
+                StringBuilder selectSb = new StringBuilder()
+                        .append("SELECT \"").append(columnName).append("\" FROM \"")
+                        .append(holderSchema).append("\".\"").append(holderTable).append("\" WHERE ");
+                for (ColumnValuePair columnValuePair : idColumns) {
+                    selectSb.append("\"").append(columnValuePair.column()).append("\" = ? AND ");
+                }
+                selectSb.setLength(selectSb.length() - 5);
+
+                PreparedStatement preparedStatement = prepareStatement(selectSb.toString());
+
+                int i = 1;
+                for (ColumnValuePair columnValuePair : idColumns) {
+                    preparedStatement.setObject(i++, columnValuePair.value());
+                }
+
+                logger.trace("[H2] {}", selectSb);
+                h2QueryCounter.increment();
+                try (ResultSet rs = preparedStatement.executeQuery()) {
+                    if (rs.next()) {
+                        oldValue = rs.getString(1);
+                    }
+                }
+
+                if (Objects.equals(oldValue, value)) {
+                    return oldValue;
+                }
+
+                StringBuilder updateSb = new StringBuilder()
+                        .append("UPDATE \"").append(holderSchema).append("\".\"").append(holderTable)
+                        .append("\" SET \"").append(columnName).append("\" = ? WHERE ");
+                for (ColumnValuePair columnValuePair : idColumns) {
+                    updateSb.append("\"").append(columnValuePair.column()).append("\" = ? AND ");
+                }
+                updateSb.setLength(updateSb.length() - 5);
+
+                preparedStatement = prepareStatement(updateSb.toString());
+                preparedStatement.setString(1, value);
+
+                i = 2;
+                for (ColumnValuePair columnValuePair : idColumns) {
+                    preparedStatement.setObject(i++, columnValuePair.value());
+                }
+
+                logger.trace("[H2] {}", updateSb);
+                preparedStatement.executeUpdate();
+                h2UpdateCounter.increment();
+            } finally {
+                if (autoCommit) {
+                    connection.setAutoCommit(true);
+                } else {
+                    connection.commit();
+                }
+            }
+
+            return oldValue;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
@@ -670,7 +764,13 @@ public class H2DataAccessor implements DataAccessor {
             ps.setString(2, table);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    columns.add(rs.getString("COLUMN_NAME"));
+                    String columnName = rs.getString("COLUMN_NAME");
+
+                    if (columnName.startsWith("__virtual__")) {
+                        continue;
+                    }
+
+                    columns.add(columnName);
                 }
             }
         }
@@ -737,23 +837,22 @@ public class H2DataAccessor implements DataAccessor {
             return; // ignore events from ourselves
         }
 
-        RedisIdentifier identifier = RedisUtils.fromKey(key, dataManager);
-        if (identifier == null) {
+        RedisUtils.FullyDeconstructedKey fullyDeconstructedKey = RedisUtils.fullyDeconstruct(key, dataManager);
+        if (fullyDeconstructedKey == null) {
             return; // we aren't tracking this key
         }
         if (event == RedisEvent.SET) {
-            String entry = redisCache.get(identifier);
-            if (entry != null && Objects.equals(entry, redisValue)) {
+            String prev = getAndSetRedisValueCache(fullyDeconstructedKey.holderSchema(), fullyDeconstructedKey.holderTable(), fullyDeconstructedKey.identifier(), fullyDeconstructedKey.idColumns(), redisValue);
+            if (prev != null && Objects.equals(prev, redisValue)) {
                 return;
             }
-            redisCache.put(identifier, redisValue);
             RedisUtils.DeconstructedKey deconstructedKey = RedisUtils.deconstruct(key);
-            dataManager.callCachedValueUpdateHandlers(deconstructedKey.partialKey(), deconstructedKey.encodedIdNames(), deconstructedKey.encodedIdValues(), entry, redisValue);
+            dataManager.callCachedValueUpdateHandlers(deconstructedKey.partialKey(), deconstructedKey.encodedIdNames(), deconstructedKey.encodedIdValues(), prev, redisValue);
         } else if (event == RedisEvent.DEL || event == RedisEvent.EXPIRED) {
-            String entry = redisCache.remove(identifier);
-            if (entry != null) {
+            String prev = getAndSetRedisValueCache(fullyDeconstructedKey.holderSchema(), fullyDeconstructedKey.holderTable(), fullyDeconstructedKey.identifier(), fullyDeconstructedKey.idColumns(), null);
+            if (prev != null) {
                 RedisUtils.DeconstructedKey deconstructedKey = RedisUtils.deconstruct(key);
-                dataManager.callCachedValueUpdateHandlers(deconstructedKey.partialKey(), deconstructedKey.encodedIdNames(), deconstructedKey.encodedIdValues(), entry, null);
+                dataManager.callCachedValueUpdateHandlers(deconstructedKey.partialKey(), deconstructedKey.encodedIdNames(), deconstructedKey.encodedIdValues(), prev, null);
             }
         }
     }

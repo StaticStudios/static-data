@@ -106,7 +106,46 @@ public class RedisUtils {
         return new DeconstructedKey(sb.toString(), encodedIdNames, encodedIdValues);
     }
 
+    public static FullyDeconstructedKey fullyDeconstruct(String key, DataManager dataManager) {
+        String[] parts = key.split(":");
+        String holderSchema = parts[1];
+        String holderTable = parts[2];
+        String identifier = parts[parts.length - 1];
+
+        SQLSchema schema = dataManager.getSQLBuilder().getSchema(holderSchema);
+        if (schema == null) {
+            return null;
+        }
+
+        SQLTable table = schema.getTable(holderTable);
+        if (table == null) {
+            return null;
+        }
+
+        List<ColumnValuePair> idColumns = new ArrayList<>();
+        for (int i = 3; i < parts.length - 1; i += 2) {
+
+            for (ColumnMetadata columnMetadata : table.getIdColumns()) {
+                if (columnMetadata.name().equals(parts[i])) {
+                    idColumns.add(new ColumnValuePair(parts[i], Primitives.decodePrimitive(columnMetadata.type(), parts[i + 1])));
+                    break;
+                }
+            }
+        }
+        return new FullyDeconstructedKey(holderSchema, holderTable, identifier, new ColumnValuePairs(idColumns.toArray(ColumnValuePair[]::new)));
+    }
+
     public record DeconstructedKey(String partialKey, List<String> encodedIdNames, List<String> encodedIdValues) {
 
+    }
+
+    public record FullyDeconstructedKey(String holderSchema, String holderTable, String identifier,
+                                        ColumnValuePairs idColumns) {
+
+    }
+
+
+    public static String getVirtualColumnName(String identifier) {
+        return "__virtual__cv_" + identifier;
     }
 }
