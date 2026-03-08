@@ -1,5 +1,5 @@
 <idea-plugin>
-    <id>net.staticstudios.data.ide.intellij</id>
+    <id>net.staticstudios.data.ide</id>
     <name>static-data</name>
     <vendor>Static Studios</vendor>
     <version>1.0.0</version>
