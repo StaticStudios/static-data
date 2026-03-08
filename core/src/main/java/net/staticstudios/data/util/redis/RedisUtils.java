@@ -1,4 +1,14 @@
-package net.staticstudios.data.util;
+package net.staticstudios.data.util.redis;
+
+import net.staticstudios.data.DataManager;
+import net.staticstudios.data.parse.SQLColumn;
+import net.staticstudios.data.parse.SQLSchema;
+import net.staticstudios.data.parse.SQLTable;
+import net.staticstudios.data.primative.Primitives;
+import net.staticstudios.data.util.ColumnMetadata;
+import net.staticstudios.data.util.ColumnValuePair;
+import net.staticstudios.data.util.ColumnValuePairs;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,11 +37,44 @@ public class RedisUtils {
         return Pattern.compile(regex.toString());
     }
 
-    public static String buildRedisKey(String holderSchema, String holderTable, String identifier, ColumnValuePairs icColumns) {
+    public static @Nullable RedisIdentifier fromKey(String key, DataManager dataManager) {
+        String[] parts = key.split(":");
+        String holderSchema = parts[1];
+        String holderTable = parts[2];
+        String identifier = parts[parts.length - 1];
+
+        SQLSchema schema = dataManager.getSQLBuilder().getSchema(holderSchema);
+        if (schema == null) {
+            return null;
+        }
+
+        SQLTable table = schema.getTable(holderTable);
+        if (table == null) {
+            return null;
+        }
+
+        List<ColumnValuePair> idColumns = new ArrayList<>();
+        for (int i = 3; i < parts.length - 1; i += 2) {
+            String value = parts[i + 1];
+            SQLColumn column = table.getColumn(parts[i]);
+            if (column == null) {
+                return null;
+            }
+
+            idColumns.add(new ColumnValuePair(parts[i], Primitives.decodePrimitive(column.getType(), value)));
+        }
+        return new RedisIdentifier(holderSchema, holderTable, identifier, new ColumnValuePairs(idColumns.toArray(ColumnValuePair[]::new)));
+    }
+
+    public static String toKey(RedisIdentifier identifier) {
+        return buildRedisKey(identifier.holderSchema(), identifier.holderTable(), identifier.identifier(), identifier.idColumns());
+    }
+
+    public static String buildRedisKey(String holderSchema, String holderTable, String identifier, ColumnValuePairs idColumns) {
         //static-data:[schema]:[table]:[id column-value pairs, seperated by ':']:[identifier]
         StringBuilder sb = new StringBuilder("static-data:");
         sb.append(holderSchema).append(":").append(holderTable).append(":");
-        for (ColumnValuePair pair : icColumns) {
+        for (ColumnValuePair pair : idColumns) {
             sb.append(pair.column()).append(":").append(pair.value()).append(":");
         }
         sb.append(identifier);

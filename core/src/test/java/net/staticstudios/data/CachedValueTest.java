@@ -6,7 +6,7 @@ import net.staticstudios.data.misc.DataTest;
 import net.staticstudios.data.mock.user.MockUser;
 import net.staticstudios.data.util.ColumnValuePair;
 import net.staticstudios.data.util.ColumnValuePairs;
-import net.staticstudios.data.util.RedisUtils;
+import net.staticstudios.data.util.redis.RedisUtils;
 import org.junit.jupiter.api.Test;
 import redis.clients.jedis.Jedis;
 

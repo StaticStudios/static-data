@@ -5,6 +5,7 @@ import net.staticstudios.data.StaticDataStatistics;
 import net.staticstudios.data.parse.DDLStatement;
 import net.staticstudios.data.util.SQLTransaction;
 import net.staticstudios.data.util.SQlStatement;
+import net.staticstudios.data.util.redis.RedisIdentifier;
 import org.intellij.lang.annotations.Language;
 import org.jetbrains.annotations.Nullable;
 
@@ -29,9 +30,9 @@ public interface DataAccessor {
 
     void postDDL() throws SQLException;
 
-    @Nullable String getRedisValue(String key);
+    @Nullable String getRedisValue(RedisIdentifier identifier);
 
-    void setRedisValue(String key, String value, int expirationSeconds);
+    void setRedisValue(RedisIdentifier identifier, String value, int expirationSeconds);
 
     void discoverRedisKeys(List<String> partialRedisKeys);
 

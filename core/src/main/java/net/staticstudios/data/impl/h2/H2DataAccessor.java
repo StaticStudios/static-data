@@ -20,6 +20,8 @@ import net.staticstudios.data.parse.SQLTable;
 import net.staticstudios.data.primative.Primitives;
 import net.staticstudios.data.util.*;
 import net.staticstudios.data.util.TaskQueue;
+import net.staticstudios.data.util.redis.RedisIdentifier;
+import net.staticstudios.data.util.redis.RedisUtils;
 import net.staticstudios.utils.Pair;
 import net.staticstudios.utils.ShutdownStage;
 import net.staticstudios.utils.ThreadUtils;
@@ -63,7 +65,7 @@ public class H2DataAccessor implements DataAccessor {
         return t;
     });
     private final RedisListener redisListener;
-    private final Map<String, String> redisCache = new ConcurrentHashMap<>();
+    private final Map<RedisIdentifier, String> redisCache = new ConcurrentHashMap<>();
     private final Set<String> knownRedisPartialKeys = ConcurrentHashMap.newKeySet();
 
     private final ThreadLocal<LinkedList<Runnable>> commitCallbacks = ThreadLocal.withInitial(LinkedList::new);
@@ -325,7 +327,11 @@ public class H2DataAccessor implements DataAccessor {
                     cursor = scanResult.getCursor();
 
                     for (String key : scanResult.getResult()) {
-                        redisCache.put(key, decodeRedis(jedis.get(key)).value());
+                        RedisIdentifier identifier = RedisUtils.fromKey(key, dataManager);
+                        if (identifier == null) {
+                            continue; // we aren't tracking this table
+                        }
+                        redisCache.put(identifier, decodeRedis(jedis.get(key)).value());
                     }
                 } while (!cursor.equals(ScanParams.SCAN_POINTER_START));
 
@@ -521,20 +527,21 @@ public class H2DataAccessor implements DataAccessor {
     }
 
     @Override
-    public @Nullable String getRedisValue(String key) {
-        return redisCache.get(key);
+    public @Nullable String getRedisValue(RedisIdentifier identifier) {
+        return redisCache.get(identifier);
     }
 
     @Override
-    public void setRedisValue(String key, String value, int expirationSeconds) {
+    public void setRedisValue(RedisIdentifier identifier, String value, int expirationSeconds) {
+        String key = RedisUtils.toKey(identifier);
         String prev;
         if (value == null) {
-            prev = redisCache.remove(key);
+            prev = redisCache.remove(identifier);
             taskQueue.submitTask((connection, jedis) -> {
                 jedis.del(key);
             });
         } else {
-            prev = redisCache.put(key, value);
+            prev = redisCache.put(identifier, value);
             taskQueue.submitTask((connection, jedis) -> {
                 if (expirationSeconds > 0) {
                     jedis.setex(key, expirationSeconds, encodeRedis(value));
@@ -701,16 +708,20 @@ public class H2DataAccessor implements DataAccessor {
             return; // ignore events from ourselves
         }
 
+        RedisIdentifier identifier = RedisUtils.fromKey(key, dataManager);
+        if (identifier == null) {
+            return; // we aren't tracking this key
+        }
         if (event == RedisEvent.SET) {
-            String entry = redisCache.get(key);
+            String entry = redisCache.get(identifier);
             if (entry != null && Objects.equals(entry, redisValue)) {
                 return;
             }
-            redisCache.put(key, redisValue);
+            redisCache.put(identifier, redisValue);
             RedisUtils.DeconstructedKey deconstructedKey = RedisUtils.deconstruct(key);
             dataManager.callCachedValueUpdateHandlers(deconstructedKey.partialKey(), deconstructedKey.encodedIdNames(), deconstructedKey.encodedIdValues(), entry, redisValue);
         } else if (event == RedisEvent.DEL || event == RedisEvent.EXPIRED) {
-            String entry = redisCache.remove(key);
+            String entry = redisCache.remove(identifier);
             if (entry != null) {
                 RedisUtils.DeconstructedKey deconstructedKey = RedisUtils.deconstruct(key);
                 dataManager.callCachedValueUpdateHandlers(deconstructedKey.partialKey(), deconstructedKey.encodedIdNames(), deconstructedKey.encodedIdValues(), entry, null);
