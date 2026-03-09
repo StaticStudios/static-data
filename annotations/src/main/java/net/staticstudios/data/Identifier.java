@@ -10,6 +10,7 @@ import java.lang.annotation.Target;
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.FIELD)
+@ImplicitUsage
 public @interface Identifier {
     String value();
 

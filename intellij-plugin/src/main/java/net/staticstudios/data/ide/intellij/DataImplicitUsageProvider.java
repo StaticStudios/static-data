@@ -7,14 +7,15 @@ import net.staticstudios.data.utils.Constants;
 import org.jetbrains.annotations.NotNull;
 
 public class DataImplicitUsageProvider implements ImplicitUsageProvider {
+
     @Override
     public boolean isImplicitUsage(@NotNull PsiElement psiElement) {
-        return checkAnnotation(psiElement);
+        return false;
     }
 
     @Override
     public boolean isImplicitRead(@NotNull PsiElement psiElement) {
-        return checkAnnotation(psiElement);
+        return false;
     }
 
     @Override
@@ -27,8 +28,6 @@ public class DataImplicitUsageProvider implements ImplicitUsageProvider {
             return false;
         }
 
-        return IntelliJPluginUtils.hasAnnotation(field, Constants.COLUMN_ANNOTATION_FQN)
-                || IntelliJPluginUtils.hasAnnotation(field, Constants.FOREIGN_COLUMN_ANNOTATION_FQN)
-                || IntelliJPluginUtils.hasAnnotation(field, Constants.ID_COLUMN_ANNOTATION_FQN);
+        return IntelliJPluginUtils.hasAnnotationRecursive(field, Constants.IMPLICIT_USAGE_FQN);
     }
 }
