@@ -1,4 +1,4 @@
 package net.staticstudios.data;
 
-public @interface ImplicitUsage {
+public @interface ImplicitWrite {
 }

@@ -20,14 +20,11 @@ public class DataImplicitUsageProvider implements ImplicitUsageProvider {
 
     @Override
     public boolean isImplicitWrite(@NotNull PsiElement psiElement) {
-        return checkAnnotation(psiElement);
-    }
-
-    private boolean checkAnnotation(PsiElement psiElement) {
         if (!(psiElement instanceof PsiField field)) {
             return false;
         }
 
-        return IntelliJPluginUtils.hasAnnotationRecursive(field, Constants.IMPLICIT_USAGE_FQN);
+        return IntelliJPluginUtils.hasAnnotationRecursive(field, Constants.IMPLICIT_WRITE_FQN);
     }
+
 }

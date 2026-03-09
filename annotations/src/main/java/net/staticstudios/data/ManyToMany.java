@@ -8,7 +8,7 @@ import java.lang.annotation.Target;
 
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.FIELD)
-@ImplicitUsage
+@ImplicitWrite
 public @interface ManyToMany {
     /**
      * How should this relation be linked?
