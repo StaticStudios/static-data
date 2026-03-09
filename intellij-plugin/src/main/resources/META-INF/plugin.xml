@@ -14,5 +14,7 @@
         <lang.psiAugmentProvider implementation="net.staticstudios.data.ide.intellij.DataPsiAugmentProvider"/>
 
         <dependencySupport coordinate="net.staticstudios:static-data" kind="java" displayName="Static Data"/>
+
+        <implicitUsageProvider implementation="net.staticstudios.data.ide.intellij.DataImplicitUsageProvider"/>
     </extensions>
 </idea-plugin>
