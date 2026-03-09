@@ -4,7 +4,7 @@ plugins {
 
 allprojects {
     group = 'net.staticstudios'
-    version = '3.2.0'
+    version = '3.2.1-SNAPSHOT'
 
     repositories {
         mavenCentral()
