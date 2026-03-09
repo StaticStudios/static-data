@@ -31,12 +31,9 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Run Tests
+        if: github.event_name != 'push' && github.ref == 'refs/heads/master'
         id: test
         run: ./gradlew test --info --stacktrace -PStaticStudiosUsername=github -PStaticStudiosPassword=${{ secrets.REPOSITORY_SECRET }} | tee gradle-test.log
-
-      - name: Publish to Repository
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master' # only publish on push to master
-        run: ./gradlew publish -PStaticStudiosUsername=github -PStaticStudiosPassword=${{ secrets.REPOSITORY_SECRET }}
 
       - name: Upload test logs and reports
         if: always()

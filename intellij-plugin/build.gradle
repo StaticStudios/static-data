@@ -26,7 +26,33 @@ java {
     }
 }
 
+def teamCityBuildNumber = providers.environmentVariable("BUILD_NUMBER")
+def isCi = providers.environmentVariable("CI").map { it.equalsIgnoreCase("true") }.orElse(false)
+def isSnapshot = project.version.toString().endsWith("SNAPSHOT")
+
 intellijPlatform {
+
+    pluginConfiguration {
+        version = providers.provider {
+            def baseVersion = project.version.toString()
+            def buildNumber = teamCityBuildNumber.orNull
+
+            if (isSnapshot && isCi.get() && buildNumber != null && !buildNumber.isBlank()) {
+                return "${baseVersion}-${buildNumber}"
+            }
+
+            return baseVersion
+        }
+    }
+
+    publishing {
+        token = providers.gradleProperty("jetbrainsPluginPortal")
+        channels = providers.provider {
+            project.version.toString().endsWith("SNAPSHOT") ? ["beta"] : []
+        }
+
+    }
+
     pluginVerification {
         ides {
             recommended()
