@@ -133,6 +133,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
             return new ColumnValuePairs(idColumns);
         }
 
+        long generation = dataManager.getRelationCacheGeneration();
         try (ResultSet rs = dataAccessor.executeQuery(query.getSql(), query.getValues())) {
             if (!rs.next()) {
                 return null;
@@ -174,7 +175,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
             }
 
             ReadCacheResult cacheResult = new ReadCacheResult(theirIdColumns, dependencies);
-            dataManager.putRelationCacheResult(query, cacheResult);
+            dataManager.putRelationCacheResult(query, cacheResult, generation);
 
             return theirIdColumns;
         } catch (SQLException e) {

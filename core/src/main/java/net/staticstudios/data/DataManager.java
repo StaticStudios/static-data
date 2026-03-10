@@ -39,6 +39,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 @ApiStatus.Internal
@@ -66,8 +67,10 @@ public class DataManager {
     private final Set<ReferenceMetadata> registeredUpdateHandlersForReference = ConcurrentHashMap.newKeySet();
     private final Cache<SelectQuery, ReadCacheResult> relationCache;
     private final Map<Cell, Set<SelectQuery>> dependencyToRelationCacheMapping = new ConcurrentHashMap<>();
+    private final AtomicLong relationCacheGeneration = new AtomicLong();
     private final Cache<SelectQuery, ReadCacheResult> cellCache;
     private final Map<Cell, Set<SelectQuery>> dependencyToCellCacheMapping = new ConcurrentHashMap<>();
+    private final AtomicLong cellCacheGeneration = new AtomicLong();
 
     private final List<ValueSerializer<?, ?>> valueSerializers = new CopyOnWriteArrayList<>();
     private final Consumer<Runnable> updateHandlerExecutor;
@@ -1182,6 +1185,7 @@ public class DataManager {
         if (cacheResult != null) {
             exists = true;
         } else {
+            long generation = getRelationCacheGeneration();
             try (ResultSet rs = dataAccessor.executeQuery(sql, idColumns.stream().map(ColumnValuePair::value).toList())) {
                 exists = rs.next();
 
@@ -1191,7 +1195,7 @@ public class DataManager {
                         dependencies.add(new Cell(schema, table, columnValuePair.column(), idColumns));
                     }
                     ReadCacheResult result = new ReadCacheResult(ColumnValuePairs.EMPTY, dependencies);
-                    putRelationCacheResult(selectQuery, result);
+                    putRelationCacheResult(selectQuery, result, generation);
                 }
 
             } catch (SQLException e) {
@@ -1408,6 +1412,7 @@ public class DataManager {
             }
         }
 
+        long cellGeneration = getCellCacheGeneration();
         try (ResultSet rs = dataAccessor.executeQuery(sql, values)) {
             Object serializedValue = null;
             if (rs.next()) {
@@ -1428,7 +1433,7 @@ public class DataManager {
             }
             dependencies.add(new Cell(schema, table, column, idColumns));
             ReadCacheResult result = new ReadCacheResult(deserialized, dependencies);
-            putCellCacheResult(selectQuery, result);
+            putCellCacheResult(selectQuery, result, cellGeneration);
             return deserialized;
 
         } catch (SQLException e) {
@@ -1731,16 +1736,28 @@ public class DataManager {
         return relationCache.getIfPresent(query);
     }
 
-    public void putRelationCacheResult(SelectQuery query, @NotNull ReadCacheResult result) {
+    public long getRelationCacheGeneration() {
+        return relationCacheGeneration.get();
+    }
+
+    public void putRelationCacheResult(SelectQuery query, @NotNull ReadCacheResult result, long expectedGeneration) {
+        if (relationCacheGeneration.get() != expectedGeneration) {
+            return;
+        }
         logger.trace("Putting result in relation cache for query {} with result {}", query, result);
         relationCache.put(query, result);
         for (Cell cell : result.getDependencies()) {
             dependencyToRelationCacheMapping.computeIfAbsent(cell, k -> ConcurrentHashMap.newKeySet())
                     .add(query);
         }
+        if (relationCacheGeneration.get() != expectedGeneration) {
+            relationCache.invalidate(query);
+            cleanupRelationCacheEntry(query, result);
+        }
     }
 
     public void invalidateRelationCache(List<String> columnNames, String schema, String table, List<String> changedColumns, Object[] oldValues) {
+        relationCacheGeneration.incrementAndGet();
         for (UniqueDataMetadata metadata : uniqueDataMetadataMap.values()) {
             if (metadata.schema().equals(schema) && metadata.table().equals(table)) {
                 ColumnValuePair[] idColumns = new ColumnValuePair[metadata.idColumns().size()];
@@ -1787,16 +1804,28 @@ public class DataManager {
         return cellCache.getIfPresent(query);
     }
 
-    public void putCellCacheResult(SelectQuery query, @NotNull ReadCacheResult result) {
+    public long getCellCacheGeneration() {
+        return cellCacheGeneration.get();
+    }
+
+    public void putCellCacheResult(SelectQuery query, @NotNull ReadCacheResult result, long expectedGeneration) {
+        if (cellCacheGeneration.get() != expectedGeneration) {
+            return;
+        }
         logger.trace("Putting result in cell cache for query {} with result {}", query, result);
         cellCache.put(query, result);
         for (Cell cell : result.getDependencies()) {
             dependencyToCellCacheMapping.computeIfAbsent(cell, k -> ConcurrentHashMap.newKeySet())
                     .add(query);
         }
+        if (cellCacheGeneration.get() != expectedGeneration) {
+            cellCache.invalidate(query);
+            cleanupCellCacheEntry(query, result);
+        }
     }
 
     public void invalidateCellCache(List<String> columnNames, String schema, String table, List<String> changedColumns, Object[] oldValues) {
+        cellCacheGeneration.incrementAndGet();
         for (UniqueDataMetadata metadata : uniqueDataMetadataMap.values()) {
             if (metadata.schema().equals(schema) && metadata.table().equals(table)) {
                 ColumnValuePair[] idColumns = new ColumnValuePair[metadata.idColumns().size()];
