@@ -1,7 +1,10 @@
 package net.staticstudios.data.ide.intellij;
 
+import com.intellij.lang.jvm.annotation.JvmAnnotationAttribute;
 import com.intellij.psi.*;
 import net.staticstudios.data.utils.Constants;
+
+import java.util.Arrays;
 
 public class IntelliJPluginUtils {
     public static boolean genericTypeIs(PsiType type, String classFqn) {
@@ -43,7 +46,37 @@ public class IntelliJPluginUtils {
         if (element.getModifierList() == null) {
             return false;
         }
+
         return element.getModifierList().findAnnotation(annotationFqn) != null;
+    }
+
+    public static boolean hasAnnotationRecursive(PsiModifierListOwner element, String annotationFqn) {
+        if (element.getModifierList() == null) {
+            return false;
+        }
+
+        if (hasAnnotation(element, annotationFqn)) {
+            return true;
+        }
+
+        for (PsiAnnotation annotation : element.getModifierList().getAnnotations()) {
+            PsiJavaCodeReferenceElement referenceElement = annotation.getNameReferenceElement();
+
+            if (referenceElement == null) {
+                continue;
+            }
+
+            PsiElement resolved = referenceElement.resolve();
+            if (!(resolved instanceof PsiClass psiClass)) {
+                continue;
+            }
+
+            if (hasAnnotationRecursive(psiClass, annotationFqn)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public static PsiType getGenericParameter(PsiClassType type, PsiManager manager) {
