@@ -66,7 +66,7 @@ public final class ReferenceMetadata {
         if (selectReferencedColumnValuePairsQuery == null) {
             selectReferencedColumnValuePairsQuery = buildSelectReferencedColumnValuePairsQuery(dataManager);
         }
-        return new SelectQuery(selectReferencedColumnValuePairsQuery, values);
+        return new SelectQuery("ReferenceMetadata#buildSelectReferencedColumnValuePairsSelectQuery", selectReferencedColumnValuePairsQuery, values);
     }
 
     public Class<? extends UniqueData> holderClass() {

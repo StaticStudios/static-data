@@ -71,7 +71,10 @@ public class H2UpdateHandlerTrigger implements Trigger {
     }
 
     private void handleInsert(Object[] newRow) {
-        dataAccessor.onCommit(() -> dataManager.callCollectionChangeHandlers(columnNames, schema, table, columnNames, new Object[newRow.length], newRow, TriggerCause.INSERT, null));
+        dataAccessor.onCommit(() -> {
+            dataManager.callCollectionChangeHandlers(columnNames, schema, table, columnNames, new Object[newRow.length], newRow, TriggerCause.INSERT, null);
+            dataManager.callReferenceUpdateHandlers(columnNames, schema, table, columnNames, null, newRow, TriggerCause.INSERT);
+        });
     }
 
     private void handleUpdate(Object[] oldRow, Object[] newRow) {
@@ -94,7 +97,7 @@ public class H2UpdateHandlerTrigger implements Trigger {
             }
 
             dataManager.callCollectionChangeHandlers(columnNames, schema, table, changedColumns, oldRow, newRow, TriggerCause.UPDATE, null);
-            dataManager.callReferenceUpdateHandlers(columnNames, schema, table, changedColumns, oldRow, newRow);
+            dataManager.callReferenceUpdateHandlers(columnNames, schema, table, changedColumns, oldRow, newRow, TriggerCause.UPDATE);
         });
     }
 
@@ -106,6 +109,7 @@ public class H2UpdateHandlerTrigger implements Trigger {
         dataAccessor.onCommit(() -> {
             dataManager.callCollectionChangeHandlers(columnNames, schema, table, columnNames, oldRow, new Object[oldRow.length], TriggerCause.DELETE, snapshot);
 
+            dataManager.callReferenceUpdateHandlers(columnNames, schema, table, columnNames, oldRow, null, TriggerCause.DELETE);
             dataManager.handleDelete(columnNames, schema, table, oldRow);
         });
     }

@@ -589,19 +589,66 @@ public class DataManager {
         return instance;
     }
 
-    private UniqueData getInstanceForReferenceUpdateHandler(Class<? extends UniqueData> holderClass, List<String> columnNames, Object[] newSerializedValues) {
-        UniqueDataMetadata uniqueDataMetadata = getMetadata(holderClass);
-        ColumnValuePair[] idColumns = new ColumnValuePair[uniqueDataMetadata.idColumns().size()];
-        for (ColumnMetadata idColumn : uniqueDataMetadata.idColumns()) {
-            int columnIndex = columnNames.indexOf(idColumn.name());
-            Object serializedValue = newSerializedValues[columnIndex];
-            Object deserializedValue = deserialize(idColumn.type(), serializedValue);
-            idColumns[uniqueDataMetadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), deserializedValue);
+    private UniqueData getInstanceForReferenceUpdateHandler(ReferenceMetadata metadata, Class<? extends UniqueData> holderClass, List<String> columnNames, Object[] serializedValues) {
+        if (metadata.updateReferencedTable()) {
+            UniqueDataMetadata holderMetadata = getMetadata(holderClass);
+            SQLTable holderTable = Objects.requireNonNull(this.sqlBuilder.getSchema(holderMetadata.schema())).getTable(holderMetadata.table());
+            Preconditions.checkNotNull(holderTable, "Table %s.%s not found", holderMetadata.schema(), holderMetadata.table());
+
+            StringBuilder sqlBuilder = new StringBuilder();
+            sqlBuilder.append("SELECT ");
+            for (ColumnMetadata idColumn : holderMetadata.idColumns()) {
+                sqlBuilder.append("\"").append(idColumn.name()).append("\", ");
+            }
+            sqlBuilder.setLength(sqlBuilder.length() - 2);
+            sqlBuilder.append(" FROM \"").append(holderMetadata.schema()).append("\".\"").append(holderMetadata.table()).append("\" WHERE ");
+            List<Object> values = new ArrayList<>();
+            for (Link link : metadata.links()) {
+                if (!values.isEmpty()) {
+                    sqlBuilder.append(" AND ");
+                }
+                sqlBuilder.append("\"").append(link.columnInReferringTable()).append("\" = ? ");
+                Class<?> valueType = null;
+                for (SQLColumn column : holderTable.getColumns()) {
+                    if (column.getName().equals(link.columnInReferringTable())) {
+                        valueType = column.getType();
+                        break;
+                    }
+                }
+                Preconditions.checkNotNull(valueType, "Could not find column %s in holder table %s.%s", link.columnInReferringTable(), holderMetadata.schema(), holderMetadata.table());
+                int columnIndex = columnNames.indexOf(link.columnInReferencedTable());
+                Preconditions.checkArgument(columnIndex != -1, "Column %s not found in provided column names %s", link.columnInReferencedTable(), columnNames);
+                Object deserializedValue = deserialize(valueType, serializedValues[columnIndex]);
+                values.add(deserializedValue);
+            }
+            try (ResultSet rs = dataAccessor.executeQuery(sqlBuilder.toString(), values)) {
+                if (rs.next()) {
+                    ColumnValuePair[] idColumns = new ColumnValuePair[holderMetadata.idColumns().size()];
+                    for (ColumnMetadata idColumn : holderMetadata.idColumns()) {
+                        Object serializedValue = rs.getObject(idColumn.name());
+                        Object deserializedValue = deserialize(idColumn.type(), serializedValue);
+                        idColumns[holderMetadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), deserializedValue);
+                    }
+                    return getInstance(holderMetadata.clazz(), idColumns);
+                }
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+            return null;
+        } else {
+            UniqueDataMetadata uniqueDataMetadata = getMetadata(holderClass);
+            ColumnValuePair[] idColumns = new ColumnValuePair[uniqueDataMetadata.idColumns().size()];
+            for (ColumnMetadata idColumn : uniqueDataMetadata.idColumns()) {
+                int columnIndex = columnNames.indexOf(idColumn.name());
+                Object serializedValue = serializedValues[columnIndex];
+                Object deserializedValue = deserialize(idColumn.type(), serializedValue);
+                idColumns[uniqueDataMetadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), deserializedValue);
+            }
+            return getInstance(uniqueDataMetadata.clazz(), idColumns);
         }
-        return getInstance(uniqueDataMetadata.clazz(), idColumns);
     }
 
-    public void callReferenceUpdateHandlers(List<String> columnNames, String schema, String table, List<String> changedColumns, Object[] oldSerializedValues, Object[] newSerializedValues) {
+    public void callReferenceUpdateHandlers(List<String> columnNames, String schema, String table, List<String> changedColumns, Object[] oldSerializedValues, Object[] newSerializedValues, TriggerCause cause) {
         logger.trace("Calling reference update handlers for {}.{} on changed columns {} with old values {} and new values {}", schema, table, changedColumns, Arrays.toString(oldSerializedValues), Arrays.toString(newSerializedValues));
         Map<String, List<ReferenceUpdateHandlerWrapper<?, ?>>> handlersForTable = referenceUpdateHandlers.get(schema + "." + table);
         if (handlersForTable == null) {
@@ -611,97 +658,140 @@ public class DataManager {
         for (Map.Entry<String, List<ReferenceUpdateHandlerWrapper<?, ?>>> entry : handlersForTable.entrySet()) {
             List<ReferenceUpdateHandlerWrapper<?, ?>> handlers = entry.getValue();
             for (ReferenceUpdateHandlerWrapper<?, ?> wrapper : handlers) {
+
                 ReferenceMetadata metadata = wrapper.getReferenceMetadata();
                 List<Link> links = metadata.links();
                 Object[] oldLinkValues = new Object[links.size()];
                 Object[] newLinkValues = new Object[links.size()];
-                boolean differenceFound = false;
-                for (int i = 0; i < links.size(); i++) {
-                    Link link = links.get(i);
-                    int columnIndex = columnNames.indexOf(link.columnInReferringTable());
-                    Preconditions.checkArgument(columnIndex != -1, "Column %s not found in provided name names %s", link.columnInReferringTable(), columnNames);
-                    oldLinkValues[i] = oldSerializedValues[columnIndex];
-                    newLinkValues[i] = newSerializedValues[columnIndex];
-                    if (!Objects.equals(oldLinkValues[i], newLinkValues[i])) {
-                        differenceFound = true;
+                if (cause == TriggerCause.UPDATE) {
+                    boolean differenceFound = false;
+                    for (int i = 0; i < links.size(); i++) {
+                        Link link = links.get(i);
+                        int columnIndex = metadata.updateReferencedTable() ? columnNames.indexOf(link.columnInReferencedTable()) : columnNames.indexOf(link.columnInReferringTable());
+                        Preconditions.checkArgument(columnIndex != -1, "Column %s not found in provided name names %s", link.columnInReferringTable(), columnNames);
+                        oldLinkValues[i] = oldSerializedValues[columnIndex];
+                        newLinkValues[i] = newSerializedValues[columnIndex];
+                        if (!Objects.equals(oldLinkValues[i], newLinkValues[i])) {
+                            differenceFound = true;
+                        }
                     }
-                }
 
-                if (!differenceFound) {
-                    continue;
+                    if (!differenceFound) {
+                        continue;
+                    }
                 }
 
                 UniqueDataMetadata referencedMetadata = getMetadata(metadata.referencedClass());
-                SQLTable referencedTable = Objects.requireNonNull(this.sqlBuilder.getSchema(referencedMetadata.schema())).getTable(referencedMetadata.table());
-                Preconditions.checkNotNull(referencedTable, "Referenced table %s.%s not found", referencedMetadata.schema(), referencedMetadata.table());
 
-                StringBuilder sqlBuilder = new StringBuilder();
-                sqlBuilder.append("SELECT ");
-                for (ColumnMetadata idColumn : referencedMetadata.idColumns()) {
-                    sqlBuilder.append("\"").append(idColumn.name()).append("\", ");
-                }
-                sqlBuilder.setLength(sqlBuilder.length() - 2);
-                sqlBuilder.append(" FROM \"").append(referencedMetadata.schema()).append("\".\"").append(referencedMetadata.table()).append("\" WHERE ");
-                List<Object> oldValues = new ArrayList<>();
-                List<Object> newValues = new ArrayList<>();
-                for (Link link : metadata.links()) {
-                    if (!oldValues.isEmpty()) {
-                        sqlBuilder.append(" AND ");
+                if (metadata.updateReferencedTable()) {
+                    ColumnValuePair[] idColumns = new ColumnValuePair[referencedMetadata.idColumns().size()];
+                    for (ColumnMetadata idColumn : referencedMetadata.idColumns()) {
+                        int columnIndex = columnNames.indexOf(idColumn.name());
+                        Object serializedValue = cause == TriggerCause.DELETE ? oldSerializedValues[columnIndex] : newSerializedValues[columnIndex];
+                        Object deserializedValue = deserialize(idColumn.type(), serializedValue);
+                        idColumns[referencedMetadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), deserializedValue);
                     }
-                    sqlBuilder.append("\"").append(link.columnInReferencedTable()).append("\" = ? ");
-                    Class<?> columnType = null;
-                    for (SQLColumn column : referencedTable.getColumns()) {
-                        if (column.getName().equals(link.columnInReferencedTable())) {
-                            columnType = column.getType();
-                            break;
+                    UniqueData referenced = getInstance(referencedMetadata.clazz(), idColumns);
+                    assert referenced != null;
+
+                    if (cause == TriggerCause.INSERT) {
+                        UniqueData instance = getInstanceForReferenceUpdateHandler(metadata, metadata.holderClass(), columnNames, newSerializedValues);
+                        if (instance != null) {
+                            submitUpdateHandler(() -> wrapper.unsafeHandle(instance, null, referenced));
                         }
-                    }
-                    Preconditions.checkNotNull(columnType, "Could not find column %s in referenced table %s.%s", link.columnInReferencedTable(), referencedMetadata.schema(), referencedMetadata.table());
-                    int columnIndex = columnNames.indexOf(link.columnInReferringTable());
-                    Object oldDeserializedValue = deserialize(columnType, oldSerializedValues[columnIndex]);
-                    oldValues.add(oldDeserializedValue);
-                    Object newDeserializedValue = deserialize(columnType, newSerializedValues[columnIndex]);
-                    newValues.add(newDeserializedValue);
-                }
 
-                UniqueData instance = getInstanceForReferenceUpdateHandler(metadata.holderClass(), columnNames, newSerializedValues);
-                if (instance == null) {
-                    continue;
-                }
-
-                UniqueData oldInstance = null;
-                UniqueData newInstance = null;
-                try (ResultSet rs = dataAccessor.executeQuery(sqlBuilder.toString(), oldValues)) {
-                    if (rs.next()) {
-                        ColumnValuePair[] idColumns = new ColumnValuePair[referencedMetadata.idColumns().size()];
-                        for (ColumnMetadata idColumn : referencedMetadata.idColumns()) {
-                            Object serializedValue = rs.getObject(idColumn.name());
-                            Object deserializedValue = deserialize(idColumn.type(), serializedValue);
-                            idColumns[referencedMetadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), deserializedValue);
+                    } else if (cause == TriggerCause.DELETE) {
+                        UniqueData instance = getInstanceForReferenceUpdateHandler(metadata, metadata.holderClass(), columnNames, oldSerializedValues);
+                        if (instance != null) {
+                            submitUpdateHandler(() -> wrapper.unsafeHandle(instance, referenced, null));
                         }
-                        oldInstance = getInstance(referencedMetadata.clazz(), idColumns);
-                    }
-                } catch (SQLException e) {
-                    throw new RuntimeException(e);
-                }
+                    } else if (cause == TriggerCause.UPDATE) {
+                        UniqueData oldHolder = getInstanceForReferenceUpdateHandler(metadata, metadata.holderClass(), columnNames, oldSerializedValues);
+                        UniqueData newHolder = getInstanceForReferenceUpdateHandler(metadata, metadata.holderClass(), columnNames, newSerializedValues);
 
-                try (ResultSet rs = dataAccessor.executeQuery(sqlBuilder.toString(), newValues)) {
-                    if (rs.next()) {
-                        ColumnValuePair[] idColumns = new ColumnValuePair[referencedMetadata.idColumns().size()];
-                        for (ColumnMetadata idColumn : referencedMetadata.idColumns()) {
-                            Object serializedValue = rs.getObject(idColumn.name());
-                            Object deserializedValue = deserialize(idColumn.type(), serializedValue);
-                            idColumns[referencedMetadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), deserializedValue);
+                        if (oldHolder != null) {
+                            submitUpdateHandler(() -> wrapper.unsafeHandle(oldHolder, referenced, null));
                         }
-                        newInstance = getInstance(referencedMetadata.clazz(), idColumns);
+                        if (newHolder != null) {
+                            submitUpdateHandler(() -> wrapper.unsafeHandle(newHolder, null, referenced));
+                        }
+                        return;
+                    } else {
+                        throw new IllegalArgumentException("Unknown trigger cause: " + cause);
                     }
-                } catch (SQLException e) {
-                    throw new RuntimeException(e);
-                }
+                } else if (cause == TriggerCause.UPDATE) {
+                    SQLTable referencedTable = Objects.requireNonNull(this.sqlBuilder.getSchema(referencedMetadata.schema())).getTable(referencedMetadata.table());
+                    Preconditions.checkNotNull(referencedTable, "Referenced table %s.%s not found", referencedMetadata.schema(), referencedMetadata.table());
 
-                UniqueData finalOldInstance = oldInstance;
-                UniqueData finalNewInstance = newInstance;
-                submitUpdateHandler(() -> wrapper.unsafeHandle(instance, finalOldInstance, finalNewInstance));
+                    UniqueData instance = getInstanceForReferenceUpdateHandler(metadata, metadata.holderClass(), columnNames, newSerializedValues);
+                    if (instance == null) {
+                        continue;
+                    }
+
+                    StringBuilder sqlBuilder = new StringBuilder();
+                    sqlBuilder.append("SELECT ");
+                    for (ColumnMetadata idColumn : referencedMetadata.idColumns()) {
+                        sqlBuilder.append("\"").append(idColumn.name()).append("\", ");
+                    }
+                    sqlBuilder.setLength(sqlBuilder.length() - 2);
+                    sqlBuilder.append(" FROM \"").append(referencedMetadata.schema()).append("\".\"").append(referencedMetadata.table()).append("\" WHERE ");
+                    List<Object> oldValues = new ArrayList<>();
+                    List<Object> newValues = new ArrayList<>();
+                    for (Link link : metadata.links()) {
+                        if (!oldValues.isEmpty()) {
+                            sqlBuilder.append(" AND ");
+                        }
+                        sqlBuilder.append("\"").append(link.columnInReferencedTable()).append("\" = ? ");
+                        Class<?> columnType = null;
+                        for (SQLColumn column : referencedTable.getColumns()) {
+                            if (column.getName().equals(link.columnInReferencedTable())) {
+                                columnType = column.getType();
+                                break;
+                            }
+                        }
+                        Preconditions.checkNotNull(columnType, "Could not find column %s in referenced table %s.%s", link.columnInReferencedTable(), referencedMetadata.schema(), referencedMetadata.table());
+                        int columnIndex = columnNames.indexOf(link.columnInReferringTable());
+                        Object oldDeserializedValue = deserialize(columnType, oldSerializedValues[columnIndex]);
+                        oldValues.add(oldDeserializedValue);
+                        Object newDeserializedValue = deserialize(columnType, newSerializedValues[columnIndex]);
+                        newValues.add(newDeserializedValue);
+                    }
+
+
+                    UniqueData oldInstance = null;
+                    UniqueData newInstance = null;
+                    try (ResultSet rs = dataAccessor.executeQuery(sqlBuilder.toString(), oldValues)) {
+                        if (rs.next()) {
+                            ColumnValuePair[] idColumns = new ColumnValuePair[referencedMetadata.idColumns().size()];
+                            for (ColumnMetadata idColumn : referencedMetadata.idColumns()) {
+                                Object serializedValue = rs.getObject(idColumn.name());
+                                Object deserializedValue = deserialize(idColumn.type(), serializedValue);
+                                idColumns[referencedMetadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), deserializedValue);
+                            }
+                            oldInstance = getInstance(referencedMetadata.clazz(), idColumns);
+                        }
+                    } catch (SQLException e) {
+                        throw new RuntimeException(e);
+                    }
+
+                    try (ResultSet rs = dataAccessor.executeQuery(sqlBuilder.toString(), newValues)) {
+                        if (rs.next()) {
+                            ColumnValuePair[] idColumns = new ColumnValuePair[referencedMetadata.idColumns().size()];
+                            for (ColumnMetadata idColumn : referencedMetadata.idColumns()) {
+                                Object serializedValue = rs.getObject(idColumn.name());
+                                Object deserializedValue = deserialize(idColumn.type(), serializedValue);
+                                idColumns[referencedMetadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), deserializedValue);
+                            }
+                            newInstance = getInstance(referencedMetadata.clazz(), idColumns);
+                        }
+                    } catch (SQLException e) {
+                        throw new RuntimeException(e);
+                    }
+
+                    UniqueData finalOldInstance = oldInstance;
+                    UniqueData finalNewInstance = newInstance;
+                    submitUpdateHandler(() -> wrapper.unsafeHandle(instance, finalOldInstance, finalNewInstance));
+                }
             }
         }
     }
@@ -753,7 +843,16 @@ public class DataManager {
         if (registeredUpdateHandlersForReference.add(metadata)) {
             handlers.forEach(h -> h.setReferenceMetadata(metadata));
             UniqueDataMetadata holderMetadata = getMetadata(metadata.holderClass());
-            String key = holderMetadata.schema() + "." + holderMetadata.table();
+            String schema, table;
+            if (metadata.updateReferencedTable()) {
+                UniqueDataMetadata referencedMetadata = getMetadata(metadata.referencedClass());
+                schema = referencedMetadata.schema();
+                table = referencedMetadata.table();
+            } else {
+                schema = holderMetadata.schema();
+                table = holderMetadata.table();
+            }
+            String key = schema + "." + table;
             for (ReferenceUpdateHandlerWrapper<?, ?> handler : handlers) {
                 referenceUpdateHandlers.computeIfAbsent(key, k -> new ConcurrentHashMap<>())
                         .computeIfAbsent(holderMetadata.clazz().getName(), k -> new CopyOnWriteArrayList<>())
@@ -1077,7 +1176,7 @@ public class DataManager {
         for (ColumnValuePair columnValuePair : idColumns) {
             values.add(columnValuePair.value());
         }
-        SelectQuery selectQuery = new SelectQuery(sql, values);
+        SelectQuery selectQuery = new SelectQuery("DataManager#getInstance", sql, values);
 
         ReadCacheResult cacheResult = getRelationCacheResult(selectQuery);
         if (cacheResult != null) {
@@ -1301,7 +1400,7 @@ public class DataManager {
             values.add(columnValuePair.value());
         }
 
-        SelectQuery selectQuery = new SelectQuery(sql, values);
+        SelectQuery selectQuery = new SelectQuery("DataManager#get", sql, values);
         if (idColumnLinks.isEmpty()) {
             ReadCacheResult cacheResult = getCellCacheResult(selectQuery);
             if (cacheResult != null) {
