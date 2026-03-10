@@ -48,7 +48,7 @@ intellijPlatform {
     publishing {
         token = providers.gradleProperty("jetbrainsPluginPortal")
         channels = providers.provider {
-            project.version.toString().endsWith("SNAPSHOT") ? ["beta"] : []
+            project.version.toString().endsWith("SNAPSHOT") ? ["beta"] : ["stable"]
         }
 
     }

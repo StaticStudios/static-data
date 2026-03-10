@@ -1,10 +1,7 @@
 package net.staticstudios.data.impl.data;
 
 import com.google.common.base.Preconditions;
-import net.staticstudios.data.CachedValue;
-import net.staticstudios.data.ExpireAfter;
-import net.staticstudios.data.Identifier;
-import net.staticstudios.data.UniqueData;
+import net.staticstudios.data.*;
 import net.staticstudios.data.util.*;
 import org.jetbrains.annotations.Nullable;
 
@@ -12,7 +9,6 @@ import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Supplier;
 
 public class CachedValueImpl<T> extends AbstractCachedValue<T> {
     private final UniqueData holder;
@@ -58,16 +54,16 @@ public class CachedValueImpl<T> extends AbstractCachedValue<T> {
         }
     }
 
-    public static <T extends UniqueData> Map<Field, CachedValueMetadata> extractMetadata(String holderSchema, String holderTable, Class<T> clazz) {
+    public static <T extends UniqueData> Map<Field, CachedValueMetadata> extractMetadata(DataManager dataManager, String holderSchema, String holderTable, Class<T> clazz) {
         Map<Field, CachedValueMetadata> metadataMap = new HashMap<>();
         for (Field field : ReflectionUtils.getFields(clazz, CachedValue.class)) {
             field.setAccessible(true);
-            metadataMap.put(field, extractMetadata(holderSchema, holderTable, clazz, field));
+            metadataMap.put(field, extractMetadata(dataManager, holderSchema, holderTable, clazz, field));
         }
         return metadataMap;
     }
 
-    public static <T extends UniqueData> CachedValueMetadata extractMetadata(String holderSchema, String holderTable, Class<T> clazz, Field field) {
+    public static <T extends UniqueData> CachedValueMetadata extractMetadata(DataManager dataManager, String holderSchema, String holderTable, Class<T> clazz, Field field) {
         Identifier identifierAnnotation = field.getAnnotation(Identifier.class);
         ExpireAfter expireAfterAnnotation = field.getAnnotation(ExpireAfter.class);
 
@@ -79,8 +75,16 @@ public class CachedValueImpl<T> extends AbstractCachedValue<T> {
             expireAfterSeconds = expireAfterAnnotation.value();
         }
 
+        T dummy = dataManager.createDummyInstance(clazz);
+        CachedValue<?> dummyCV = (CachedValue<?>) ReflectionUtils.getFieldValue(dummy, field);
+        Object fallback = null;
+        if (dummyCV != null) {
+            if (dummyCV instanceof CachedValue.ProxyCachedValue<?> proxy) {
+                fallback = proxy.getFallback();
+            }
+        }
 
-        return new CachedValueMetadata(clazz, holderSchema, holderTable, ValueUtils.parseValue(identifierAnnotation.value()), ReflectionUtils.getGenericType(field), expireAfterSeconds);
+        return new CachedValueMetadata(clazz, holderSchema, holderTable, ValueUtils.parseValue(identifierAnnotation.value()), fallback, ReflectionUtils.getGenericType(field), expireAfterSeconds);
     }
 
 
@@ -105,7 +109,7 @@ public class CachedValueImpl<T> extends AbstractCachedValue<T> {
     }
 
     @Override
-    public CachedValue<T> supplyFallback(Supplier<T> fallback) {
+    public CachedValue<T> withFallback(T fallback) {
         throw new UnsupportedOperationException("Cannot set fallback after initialization");
     }
 

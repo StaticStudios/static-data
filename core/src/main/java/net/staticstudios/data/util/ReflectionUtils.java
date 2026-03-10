@@ -72,4 +72,13 @@ public class ReflectionUtils {
         }
         return null;
     }
+
+    public static Object getFieldValue(Object instance, Field field) {
+        field.setAccessible(true);
+        try {
+            return field.get(instance);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+    }
 }

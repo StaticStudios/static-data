@@ -1,33 +1,15 @@
 package net.staticstudios.data.query.clause.cv;
 
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.query.clause.ValueClause;
 import net.staticstudios.data.util.UniqueDataMetadata;
 import net.staticstudios.data.util.redis.RedisUtils;
 
 import java.util.List;
 
-public class CachedValueNotNullClause implements ValueClause {
-    private final String schema;
-    private final String table;
-    private final String identifier;
+public class CachedValueNotNullClause extends AbstractCachedValueClause {
 
     public CachedValueNotNullClause(String schema, String table, String identifier) {
-        this.schema = schema;
-        this.table = table;
-        this.identifier = identifier;
-    }
-
-    public String getSchema() {
-        return schema;
-    }
-
-    public String getTable() {
-        return table;
-    }
-
-    public String getIdentifier() {
-        return identifier;
+        super(schema, table, identifier);
     }
 
     @Override

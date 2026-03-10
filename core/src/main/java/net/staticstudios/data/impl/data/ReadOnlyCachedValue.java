@@ -6,7 +6,6 @@ import net.staticstudios.data.util.*;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Field;
-import java.util.function.Supplier;
 
 public class ReadOnlyCachedValue<T> extends AbstractCachedValue<T> {
     private final T value;
@@ -68,7 +67,7 @@ public class ReadOnlyCachedValue<T> extends AbstractCachedValue<T> {
     }
 
     @Override
-    public CachedValue<T> supplyFallback(Supplier<T> fallback) {
+    public CachedValue<T> withFallback(T fallback) {
         throw new UnsupportedOperationException("Cannot set fallback on a read-only CachedValue");
     }
 

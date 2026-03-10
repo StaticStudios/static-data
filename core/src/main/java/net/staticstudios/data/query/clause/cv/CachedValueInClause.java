@@ -9,16 +9,11 @@ import net.staticstudios.data.util.redis.RedisUtils;
 import java.util.ArrayList;
 import java.util.List;
 
-public class CachedValueInClause implements ValueClause {
-    private final String schema;
-    private final String table;
-    private final String identifier;
+public class CachedValueInClause extends AbstractCachedValueClause {
     private final Object[] values;
 
     public CachedValueInClause(String schema, String table, String identifier, Object[] values) {
-        this.schema = schema;
-        this.table = table;
-        this.identifier = identifier;
+        super(schema, table, identifier);
         this.values = values;
     }
 
@@ -40,7 +35,7 @@ public class CachedValueInClause implements ValueClause {
 
         List<Object> encoded = new ArrayList<>();
         for (Object value : values) {
-            encoded.add(Primitives.encode(dataManager.serialize(value)));
+            encoded.add(encodeValue(value, dataManager, holderMetadata));
         }
         return encoded;
     }

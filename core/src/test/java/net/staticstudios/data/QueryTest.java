@@ -128,6 +128,26 @@ public class QueryTest extends DataTest {
     }
 
     @Test
+    public void testFindOneCachedValueEqualsFallback() {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        dataManager.finishLoading();
+        UUID id = UUID.randomUUID();
+        MockUser original = MockUser.builder(dataManager)
+                .id(id)
+                .name("test user")
+                .insert(InsertMode.SYNC);
+
+        //0 is the fallback value, so internally it will be null.
+        // test to see if the query translates the fallback value to null properly and still returns the correct result.
+        original.settingsUpdates.set(0);
+
+        MockUser got = MockUser.query(dataManager).where(w -> w.settingsUpdatesIs(0))
+                .findOne();
+        assertSame(original, got);
+    }
+
+    @Test
     public void testEqualsClause() {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
         dataManager.load(MockUser.class);

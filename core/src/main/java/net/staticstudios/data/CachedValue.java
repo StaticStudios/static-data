@@ -7,7 +7,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Supplier;
 
 /**
  * A cached value represents a piece of data in redis.
@@ -26,13 +25,9 @@ public interface CachedValue<T> extends Value<T> {
 
     <U extends UniqueData> CachedValue<T> onUpdate(Class<U> holderClass, ValueUpdateHandler<U, T> updateHandler);
 
-    default CachedValue<T> withFallback(T fallback) {
-        return supplyFallback(() -> fallback);
-    }
+    CachedValue<T> withFallback(T fallback);
 
     <U extends UniqueData> CachedValue<T> refresher(Class<U> clazz, CachedValueRefresher<U, T> refresher);
-
-    CachedValue<T> supplyFallback(Supplier<T> fallback);
 
     @Nullable T refresh();
 
@@ -41,7 +36,7 @@ public interface CachedValue<T> extends Value<T> {
         protected final Class<T> dataType;
         private final List<ValueUpdateHandlerWrapper<?, T>> updateHandlers = new ArrayList<>();
         private @Nullable CachedValue<T> delegate;
-        private Supplier<T> fallback = () -> null;
+        private T fallback;
         private @Nullable CachedValueRefresher<UniqueData, T> refresher;
 
         public ProxyCachedValue(UniqueData holder, Class<T> dataType) {
@@ -52,11 +47,6 @@ public interface CachedValue<T> extends Value<T> {
         public void setDelegate(CachedValueMetadata metadata, AbstractCachedValue<T> delegate) {
             Preconditions.checkNotNull(delegate, "Delegate cannot be null");
             Preconditions.checkState(this.delegate == null, "Delegate is already set");
-
-            if (fallback != null && !metadata.hasValidatedFallbackSupplier()) {
-                LambdaUtils.assertLambdaDoesntCapture(fallback, List.of(UniqueData.class), null);
-                metadata.setValidatedFallbackSupplier(true);
-            }
 
             if (refresher != null && !metadata.hasValidatedRefresher()) {
                 LambdaUtils.assertLambdaDoesntCapture(refresher, List.of(UniqueData.class), null);
@@ -70,7 +60,7 @@ public interface CachedValue<T> extends Value<T> {
                 metadata.setValidatedUpdateHandlers(true);
             }
 
-            delegate.setFallback(this.fallback);
+            delegate.setFallback(fallback);
             delegate.setRefresher(refresher);
             this.delegate = delegate;
 
@@ -102,11 +92,10 @@ public interface CachedValue<T> extends Value<T> {
         }
 
         @Override
-        public CachedValue<T> supplyFallback(Supplier<T> fallback) {
+        public CachedValue<T> withFallback(T fallback) {
             if (delegate != null) {
                 throw new UnsupportedOperationException("Cannot set fallback after initialization");
             }
-            Preconditions.checkNotNull(fallback, "Fallback supplier cannot be null");
             this.fallback = fallback;
             return this;
         }
@@ -151,6 +140,10 @@ public interface CachedValue<T> extends Value<T> {
                     handlerWrapper.getHolderClass(),
                     this.fallback
             );
+        }
+
+        public T getFallback() {
+            return fallback;
         }
     }
 }

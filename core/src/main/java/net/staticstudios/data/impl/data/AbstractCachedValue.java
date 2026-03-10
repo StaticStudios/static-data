@@ -6,15 +6,13 @@ import net.staticstudios.data.util.CachedValueRefresher;
 import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.function.Supplier;
-
 public abstract class AbstractCachedValue<T> implements CachedValue<T> {
-    private Supplier<T> fallbackSupplier;
+    private T fallback;
     private CachedValueRefresher<UniqueData, T> refreshFunction;
 
     @ApiStatus.Internal
-    public void setFallback(Supplier<T> fallbackSupplier) {
-        this.fallbackSupplier = fallbackSupplier;
+    public void setFallback(T fallback) {
+        this.fallback = fallback;
     }
 
     @ApiStatus.Internal
@@ -23,10 +21,7 @@ public abstract class AbstractCachedValue<T> implements CachedValue<T> {
     }
 
     protected T getFallback() {
-        if (fallbackSupplier != null) {
-            return fallbackSupplier.get();
-        }
-        return null;
+        return fallback;
     }
 
     protected T calculateRefreshedValue(@Nullable T currentValue) {

@@ -9,18 +9,19 @@ public final class CachedValueMetadata {
     private final String holderSchema;
     private final String holderTable;
     private final String identifier;
+    private final Object fallbackValue;
     private final Class<?> type;
     private final int expireAfterSeconds;
-    private boolean validatedFallbackSupplier = false;
     private boolean validatedRefresher = false;
     private boolean validatedUpdateHandlers = false;
 
     public CachedValueMetadata(Class<? extends UniqueData> holderClass, String holderSchema, String holderTable,
-                               String identifier, Class<?> type, int expireAfterSeconds) {
+                               String identifier, Object fallbackValue, Class<?> type, int expireAfterSeconds) {
         this.holderClass = holderClass;
         this.holderSchema = holderSchema;
         this.holderTable = holderTable;
         this.identifier = identifier;
+        this.fallbackValue = fallbackValue;
         this.type = type;
         this.expireAfterSeconds = expireAfterSeconds;
     }
@@ -41,20 +42,16 @@ public final class CachedValueMetadata {
         return identifier;
     }
 
+    public Object fallbackValue() {
+        return fallbackValue;
+    }
+
     public Class<?> type() {
         return type;
     }
 
     public int expireAfterSeconds() {
         return expireAfterSeconds;
-    }
-
-    public boolean hasValidatedFallbackSupplier() {
-        return validatedFallbackSupplier;
-    }
-
-    public void setValidatedFallbackSupplier(boolean validatedFallbackSupplier) {
-        this.validatedFallbackSupplier = validatedFallbackSupplier;
     }
 
     public boolean hasValidatedRefresher() {
@@ -82,6 +79,7 @@ public final class CachedValueMetadata {
                 Objects.equals(this.holderSchema, that.holderSchema) &&
                 Objects.equals(this.holderTable, that.holderTable) &&
                 Objects.equals(this.identifier, that.identifier) &&
+                Objects.equals(this.fallbackValue, that.fallbackValue) &&
                 Objects.equals(this.type, that.type) &&
                 this.expireAfterSeconds == that.expireAfterSeconds;
     }

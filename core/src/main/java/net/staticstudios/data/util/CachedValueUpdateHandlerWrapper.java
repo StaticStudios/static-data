@@ -2,18 +2,16 @@ package net.staticstudios.data.util;
 
 import net.staticstudios.data.UniqueData;
 
-import java.util.function.Supplier;
-
 public class CachedValueUpdateHandlerWrapper<U extends UniqueData, T> extends ValueUpdateHandlerWrapper<U, T> {
-    private final Supplier<T> fallbackSupplier;
+    private final T fallback;
 
-    public CachedValueUpdateHandlerWrapper(ValueUpdateHandler<U, T> handler, Class<T> dataType, Class<? extends UniqueData> holderClass, Supplier<T> fallbackSupplier) {
+    public CachedValueUpdateHandlerWrapper(ValueUpdateHandler<U, T> handler, Class<T> dataType, Class<? extends UniqueData> holderClass, T fallback) {
         super(handler, dataType, holderClass);
-        this.fallbackSupplier = fallbackSupplier;
+        this.fallback = fallback;
     }
 
     public T getFallback() {
-        return fallbackSupplier.get();
+        return fallback;
     }
 
     @Override
@@ -30,6 +28,7 @@ public class CachedValueUpdateHandlerWrapper<U extends UniqueData, T> extends Va
                 "handler=" + getHandler() +
                 ", dataType=" + getDataType() +
                 ", holderClass=" + getHolderClass() +
+                "fallback=" + fallback +
                 '}';
     }
 }

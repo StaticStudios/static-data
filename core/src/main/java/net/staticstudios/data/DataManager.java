@@ -959,7 +959,7 @@ public class DataManager {
                     schema,
                     table,
                     idColumns,
-                    CachedValueImpl.extractMetadata(schema, table, clazz),
+                    CachedValueImpl.extractMetadata(this, schema, table, clazz),
                     PersistentValueImpl.extractMetadata(schema, table, clazz),
                     ReferenceImpl.extractMetadata(clazz),
                     persistentCollectionMetadataMap
@@ -1685,26 +1685,26 @@ public class DataManager {
         return deserialize(dataType, serialize(value));
     }
 
-//    /**
-//     * For internal use only. A dummy instance has no DataManager, no id columnsInReferringTable, and is marked as deleted.
-//     *
-//     * @param clazz The UniqueData class to create a dummy instance of.
-//     * @param <T>   The type of UniqueData.
-//     */
-//    @ApiStatus.Internal
-//    public <T extends UniqueData> T createDummyInstance(Class<T> clazz) {
-//        T instance;
-//        try {
-//            Constructor<T> constructor = clazz.getDeclaredConstructor();
-//            constructor.setAccessible(true);
-//            instance = constructor.newInstance();
-//        } catch (Exception e) {
-//            throw new RuntimeException(e);
-//        }
-//
-//        instance.markDeleted();
-//        return instance;
-//    }
+    /**
+     * For internal use only. A dummy instance has no DataManager, no id columnsInReferringTable, and is marked as deleted.
+     *
+     * @param clazz The UniqueData class to create a dummy instance of.
+     * @param <T>   The type of UniqueData.
+     */
+    @ApiStatus.Internal
+    public <T extends UniqueData> T createDummyInstance(Class<T> clazz) {
+        T instance;
+        try {
+            Constructor<T> constructor = clazz.getDeclaredConstructor();
+            constructor.setAccessible(true);
+            instance = constructor.newInstance();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        instance.markDeleted();
+        return instance;
+    }
 
     /**
      * Block the calling thread until all previously enqueued tasks have been completed

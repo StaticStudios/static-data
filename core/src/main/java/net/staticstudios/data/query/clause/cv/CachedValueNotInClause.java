@@ -1,24 +1,17 @@
 package net.staticstudios.data.query.clause.cv;
 
 import net.staticstudios.data.DataManager;
-import net.staticstudios.data.primative.Primitives;
-import net.staticstudios.data.query.clause.ValueClause;
 import net.staticstudios.data.util.UniqueDataMetadata;
 import net.staticstudios.data.util.redis.RedisUtils;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class CachedValueNotInClause implements ValueClause {
-    private final String schema;
-    private final String table;
-    private final String identifier;
+public class CachedValueNotInClause extends AbstractCachedValueClause {
     private final Object[] values;
 
     public CachedValueNotInClause(String schema, String table, String identifier, Object[] values) {
-        this.schema = schema;
-        this.table = table;
-        this.identifier = identifier;
+        super(schema, table, identifier);
         this.values = values;
     }
 
@@ -40,7 +33,7 @@ public class CachedValueNotInClause implements ValueClause {
 
         List<Object> encoded = new ArrayList<>();
         for (Object value : values) {
-            encoded.add(Primitives.encode(dataManager.serialize(value)));
+            encoded.add(encodeValue(value, dataManager, holderMetadata));
         }
         return encoded;
     }
