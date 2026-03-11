@@ -1145,10 +1145,9 @@ public class DataManager {
         Map<ColumnValuePairs, UniqueData> classCache = uniqueDataInstanceCache.get(clazz.getName());
         if (classCache != null && (instance = (T) classCache.get(idColumns)) != null) {
             logger.trace("Cache hit for UniqueData class {} with ID columnsInReferringTable {}", clazz.getName(), idColumns);
-            if (instance.isDeleted()) {
-                return null;
+            if (!instance.isDeleted()) {
+                return instance;
             }
-            return instance;
         }
 
         try {
@@ -1756,7 +1755,7 @@ public class DataManager {
         }
     }
 
-    public void invalidateRelationCache(List<String> columnNames, String schema, String table, List<String> changedColumns, Object[] oldValues) {
+    public void invalidateRelationCache(List<String> columnNames, String schema, String table, List<String> changedColumns, Object[] values) {
         relationCacheGeneration.incrementAndGet();
         for (UniqueDataMetadata metadata : uniqueDataMetadataMap.values()) {
             if (metadata.schema().equals(schema) && metadata.table().equals(table)) {
@@ -1765,12 +1764,12 @@ public class DataManager {
                     boolean found = false;
                     for (int i = 0; i < columnNames.size(); i++) {
                         if (idColumn.name().equals(columnNames.get(i))) {
-                            idColumns[metadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), oldValues[i]);
+                            idColumns[metadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), values[i]);
                             found = true;
                             break;
                         }
                     }
-                    Preconditions.checkArgument(found, "Not all ID columnsInReferringTable were provided for UniqueData class %s. Required: %s, Provided: %s", metadata.clazz().getName(), metadata.idColumns(), Arrays.toString(oldValues));
+                    Preconditions.checkArgument(found, "Not all ID columnsInReferringTable were provided for UniqueData class %s. Required: %s, Provided: %s", metadata.clazz().getName(), metadata.idColumns(), Arrays.toString(values));
                 }
 
                 ColumnValuePairs idCols = new ColumnValuePairs(idColumns);
@@ -1824,7 +1823,7 @@ public class DataManager {
         }
     }
 
-    public void invalidateCellCache(List<String> columnNames, String schema, String table, List<String> changedColumns, Object[] oldValues) {
+    public void invalidateCellCache(List<String> columnNames, String schema, String table, List<String> changedColumns, Object[] values) {
         cellCacheGeneration.incrementAndGet();
         for (UniqueDataMetadata metadata : uniqueDataMetadataMap.values()) {
             if (metadata.schema().equals(schema) && metadata.table().equals(table)) {
@@ -1833,12 +1832,12 @@ public class DataManager {
                     boolean found = false;
                     for (int i = 0; i < columnNames.size(); i++) {
                         if (idColumn.name().equals(columnNames.get(i))) {
-                            idColumns[metadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), oldValues[i]);
+                            idColumns[metadata.idColumns().indexOf(idColumn)] = new ColumnValuePair(idColumn.name(), values[i]);
                             found = true;
                             break;
                         }
                     }
-                    Preconditions.checkArgument(found, "Not all ID columnsInReferringTable were provided for UniqueData class %s. Required: %s, Provided: %s", metadata.clazz().getName(), metadata.idColumns(), Arrays.toString(oldValues));
+                    Preconditions.checkArgument(found, "Not all ID columnsInReferringTable were provided for UniqueData class %s. Required: %s, Provided: %s", metadata.clazz().getName(), metadata.idColumns(), Arrays.toString(values));
                 }
 
                 ColumnValuePairs idCols = new ColumnValuePairs(idColumns);

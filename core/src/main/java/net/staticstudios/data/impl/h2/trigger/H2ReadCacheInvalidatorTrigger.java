@@ -56,7 +56,10 @@ public class H2ReadCacheInvalidatorTrigger implements Trigger {
         }
 
 
-        if (newRow == null && oldRow != null) {
+        if (newRow != null && oldRow == null) {
+            logger.trace("Insert detected: newRow={}", (Object) newRow);
+            handleInsert(newRow);
+        } else if (newRow == null && oldRow != null) {
             logger.trace("Delete detected: oldRow={}", (Object) oldRow);
             handleDelete(oldRow);
         } else if (oldRow != null) {
@@ -65,6 +68,12 @@ public class H2ReadCacheInvalidatorTrigger implements Trigger {
         }
     }
 
+    private void handleInsert(Object[] newRow) {
+        dataAccessor.onCommit(() -> {
+            dataManager.invalidateRelationCache(columnNames, schema, table, columnNames, newRow);
+            dataManager.invalidateCellCache(columnNames, schema, table, columnNames, newRow);
+        });
+    }
 
     private void handleUpdate(Object[] oldRow, Object[] newRow) {
         List<String> changedColumns = new ArrayList<>();
