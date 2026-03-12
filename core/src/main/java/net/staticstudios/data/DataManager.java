@@ -112,11 +112,13 @@ public class DataManager {
                 .maximumSize(10_000)
                 .expireAfterWrite(5, TimeUnit.MINUTES)
                 .removalListener((SelectQuery selectQuery, ReadCacheResult result, RemovalCause cause) -> cleanupRelationCacheEntry(selectQuery, result))
+                .executor(Runnable::run)
                 .build();
         this.cellCache = Caffeine.newBuilder()
                 .maximumSize(20_000)
                 .expireAfterWrite(5, TimeUnit.MINUTES)
                 .removalListener((SelectQuery selectQuery, ReadCacheResult result, RemovalCause cause) -> cleanupCellCacheEntry(selectQuery, result))
+                .executor(Runnable::run)
                 .build();
 
         //todo: when we reconnect to postgres, refresh the internal cache from the source
