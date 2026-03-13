@@ -29,7 +29,11 @@ public class DependencyTrackingCache {
         this.cache = Caffeine.newBuilder()
                 .maximumSize(maximumSize)
                 .expireAfterWrite(expireAfterWriteMinutes, TimeUnit.MINUTES)
-                .removalListener((SelectQuery query, ReadCacheResult result, RemovalCause cause) -> cleanup(query, result))
+                .removalListener((SelectQuery query, ReadCacheResult result, RemovalCause cause) -> {
+                    if (query != null && result != null && cause != RemovalCause.REPLACED) {
+                        cleanup(query, result);
+                    }
+                })
                 .executor(Runnable::run)
                 .build();
     }
@@ -49,6 +53,13 @@ public class DependencyTrackingCache {
                 return;
             }
             logger.trace("Putting result in {} cache for query {} with result {}", name, query, result);
+
+            // If there's an existing cached result for this query, clean up its dependencies first
+            ReadCacheResult previous = cache.getIfPresent(query);
+            if (previous != null) {
+                cleanup(query, previous);
+            }
+
             for (Cell cell : result.getDependencies()) {
                 dependencyMapping.computeIfAbsent(cell, k -> ConcurrentHashMap.newKeySet())
                         .add(query);
