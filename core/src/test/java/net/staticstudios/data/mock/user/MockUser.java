@@ -96,6 +96,12 @@ public class MockUser extends UniqueData {
     @Identifier("cooldown_updates")
     public CachedValue<Integer> cooldownUpdates = CachedValue.of(this, Integer.class)
             .withFallback(0);
+
+    @UpdateInterval(3000)
+    @Identifier("throttled_counter")
+    public CachedValue<Integer> throttledCounter = CachedValue.of(this, Integer.class)
+            .withFallback(0);
+
     @Identifier("on_cooldown")
     @ExpireAfter(5)
     public CachedValue<Boolean> onCooldown = CachedValue.of(this, Boolean.class)

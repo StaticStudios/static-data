@@ -58,6 +58,7 @@ public class H2DataAccessor implements DataAccessor {
     private final DataManager dataManager;
     private final PostgresListener postgresListener;
     private final Map<List<Pair<String, String>>, Runnable> delayedTasks = new ConcurrentHashMap<>();
+    private final Map<String, Runnable> delayedRedisTasks = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(thread -> {
         Thread t = new Thread(thread);
         t.setName(H2DataAccessor.class.getSimpleName() + "-ScheduledExecutor");
@@ -558,24 +559,40 @@ public class H2DataAccessor implements DataAccessor {
     }
 
     @Override
-    public void setRedisValue(String holderSchema, String holderTable, String identifier, ColumnValuePairs idColumns, String value, int expirationSeconds) {
+    public void setRedisValue(String holderSchema, String holderTable, String identifier, ColumnValuePairs idColumns, String value, int expirationSeconds, int delay) {
         String prev = getAndSetRedisValueCache(holderSchema, holderTable, identifier, idColumns, value);
         if (Objects.equals(prev, value)) {
             return; // no change
         }
         String key = RedisUtils.buildRedisKey(holderSchema, holderTable, identifier, idColumns);
-        if (value == null) {
-            taskQueue.submitTask((connection, jedis) -> {
-                jedis.del(key);
-            });
+
+        Runnable runnable = () -> {
+            if (value == null) {
+                taskQueue.submitTask((connection, jedis) -> {
+                    jedis.del(key);
+                });
+            } else {
+                taskQueue.submitTask((connection, jedis) -> {
+                    if (expirationSeconds > 0) {
+                        jedis.setex(key, expirationSeconds, encodeRedis(value));
+                    } else {
+                        jedis.set(key, encodeRedis(value));
+                    }
+                });
+            }
+        };
+
+        if (delay <= 0) {
+            runnable.run();
         } else {
-            taskQueue.submitTask((connection, jedis) -> {
-                if (expirationSeconds > 0) {
-                    jedis.setex(key, expirationSeconds, encodeRedis(value));
-                } else {
-                    jedis.set(key, encodeRedis(value));
-                }
-            });
+            if (delayedRedisTasks.put(key, runnable) == null) {
+                scheduledExecutorService.schedule(() -> {
+                    Runnable removed = delayedRedisTasks.remove(key);
+                    if (removed != null) {
+                        removed.run();
+                    }
+                }, delay, TimeUnit.MILLISECONDS);
+            }
         }
 
         RedisUtils.DeconstructedKey deconstructedKey = RedisUtils.deconstruct(key);

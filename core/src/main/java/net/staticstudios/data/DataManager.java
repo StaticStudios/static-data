@@ -1562,10 +1562,10 @@ public class DataManager {
         return deserialize(type, serialized);
     }
 
-    public void setRedis(String holderSchema, String holderTable, String identifier, ColumnValuePairs idColumns, int expireAfterSeconds, @Nullable Object value) {
+    public void setRedis(String holderSchema, String holderTable, String identifier, ColumnValuePairs idColumns, int expireAfterSeconds, @Nullable Object value, int delay) {
         Object serialized = serialize(value);
         String encoded = Primitives.encode(serialized);
-        dataAccessor.setRedisValue(holderSchema, holderTable, identifier, idColumns, encoded, expireAfterSeconds);
+        dataAccessor.setRedisValue(holderSchema, holderTable, identifier, idColumns, encoded, expireAfterSeconds, delay);
     }
 
     private boolean hasCycle(SQLTable table, Map<String, Set<SQLTable>> dependencyGraph, Set<SQLTable> visited, Set<SQLTable> stack) {

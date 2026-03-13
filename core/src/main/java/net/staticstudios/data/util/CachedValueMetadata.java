@@ -12,11 +12,13 @@ public final class CachedValueMetadata {
     private final Object fallbackValue;
     private final Class<?> type;
     private final int expireAfterSeconds;
+    private final int updateInterval;
     private boolean validatedRefresher = false;
     private boolean validatedUpdateHandlers = false;
 
     public CachedValueMetadata(Class<? extends UniqueData> holderClass, String holderSchema, String holderTable,
-                               String identifier, Object fallbackValue, Class<?> type, int expireAfterSeconds) {
+                               String identifier, Object fallbackValue, Class<?> type, int expireAfterSeconds,
+                               int updateInterval) {
         this.holderClass = holderClass;
         this.holderSchema = holderSchema;
         this.holderTable = holderTable;
@@ -24,6 +26,7 @@ public final class CachedValueMetadata {
         this.fallbackValue = fallbackValue;
         this.type = type;
         this.expireAfterSeconds = expireAfterSeconds;
+        this.updateInterval = updateInterval;
     }
 
     public Class<? extends UniqueData> holderClass() {
@@ -54,6 +57,10 @@ public final class CachedValueMetadata {
         return expireAfterSeconds;
     }
 
+    public int updateInterval() {
+        return updateInterval;
+    }
+
     public boolean hasValidatedRefresher() {
         return validatedRefresher;
     }
@@ -81,12 +88,13 @@ public final class CachedValueMetadata {
                 Objects.equals(this.identifier, that.identifier) &&
                 Objects.equals(this.fallbackValue, that.fallbackValue) &&
                 Objects.equals(this.type, that.type) &&
-                this.expireAfterSeconds == that.expireAfterSeconds;
+                this.expireAfterSeconds == that.expireAfterSeconds &&
+                this.updateInterval == that.updateInterval;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(holderClass, holderSchema, holderTable, identifier, type, expireAfterSeconds);
+        return Objects.hash(holderClass, holderSchema, holderTable, identifier, type, expireAfterSeconds, updateInterval);
     }
 
     @Override
@@ -97,7 +105,8 @@ public final class CachedValueMetadata {
                 "holderTable=" + holderTable + ", " +
                 "identifier=" + identifier + ", " +
                 "type=" + type + ", " +
-                "expireAfterSeconds=" + expireAfterSeconds + ']';
+                "expireAfterSeconds=" + expireAfterSeconds + ", " +
+                "updateInterval=" + updateInterval + ']';
     }
 
 }

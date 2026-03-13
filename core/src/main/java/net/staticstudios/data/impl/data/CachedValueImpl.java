@@ -66,6 +66,7 @@ public class CachedValueImpl<T> extends AbstractCachedValue<T> {
     public static <T extends UniqueData> CachedValueMetadata extractMetadata(DataManager dataManager, String holderSchema, String holderTable, Class<T> clazz, Field field) {
         Identifier identifierAnnotation = field.getAnnotation(Identifier.class);
         ExpireAfter expireAfterAnnotation = field.getAnnotation(ExpireAfter.class);
+        UpdateInterval updateIntervalAnnotation = field.getAnnotation(UpdateInterval.class);
 
 
         Preconditions.checkNotNull(identifierAnnotation, "CachedValue field %s is missing @Identifier annotation".formatted(field.getName()));
@@ -74,6 +75,8 @@ public class CachedValueImpl<T> extends AbstractCachedValue<T> {
         if (expireAfterAnnotation != null) {
             expireAfterSeconds = expireAfterAnnotation.value();
         }
+
+        int updateInterval = updateIntervalAnnotation != null ? updateIntervalAnnotation.value() : 0;
 
         T dummy = dataManager.createDummyInstance(clazz);
         CachedValue<?> dummyCV = (CachedValue<?>) ReflectionUtils.getFieldValue(dummy, field);
@@ -84,7 +87,7 @@ public class CachedValueImpl<T> extends AbstractCachedValue<T> {
             }
         }
 
-        return new CachedValueMetadata(clazz, holderSchema, holderTable, ValueUtils.parseValue(identifierAnnotation.value()), fallback, ReflectionUtils.getGenericType(field), expireAfterSeconds);
+        return new CachedValueMetadata(clazz, holderSchema, holderTable, ValueUtils.parseValue(identifierAnnotation.value()), fallback, ReflectionUtils.getGenericType(field), expireAfterSeconds, updateInterval);
     }
 
 
@@ -139,7 +142,7 @@ public class CachedValueImpl<T> extends AbstractCachedValue<T> {
         } else {
             toSet = value;
         }
-        holder.getDataManager().setRedis(metadata.holderSchema(), metadata.holderTable(), metadata.identifier(), holder.getIdColumns(), metadata.expireAfterSeconds(), toSet);
+        holder.getDataManager().setRedis(metadata.holderSchema(), metadata.holderTable(), metadata.identifier(), holder.getIdColumns(), metadata.expireAfterSeconds(), toSet, metadata.updateInterval());
     }
 
     @Override

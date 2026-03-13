@@ -31,7 +31,7 @@ public interface DataAccessor {
 
     @Nullable String getRedisValue(String holderSchema, String holderTable, String identifier, ColumnValuePairs idColumns);
 
-    void setRedisValue(String holderSchema, String holderTable, String identifier, ColumnValuePairs idColumns, String value, int expirationSeconds);
+    void setRedisValue(String holderSchema, String holderTable, String identifier, ColumnValuePairs idColumns, String value, int expirationSeconds, int delay);
 
     void discoverRedisKeys(List<String> partialRedisKeys);
 

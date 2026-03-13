@@ -215,4 +215,36 @@ public class CachedValueTest extends DataTest {
         waitForDataPropagation();
         assertEquals("0", gson.fromJson(jedis.get(counterKey), RedisEncodedValue.class).value());
     }
+
+    @Test
+    public void testUpdateInterval() throws Exception {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(MockUser.class);
+        dataManager.finishLoading();
+        MockUser user = MockUser.builder(dataManager)
+                .id(UUID.randomUUID())
+                .name("john doe")
+                .insert(InsertMode.ASYNC);
+
+        assertEquals(0, user.throttledCounter.get());
+
+        for (int i = 0; i < 5; i++) {
+            user.throttledCounter.set(i);
+            assertEquals(i, user.throttledCounter.get());
+        }
+
+        assertEquals(4, user.throttledCounter.get());
+        waitForDataPropagation();
+
+        Jedis jedis = getJedis();
+        String throttledCounterKey = RedisUtils.buildRedisKey("public", "users", "throttled_counter", user.getIdColumns());
+
+        assertNull(jedis.get(throttledCounterKey));
+
+        Thread.sleep(6000);
+
+        RedisEncodedValue encoded = gson.fromJson(jedis.get(throttledCounterKey), RedisEncodedValue.class);
+        assertNotNull(encoded);
+        assertEquals("4", encoded.value());
+    }
 }
