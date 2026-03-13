@@ -97,11 +97,16 @@ public class DependencyTrackingCache {
     }
 
     private void cleanup(@NotNull SelectQuery query, @NotNull ReadCacheResult res) {
-        for (Cell dependency : res.getDependencies()) {
-            dependencyMapping.computeIfPresent(dependency, (k, dependentQueries) -> {
-                dependentQueries.remove(query);
-                return dependentQueries.isEmpty() ? null : dependentQueries;
-            });
+        lock.readLock().lock();
+        try {
+            for (Cell dependency : res.getDependencies()) {
+                dependencyMapping.computeIfPresent(dependency, (k, dependentQueries) -> {
+                    dependentQueries.remove(query);
+                    return dependentQueries.isEmpty() ? null : dependentQueries;
+                });
+            }
+        } finally {
+            lock.readLock().unlock();
         }
     }
 }
