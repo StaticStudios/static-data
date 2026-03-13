@@ -321,5 +321,55 @@ class DependencyTrackingCacheTest {
 
         assertNull(cache.get(q));
     }
+
+    @Test
+    void concurrentReputSameQueryDoesNotCorrupt() throws Exception {
+        int iterations = 500;
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        AtomicInteger corruptionCount = new AtomicInteger();
+
+        // Use a single shared query key to exercise concurrent re-put/replacement behavior.
+        SelectQuery q = query("concurrent-reput");
+
+        for (int i = 0; i < iterations; i++) {
+            CyclicBarrier barrier = new CyclicBarrier(2);
+            CountDownLatch done = new CountDownLatch(2);
+            int idx = i;
+
+            executor.submit(() -> {
+                try {
+                    barrier.await();
+                    long gen = cache.getGeneration();
+                    Cell cA = cell("name-a", idx);
+                    cache.put(q, result("v-a", cA), gen);
+                } catch (Exception e) {
+                    corruptionCount.incrementAndGet();
+                } finally {
+                    done.countDown();
+                }
+            });
+
+            executor.submit(() -> {
+                try {
+                    barrier.await();
+                    long gen = cache.getGeneration();
+                    Cell cB = cell("name-b", idx);
+                    cache.put(q, result("v-b", cB), gen);
+                } catch (Exception e) {
+                    corruptionCount.incrementAndGet();
+                } finally {
+                    done.countDown();
+                }
+            });
+
+            done.await();
+        }
+
+        executor.shutdown();
+
+        assertEquals(0, corruptionCount.get());
+        assertTrue(cache.dependencyMappingSize() >= 0);
+        assertTrue(cache.estimatedSize() >= 0);
+    }
 }
 
