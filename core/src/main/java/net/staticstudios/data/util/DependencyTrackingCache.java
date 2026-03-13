@@ -47,7 +47,7 @@ public class DependencyTrackingCache {
     }
 
     public void put(SelectQuery query, @NotNull ReadCacheResult result, long expectedGeneration) {
-        lock.readLock().lock();
+        lock.writeLock().lock();
         try {
             if (generation.get() != expectedGeneration) {
                 return;
@@ -66,7 +66,7 @@ public class DependencyTrackingCache {
             }
             cache.put(query, result);
         } finally {
-            lock.readLock().unlock();
+            lock.writeLock().unlock();
         }
     }
 
@@ -97,7 +97,7 @@ public class DependencyTrackingCache {
     }
 
     private void cleanup(@NotNull SelectQuery query, @NotNull ReadCacheResult res) {
-        lock.readLock().lock();
+        lock.writeLock().lock();
         try {
             for (Cell dependency : res.getDependencies()) {
                 dependencyMapping.computeIfPresent(dependency, (k, dependentQueries) -> {
@@ -106,7 +106,7 @@ public class DependencyTrackingCache {
                 });
             }
         } finally {
-            lock.readLock().unlock();
+            lock.writeLock().unlock();
         }
     }
 }
