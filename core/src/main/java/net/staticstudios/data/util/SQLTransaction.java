@@ -8,6 +8,7 @@ import org.jetbrains.annotations.Nullable;
 import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -106,6 +107,19 @@ public class SQLTransaction {
 
         public @Language("SQL") String getPgSql() {
             return pgSql;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) return true;
+            if (obj == null || getClass() != obj.getClass()) return false;
+            Statement other = (Statement) obj;
+            return h2Sql.equals(other.h2Sql) && pgSql.equals(other.pgSql);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(h2Sql, pgSql);
         }
     }
 }

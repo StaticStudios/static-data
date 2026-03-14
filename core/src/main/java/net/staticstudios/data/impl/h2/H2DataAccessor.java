@@ -840,9 +840,9 @@ public class H2DataAccessor implements DataAccessor {
             return;
         }
 
-        SQLTransaction.Statement[] statements = new SQLTransaction.Statement[transaction.getOperations().size()];
-        for (int i = 0; i < transaction.getOperations().size(); i++) {
-            statements[i] = transaction.getOperations().get(i).getStatement();
+        List<SQLTransaction.Statement> statements = new ArrayList<>();
+        for (SQLTransaction.Operation operation : transaction.getOperations()) {
+            statements.add(operation.getStatement());
         }
 
         EnqueuedDatabaseTaskKey key = new EnqueuedDatabaseTaskKey(transaction.getHolderIds(), statements);
