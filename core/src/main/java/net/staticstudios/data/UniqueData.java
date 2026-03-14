@@ -64,7 +64,7 @@ public abstract class UniqueData {
         @Language("SQL") String sql = stringBuilder.toString();
 
         try {
-            dataManager.getDataAccessor().executeUpdate(SQLTransaction.Statement.of(sql, sql), values, 0);
+            dataManager.getDataAccessor().executeUpdate(idColumns, SQLTransaction.Statement.of(sql, sql), values, 0);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }

@@ -232,7 +232,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
         @Language("SQL") String sql = sqlBuilder.toString();
 
         try {
-            holder.getDataManager().getDataAccessor().executeUpdate(SQLTransaction.Statement.of(sql, sql), values, 0);
+            holder.getDataManager().getDataAccessor().executeUpdate(holder.getIdColumns(), SQLTransaction.Statement.of(sql, sql), values, 0);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
@@ -315,7 +315,7 @@ public class ReferenceImpl<T extends UniqueData> implements Reference<T> {
         @Language("SQL") String updateSql = updateSqlBuilder.toString();
 
         List<Object> existingIdValues = new ArrayList<>();
-        SQLTransaction transaction = new SQLTransaction();
+        SQLTransaction transaction = new SQLTransaction(holder.getIdColumns());
 
         transaction.query(SQLTransaction.Statement.of(selectExistingSql, selectExistingSql), () -> holderLinkValues, rs -> {
             try {

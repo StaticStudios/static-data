@@ -12,13 +12,22 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class SQLTransaction {
+    private @Nullable ColumnValuePairs holderIds;
     private final List<Operation> operations = new ArrayList<>();
 
     public SQLTransaction() {
     }
 
+    public SQLTransaction(@Nullable ColumnValuePairs holderIds) {
+        this.holderIds = holderIds;
+    }
+
     public List<Operation> getOperations() {
         return operations;
+    }
+
+    public @Nullable ColumnValuePairs getHolderIds() {
+        return holderIds;
     }
 
     public SQLTransaction query(Statement statement, Supplier<List<Object>> valuesSupplier, @NotNull Consumer<ResultSet> resultHandler) {

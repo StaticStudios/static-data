@@ -57,7 +57,7 @@ public class H2DataAccessor implements DataAccessor {
     private final Set<SchemaTable> knownTables = new HashSet<>();
     private final DataManager dataManager;
     private final PostgresListener postgresListener;
-    private final Map<List<Pair<String, String>>, Runnable> delayedTasks = new ConcurrentHashMap<>();
+    private final Map<EnqueuedDatabaseTaskKey, Runnable> delayedTasks = new ConcurrentHashMap<>();
     private final Map<String, Runnable> delayedRedisTasks = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(thread -> {
         Thread t = new Thread(thread);
@@ -798,10 +798,10 @@ public class H2DataAccessor implements DataAccessor {
     }
 
     private void runDatabaseTask(SQLTransaction transaction, int delay) {
-        List<Pair<String, String>> key = new ArrayList<>(transaction.getOperations().size());
-        for (SQLTransaction.Operation operation : transaction.getOperations()) {
-            SQLTransaction.Statement sqlStatement = operation.getStatement();
-            key.add(Pair.of(sqlStatement.getH2Sql(), sqlStatement.getPgSql()));
+        if (transaction.getHolderIds() == null) {
+            // has to run now, since we don't know who we are waiting on. Future updates need to replace only their holder's tasks, so id cols are a must.
+            logger.warn("Transaction {} does not have holder IDs, running immediately. Requested delay was {}ms", transaction, delay);
+            delay = -1;
         }
 
         Runnable runnable = () -> taskQueue.submitTask(connection -> {
@@ -839,6 +839,14 @@ public class H2DataAccessor implements DataAccessor {
             runnable.run();
             return;
         }
+
+        SQLTransaction.Statement[] statements = new SQLTransaction.Statement[transaction.getOperations().size()];
+        for (int i = 0; i < transaction.getOperations().size(); i++) {
+            statements[i] = transaction.getOperations().get(i).getStatement();
+        }
+
+        EnqueuedDatabaseTaskKey key = new EnqueuedDatabaseTaskKey(transaction.getHolderIds(), statements);
+
         if (delayedTasks.put(key, runnable) == null) {
             scheduledExecutorService.schedule(() -> {
                 Runnable removed = delayedTasks.remove(key);

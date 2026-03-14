@@ -1548,7 +1548,7 @@ public class DataManager {
             values.add(columnValuePair.value());
         }
         try {
-            dataAccessor.executeUpdate(SQLTransaction.Statement.of(h2Sql, pgSql), values, delay);
+            dataAccessor.executeUpdate(idColumns, SQLTransaction.Statement.of(h2Sql, pgSql), values, delay);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
