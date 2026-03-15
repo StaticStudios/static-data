@@ -798,7 +798,7 @@ public class H2DataAccessor implements DataAccessor {
     }
 
     private void runDatabaseTask(SQLTransaction transaction, int delay) {
-        if (transaction.getHolderIds() == null) {
+        if (transaction.getHolderIds() == null && delay > 0) {
             // has to run now, since we don't know who we are waiting on. Future updates need to replace only their holder's tasks, so id cols are a must.
             logger.warn("Transaction {} does not have holder IDs, running immediately. Requested delay was {}ms", transaction, delay);
             delay = -1;
