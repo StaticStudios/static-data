@@ -561,9 +561,7 @@ public class H2DataAccessor implements DataAccessor {
     @Override
     public void setRedisValue(String holderSchema, String holderTable, String identifier, ColumnValuePairs idColumns, String value, int expirationSeconds, int delay) {
         String prev = getAndSetRedisValueCache(holderSchema, holderTable, identifier, idColumns, value);
-        if (Objects.equals(prev, value)) {
-            return; // no change
-        }
+        //note: even if the prev value = the new value we need to update redis since we want to reset the expiration time if one is present
         String key = RedisUtils.buildRedisKey(holderSchema, holderTable, identifier, idColumns);
 
         Runnable runnable = () -> {
@@ -593,6 +591,10 @@ public class H2DataAccessor implements DataAccessor {
                     }
                 }, delay, TimeUnit.MILLISECONDS);
             }
+        }
+
+        if (Objects.equals(prev, value)) {
+            return; // no need to call handlers if the value didn't actually change
         }
 
         RedisUtils.DeconstructedKey deconstructedKey = RedisUtils.deconstruct(key);
