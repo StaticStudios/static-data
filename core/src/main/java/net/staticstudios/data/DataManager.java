@@ -150,7 +150,7 @@ public class DataManager {
     }
 
     public void callPersistentValueUpdateHandlers(List<String> columnNames, String schema, String table, String column, Object[] oldSerializedValues, Object[] newSerializedValues) {
-        logger.trace("Calling update handlers for {}.{}.{} with old values {} and new values {}", schema, table, column, Arrays.toString(oldSerializedValues), Arrays.toString(newSerializedValues));
+        logger.trace("Calling update handlers for {}.{}.{} with old values {} and new values {}", schema, table, column, LazyArrayToString.of(oldSerializedValues), LazyArrayToString.of(newSerializedValues));
         Map<String, List<ValueUpdateHandlerWrapper<?, ?>>> handlersForColumn = persistentValueUpdateHandlers.get(schema + "." + table + "." + column);
         if (handlersForColumn == null) {
             return;
@@ -287,7 +287,7 @@ public class DataManager {
     }
 
     public void callCollectionChangeHandlers(List<String> columnNames, String schema, String table, List<String> changedColumns, Object[] oldSerializedValues, Object[] newSerializedValues, TriggerCause cause, @Nullable UniqueData snapshot) {
-        logger.trace("Calling collection change handlers for {}.{} on changed columns {} with old values {} and new values {}", schema, table, changedColumns, Arrays.toString(oldSerializedValues), Arrays.toString(newSerializedValues));
+        logger.trace("Calling collection change handlers for {}.{} on changed columns {} with old values {} and new values {}", schema, table, changedColumns, LazyArrayToString.of(oldSerializedValues), LazyArrayToString.of(newSerializedValues));
         Map<String, List<CollectionChangeHandlerWrapper<?, ?>>> handlersForTable = collectionChangeHandlers.get(schema + "." + table);
         if (handlersForTable == null) {
             return;
@@ -635,7 +635,7 @@ public class DataManager {
     }
 
     public void callReferenceUpdateHandlers(List<String> columnNames, String schema, String table, List<String> changedColumns, Object[] oldSerializedValues, Object[] newSerializedValues, TriggerCause cause) {
-        logger.trace("Calling reference update handlers for {}.{} on changed columns {} with old values {} and new values {}", schema, table, changedColumns, Arrays.toString(oldSerializedValues), Arrays.toString(newSerializedValues));
+        logger.trace("Calling reference update handlers for {}.{} on changed columns {} with old values {} and new values {}", schema, table, changedColumns, LazyArrayToString.of(oldSerializedValues), LazyArrayToString.of(newSerializedValues));
         Map<String, List<ReferenceUpdateHandlerWrapper<?, ?>>> handlersForTable = referenceUpdateHandlers.get(schema + "." + table);
         if (handlersForTable == null) {
             return;
@@ -999,7 +999,7 @@ public class DataManager {
                         break;
                     }
                 }
-                Preconditions.checkArgument(found, "Not all ID columnsInReferringTable were provided for UniqueData class %s. Required: %s, Provided: %s", uniqueDataMetadata.clazz().getName(), uniqueDataMetadata.idColumns(), Arrays.toString(values));
+                Preconditions.checkArgument(found, "Not all ID columnsInReferringTable were provided for UniqueData class %s. Required: %s, Provided: %s", uniqueDataMetadata.clazz().getName(), uniqueDataMetadata.idColumns(), LazyArrayToString.of(values));
             }
 
             Map<ColumnValuePairs, UniqueData> classCache = uniqueDataInstanceCache.get(uniqueDataMetadata.clazz().getName());
@@ -1046,7 +1046,7 @@ public class DataManager {
                         break;
                     }
                 }
-                Preconditions.checkArgument(found, "Not all ID columnsInReferringTable were provided for UniqueData class %s. Required: %s, Provided: %s", uniqueDataMetadata.clazz().getName(), uniqueDataMetadata.idColumns(), Arrays.toString(oldValues));
+                Preconditions.checkArgument(found, "Not all ID columnsInReferringTable were provided for UniqueData class %s. Required: %s, Provided: %s", uniqueDataMetadata.clazz().getName(), uniqueDataMetadata.idColumns(), LazyArrayToString.of(oldValues));
             }
             if (Arrays.equals(oldIdColumns, newIdColumns)) {
                 return;
@@ -1781,7 +1781,7 @@ public class DataManager {
                             break;
                         }
                     }
-                    Preconditions.checkArgument(found, "Not all ID columnsInReferringTable were provided for UniqueData class %s. Required: %s, Provided: %s", metadata.clazz().getName(), metadata.idColumns(), Arrays.toString(values));
+                    Preconditions.checkArgument(found, "Not all ID columnsInReferringTable were provided for UniqueData class %s. Required: %s, Provided: %s", metadata.clazz().getName(), metadata.idColumns(), LazyArrayToString.of(values));
                 }
 
                 ColumnValuePairs idCols = new ColumnValuePairs(idColumns);
