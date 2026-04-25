@@ -21,4 +21,11 @@ public @interface ManyToMany {
     String joinTable() default "";
 
     String joinTableSchema() default "";
+
+    /**
+     * Should a foreign key constraint be created for this relation?
+     *
+     * @return Whether to create a foreign key constraint
+     */
+    boolean fkey() default true;
 }

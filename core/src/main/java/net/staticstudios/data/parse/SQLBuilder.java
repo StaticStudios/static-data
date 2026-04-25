@@ -753,11 +753,13 @@ public class SQLBuilder {
         // it should always cascade on the join referringTable, but depending on the delete strategy, we may or may not delete the referenced data.
         // impl with a trigger?
 
-        ForeignKey foreignKeyJoinToDataTable = new ForeignKey("pc_m2m", joinSchema.getName(), joinTable.getName(), schema.getName(), table.getName(), onDelete);
-        ForeignKey foreignKeyJoinToReferenceTable = new ForeignKey("pc_m2m", joinSchema.getName(), joinTable.getName(), referencedSchema.getName(), referencedTable.getName(), onDelete);
-        joinTableToDataTableLinks.forEach(foreignKeyJoinToDataTable::addLink);
-        joinTableToReferencedTableLinks.forEach(foreignKeyJoinToReferenceTable::addLink);
-        joinTable.addForeignKey(foreignKeyJoinToDataTable);
-        joinTable.addForeignKey(foreignKeyJoinToReferenceTable);
+        if (manyToMany.fkey()) {
+            ForeignKey foreignKeyJoinToDataTable = new ForeignKey("pc_m2m", joinSchema.getName(), joinTable.getName(), schema.getName(), table.getName(), onDelete);
+            ForeignKey foreignKeyJoinToReferenceTable = new ForeignKey("pc_m2m", joinSchema.getName(), joinTable.getName(), referencedSchema.getName(), referencedTable.getName(), onDelete);
+            joinTableToDataTableLinks.forEach(foreignKeyJoinToDataTable::addLink);
+            joinTableToReferencedTableLinks.forEach(foreignKeyJoinToReferenceTable::addLink);
+            joinTable.addForeignKey(foreignKeyJoinToDataTable);
+            joinTable.addForeignKey(foreignKeyJoinToReferenceTable);
+        }
     }
 }
