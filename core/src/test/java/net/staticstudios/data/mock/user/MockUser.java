@@ -73,7 +73,7 @@ public class MockUser extends UniqueData {
     @Identifier("friend_removals")
     public CachedValue<Integer> friendRemovals = CachedValue.of(this, Integer.class)
             .withFallback(0);
-    @Delete(DeleteStrategy.CASCADE) //todo: impl delete strategy for many to many collections
+    @Delete(DeleteStrategy.CASCADE)
     @ManyToMany(link = "id=id", joinTable = "user_friends")
     //todo: there should be a way to specify the column names for the join tables within the ManyToMany annotation. this only matters if the referring and referenced tables are the same.
     public PersistentCollection<MockUser> friends = PersistentCollection.of(this, MockUser.class)
