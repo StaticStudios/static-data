@@ -24,6 +24,7 @@ public @interface ManyToMany {
 
     /**
      * Should a foreign key constraint be created for this relation?
+     * The configured {@link DeleteStrategy} is still applied by deletion triggers when this is {@code false}.
      *
      * @return Whether to create a foreign key constraint
      */

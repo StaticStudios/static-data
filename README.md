@@ -97,8 +97,10 @@ The goal is to make the developer experience as seamless as possible.
 - `@Insert([InsertStrategy.PREFER_EXISTING/OVERWRITE_EXISTING])`: Controls insert behavior for `Reference<T>` and
   foreign
   columns.
-- `@Delete([DeleteStrategy.CASCADE/NO_ACTION])`: Controls delete behavior. This has different behavior depending on the
-  relationship type, refer to the javadoc on each `DeleteStrategy` enum value for more information.
+- `@Delete([DeleteStrategy.CASCADE/SET_NULL/NO_ACTION])`: Controls delete behavior. This has different behavior depending on the
+  relationship type. For many-to-many collections, `CASCADE` deletes the matching join rows and related objects,
+  `SET_NULL` deletes only the matching join rows, and `NO_ACTION` changes nothing. Refer to the javadoc on each
+  `DeleteStrategy` enum value for the behavior of other relationship types.
 - `@UpdateInterval([milliseconds])`: Used on `PersistentValue<T>` fields to control how often changes are flushed to the
   source database. The default is 0 milliseconds. Since a FIFO queue (one connection to the source database) is used to
   dispatch updates, frequent updates may clog up the queue. When the update interval is set to a non-zero value, only

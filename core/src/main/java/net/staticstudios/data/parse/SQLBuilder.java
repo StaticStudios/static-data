@@ -748,18 +748,27 @@ public class SQLBuilder {
 
         Delete delete = field.getAnnotation(Delete.class);
         DeleteStrategy deleteStrategy = delete != null ? delete.value() : DeleteStrategy.NO_ACTION;
-        OnDelete onDelete = OnDelete.CASCADE;
-        //todo: deletion strategy in this case is different than in the one to many case.
-        // it should always cascade on the join referringTable, but depending on the delete strategy, we may or may not delete the referenced data.
-        // impl with a trigger?
 
         if (manyToMany.fkey()) {
-            ForeignKey foreignKeyJoinToDataTable = new ForeignKey("pc_m2m", joinSchema.getName(), joinTable.getName(), schema.getName(), table.getName(), onDelete);
-            ForeignKey foreignKeyJoinToReferenceTable = new ForeignKey("pc_m2m", joinSchema.getName(), joinTable.getName(), referencedSchema.getName(), referencedTable.getName(), onDelete);
+            OnDelete holderOnDelete = deleteStrategy == DeleteStrategy.NO_ACTION ? OnDelete.NO_ACTION : OnDelete.CASCADE;
+            ForeignKey foreignKeyJoinToDataTable = new ForeignKey("pc_m2m", joinSchema.getName(), joinTable.getName(), schema.getName(), table.getName(), holderOnDelete);
+            ForeignKey foreignKeyJoinToReferenceTable = new ForeignKey("pc_m2m", joinSchema.getName(), joinTable.getName(), referencedSchema.getName(), referencedTable.getName(), OnDelete.CASCADE);
             joinTableToDataTableLinks.forEach(foreignKeyJoinToDataTable::addLink);
             joinTableToReferencedTableLinks.forEach(foreignKeyJoinToReferenceTable::addLink);
             joinTable.addForeignKey(foreignKeyJoinToDataTable);
             joinTable.addForeignKey(foreignKeyJoinToReferenceTable);
         }
+
+        table.addTrigger(new SQLManyToManyDeleteStrategyTrigger(
+                schema.getName(),
+                table.getName(),
+                joinSchema.getName(),
+                joinTable.getName(),
+                referencedSchema.getName(),
+                referencedTable.getName(),
+                deleteStrategy,
+                joinTableToDataTableLinks,
+                joinTableToReferencedTableLinks
+        ));
     }
 }

@@ -1,23 +1,28 @@
 package net.staticstudios.data;
 
+/**
+ * Actions that can be applied to related data when the object holding a relationship field is deleted.
+ */
 public enum DeleteStrategy {
     /**
-     * When the parent data is deleted, delete this data as well.
-     * For all data types, this means that the referenced data will be deleted when the parent data is deleted.
+     * Delete the related data when the object holding the annotated field is deleted.
+     * For a many-to-many collection, the matching join-table entries are removed and the
+     * referenced objects are deleted.
      */
     CASCADE,
 
     /**
-     * In the context of a reference or one-to-many collection,
-     * set the columns in the referenced table to null.
+     * Preserve the related data but remove the relationship when the object holding the
+     * annotated field is deleted. For a one-to-many collection, the linking columns are set
+     * to {@code null}. For a many-to-many collection, the matching join-table entries are
+     * deleted.
      */
     SET_NULL,
 
     /**
-     * In the context of a <b>persistent value, a reference, or a one-to-many collection:</b> <br>
-     * Do nothing when the parent data is deleted.
-     * <br><br>
-     * For a <b>many-to-many</b> collection, this will remove the entries in the join table.
+     * Do not modify the related data or relationship when the object holding the annotated
+     * field is deleted. A foreign-key constraint may therefore reject the deletion while a
+     * relationship still exists.
      */
     NO_ACTION
 }
