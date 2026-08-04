@@ -110,10 +110,10 @@ public class SQLManyToManyDeleteStrategyTrigger implements SQLTrigger {
                 + H2ManyToManyDeleteStrategyTrigger.class.getName() + "\"";
     }
 
-    private String postgresTriggerName() {
-        return "static_data_v3_m2m_" + holderSchema + "_" + holderTable + "_" + joinSchema + "_" + joinTable
-                + "_" + targetSchema + "_" + targetTable + "_delete_trigger";
-    }
+private String postgresTriggerName() {
+    String signature = holderSchema + "." + holderTable + "|" + joinSchema + "." + joinTable + "|" + targetSchema + "." + targetTable;
+    return "static_data_v3_m2m_" + Integer.toUnsignedString(signature.hashCode(), 16) + "_delete_trigger";
+}
 
     private String h2TriggerName(DeleteStrategy strategy) {
         String encodedHolderLinks = encodeLinks(joinTableToHolderLinks);
