@@ -1,181 +1,305 @@
 package net.staticstudios.data;
 
 import net.staticstudios.data.misc.DataTest;
+import net.staticstudios.data.misc.SchemaAssertions;
 import net.staticstudios.data.mock.post.MockPost;
-import net.staticstudios.data.parse.DDLStatement;
+import net.staticstudios.data.mock.user.MockUser;
+import net.staticstudios.data.parse.SQLSchema;
 import net.staticstudios.data.util.EnvironmentVariableAccessor;
 import net.staticstudios.data.util.ValueUtils;
-import org.intellij.lang.annotations.Language;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.Container;
 
-import java.sql.Connection;
-import java.sql.Statement;
-import java.util.Arrays;
-import java.util.LinkedHashSet;
-import java.util.List;
+import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.util.Set;
+import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.fail;
+import static net.staticstudios.data.misc.SchemaAssertions.DatabaseEngine.H2;
+import static net.staticstudios.data.misc.SchemaAssertions.DatabaseEngine.POSTGRESQL;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class SQLParseTest extends DataTest {
+    private static EnvironmentVariableAccessor previousEnvironmentVariableAccessor;
 
     @BeforeAll
-    public static void setup() {
-        ValueUtils.ENVIRONMENT_VARIABLE_ACCESSOR = new EnvironmentVariableAccessor() {
-            @Override
-            public String getEnv(String name) {
-                return switch (name) {
-                    case "POST_SCHEMA" -> "social_media";
-                    case "POST_TABLE" -> "posts";
-                    case "POST_ID_COLUMN" -> "post_id";
-                    default -> null;
-                };
-            }
-        };
+    public static void setupEnvironmentVariables() {
+        previousEnvironmentVariableAccessor = ValueUtils.ENVIRONMENT_VARIABLE_ACCESSOR;
+        EnvironmentVariableAccessor accessor = new EnvironmentVariableAccessor();
+        accessor.set("POST_SCHEMA", "social_media");
+        accessor.set("POST_TABLE", "posts");
+        accessor.set("POST_ID_COLUMN", "post_id");
+        ValueUtils.ENVIRONMENT_VARIABLE_ACCESSOR = accessor;
     }
 
-    private static String normalize(String str) {
-        return str.replace("\r\n", "\n").trim();
+    @AfterAll
+    public static void restoreEnvironmentVariables() {
+        ValueUtils.ENVIRONMENT_VARIABLE_ACCESSOR = previousEnvironmentVariableAccessor;
     }
 
-    private static void assertSqlLinesEqualOrderIndependent(List<String> expectedLines, List<String> actualLines) {
-        Set<String> expectedSet = new LinkedHashSet<>(expectedLines.stream().map(l -> {
-                    if (l.endsWith(",")) {
-                        l = l.substring(0, l.length() - 1);
-                    }
-                    return l.trim();
-                })
-                .toList());
-        Set<String> actualSet = new LinkedHashSet<>(actualLines.stream().map(l -> {
-                    if (l.endsWith(",")) {
-                        l = l.substring(0, l.length() - 1);
-                    }
-                    return l.trim();
-                })
-                .toList());
-
-        if (!expectedSet.equals(actualSet)) {
-            Set<String> missing = new LinkedHashSet<>(expectedSet);
-            missing.removeAll(actualSet);
-            Set<String> unexpected = new LinkedHashSet<>(actualSet);
-            unexpected.removeAll(expectedSet);
-
-            StringBuilder msg = new StringBuilder();
-            msg.append(String.format("Schema mismatch: expected %d distinct lines, actual %d distinct lines.%n", expectedSet.size(), actualSet.size()));
-            if (!missing.isEmpty()) {
-                msg.append(String.format("Missing (%d):%n", missing.size()));
-                for (String s : missing) {
-                    msg.append(String.format("  %s%n", s));
-                }
-            }
-            if (!unexpected.isEmpty()) {
-                msg.append(String.format("Unexpected (%d):%n", unexpected.size()));
-                for (String s : unexpected) {
-                    msg.append(String.format("  %s%n", s));
-                }
-            }
-
-            msg.append("Full expected:\n");
-            for (String s : expectedLines) {
-                msg.append(String.format("  %s%n", s));
-            }
-            msg.append("Full actual:\n");
-            for (String s : actualLines) {
-                msg.append(String.format("  %s%n", s));
-            }
-
-            fail(msg.toString());
-        }
-
-        assertFalse(actualLines.isEmpty(), String.format("No SQL lines were produced by pg_dump after cleaning. Expected %d distinct lines but got %d distinct lines.", expectedSet.size(), actualSet.size()));
-    }
-
-    @Disabled("this test is so weird, it passes sometimes and fails other time.")
     @Test
-    public void testParse() throws Exception { //todo: address flakiness
-        DataManager dm = getMockEnvironments().getFirst().dataManager();
-        dm.extractMetadata(MockPost.class);
-        Connection postgresConnection = getConnection();
-        List<DDLStatement> ddlStatements = dm.getSQLBuilder().parse(MockPost.class);
-        for (DDLStatement ddl : ddlStatements) {
-            System.out.println(ddl.postgresqlStatement());
-            try (Statement statement = postgresConnection.createStatement()) {
-                statement.execute(ddl.postgresqlStatement());
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        }
+    public void testEnvironmentBackedSchemaMatchesPostgresAndH2() throws SQLException {
+        DataManager dataManager = load(MockPost.class);
 
-        try (Statement statement = postgresConnection.createStatement()) {
-            statement.execute("DROP FUNCTION IF EXISTS public.propagate_data_update_v3");
-        }
+        assertBuilderTables(dataManager, "social_media", Set.of(
+                "posts",
+                "posts_metadata",
+                "posts_interactions",
+                "posts_related"
+        ));
+        assertBuilderColumns(dataManager, "social_media", "posts", Set.of(
+                "post_id",
+                "text_content",
+                "likes"
+        ));
 
-        Container.ExecResult result = postgres.execInContainer("pg_dump",
-                "--referringSchema-only",
-                "--no-owner",
-                "--no-privileges",
-                "--no-comments",
-                "--section=pre-data",
-                "--section=post-data",
-                "-U", postgres.getUsername(),
-                postgres.getDatabaseName()
-        );
-        String schemaDump = result.getStdout();
-        StringBuilder cleanedDump = new StringBuilder();
-        for (String line : schemaDump.split("\n")) {
-            if (line.startsWith("--") || line.startsWith("SET") || line.startsWith("SELECT") || line.trim().isEmpty()) {
-                continue;
-            }
-            cleanedDump.append(line).append("\n");
-        }
-
-        @Language("SQL") String expected = """
-                CREATE SCHEMA social_media;
-                CREATE TABLE social_media.posts (
-                    post_id integer NOT NULL,
-                    likes integer DEFAULT 0 NOT NULL,
-                    text_content text NOT NULL
-                );
-                CREATE TABLE social_media.posts_interactions (
-                    post_id integer NOT NULL,
-                    interactions integer DEFAULT 0 NOT NULL
-                );
-                CREATE TABLE social_media.posts_metadata (
-                    metadata_id integer NOT NULL,
-                    flag boolean NOT NULL
-                );
-                CREATE TABLE social_media.posts_related (
-                    posts_post_id integer NOT NULL,
-                    posts_ref_post_id integer NOT NULL
-                );
-                ALTER TABLE ONLY social_media.posts_interactions
-                    ADD CONSTRAINT posts_interactions_pkey PRIMARY KEY (post_id);
-                ALTER TABLE ONLY social_media.posts_metadata
-                    ADD CONSTRAINT posts_metadata_pkey PRIMARY KEY (metadata_id);
-                ALTER TABLE ONLY social_media.posts
-                    ADD CONSTRAINT posts_pkey PRIMARY KEY (post_id);
-                ALTER TABLE ONLY social_media.posts_related
-                    ADD CONSTRAINT posts_related_pkey PRIMARY KEY (posts_post_id, posts_ref_post_id);
-                CREATE INDEX idx_social_media_posts_text_content ON social_media.posts USING btree (text_content);
-                ALTER TABLE ONLY social_media.posts
-                    ADD CONSTRAINT fk_post_id_to_metadata_id FOREIGN KEY (post_id) REFERENCES social_media.posts_metadata(metadata_id) ON UPDATE CASCADE ON DELETE SET NULL;
-                ALTER TABLE ONLY social_media.posts
-                    ADD CONSTRAINT fk_post_id_to_post_id FOREIGN KEY (post_id) REFERENCES social_media.posts_interactions(post_id) ON UPDATE CASCADE ON DELETE CASCADE;
-                ALTER TABLE ONLY social_media.posts_related
-                    ADD CONSTRAINT fk_posts_post_id_to_post_id FOREIGN KEY (posts_post_id) REFERENCES social_media.posts(post_id) ON UPDATE CASCADE ON DELETE CASCADE;
-                ALTER TABLE ONLY social_media.posts_related
-                    ADD CONSTRAINT fk_posts_ref_post_id_to_post_id FOREIGN KEY (posts_ref_post_id) REFERENCES social_media.posts(post_id) ON UPDATE CASCADE ON DELETE CASCADE;
-                """;
-
-        List<String> expectedLines = Arrays.asList(normalize(expected).split("\n"));
-        List<String> actualLines = Arrays.asList(normalize(cleanedDump.toString()).split("\n"));
-
-        assertSqlLinesEqualOrderIndependent(expectedLines, actualLines);
+        assertDatabasesMatch(dataManager, "social_media");
     }
 
-    //todo: when a delete strategy is set to no action where it was previously set to cascade, the old trigger should be dropped. Add a test for this. moreover, what happens when we change the name of something? will the old trigger stay or what? handle this
+    @Test
+    public void testLegacyPostgresObjectNamesRemainStable() {
+        DataManager dataManager = load(MockPost.class);
+        SQLSchema schema = dataManager.getSQLBuilder().getSchema("social_media");
+        assertNotNull(schema);
+
+        Set<String> foreignKeyNames = schema.getTables().stream()
+                .flatMap(table -> table.getForeignKeys().stream())
+                .map(foreignKey -> foreignKey.getName())
+                .collect(java.util.stream.Collectors.toSet());
+        assertEquals(Set.of(
+                "fk_o2o_post_id_to_metadata_id",
+                "fk_fcol_post_id_to_post_id",
+                "fk_pc_m2m_posts_post_id_to_post_id",
+                "fk_pc_m2m_posts_ref_post_id_to_post_id"
+        ), foreignKeyNames);
+
+        String postgresTriggerSql = schema.getTables().stream()
+                .flatMap(table -> table.getTriggers().stream())
+                .map(trigger -> trigger.getPgSQL())
+                .collect(java.util.stream.Collectors.joining("\n"));
+        assertTrue(postgresTriggerSql.contains(
+                "static_data_v3_social_media_posts_social_media_posts_metadata_delete_trigger"
+        ));
+        assertTrue(postgresTriggerSql.contains(
+                "static_data_v3_social_media_posts_social_media_posts_interactions_delete_trigger"
+        ));
+        assertTrue(postgresTriggerSql.contains("static_data_v3_m2m_5120bceb_delete_trigger"));
+    }
+
+    @Test
+    public void testFullUserSchemaMatchesPostgresAndH2() throws SQLException {
+        DataManager dataManager = load(MockUser.class);
+
+        assertBuilderTables(dataManager, "public", Set.of(
+                "users",
+                "user_settings",
+                "user_sessions",
+                "user_preferences",
+                "user_metadata",
+                "user_friends",
+                "favorite_numbers"
+        ));
+        assertBuilderColumns(dataManager, "public", "users", Set.of(
+                "id",
+                "settings_id",
+                "best_buddy_id",
+                "age",
+                "name",
+                "views",
+                "counter",
+                "__virtual__cv_settings_updates",
+                "__virtual__cv_session_additions",
+                "__virtual__cv_session_removals",
+                "__virtual__cv_friend_additions",
+                "__virtual__cv_friend_removals",
+                "__virtual__cv_favorite_number_additions",
+                "__virtual__cv_favorite_number_removals",
+                "__virtual__cv_cooldown_updates",
+                "__virtual__cv_throttled_counter",
+                "__virtual__cv_on_cooldown",
+                "__virtual__cv_counter"
+        ));
+
+        assertDatabasesMatch(dataManager, "public");
+    }
+
+    @Test
+    public void testBroadSchemaContractMatchesPostgresAndH2() throws SQLException {
+        DataManager dataManager = load(SchemaContractParent.class);
+
+        assertBuilderTables(dataManager, "schema_contract", Set.of(
+                "contract_parents",
+                "contract_profiles",
+                "contract_children",
+                "contract_tags",
+                "contract_values"
+        ));
+        assertBuilderTables(dataManager, "schema_contract_links", Set.of("parent_tags"));
+        assertBuilderTables(dataManager, "schema_contract_external", Set.of("parent_details"));
+        assertBuilderColumns(dataManager, "schema_contract", "contract_parents", Set.of(
+                "tenant_id",
+                "parent_id",
+                "profile_tenant_id",
+                "profile_id",
+                "label",
+                "code",
+                "active",
+                "long_value",
+                "real_value",
+                "double_value",
+                "created_at",
+                "optional_count",
+                "__virtual__cv_cached_score"
+        ));
+
+        assertDatabasesMatch(dataManager, "schema_contract", "schema_contract_links", "schema_contract_external");
+    }
+
+    private DataManager load(Class<? extends UniqueData> rootType) {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        dataManager.load(rootType);
+        dataManager.finishLoading();
+        return dataManager;
+    }
+
+    private void assertDatabasesMatch(DataManager dataManager, String... schemaNames) throws SQLException {
+        SchemaAssertions.assertMatches(dataManager, getConnection(), POSTGRESQL, schemaNames);
+        SchemaAssertions.assertMatches(dataManager, getH2Connection(dataManager), H2, schemaNames);
+    }
+
+    private void assertBuilderTables(DataManager dataManager, String schemaName, Set<String> expectedTables) {
+        SQLSchema schema = dataManager.getSQLBuilder().getSchema(schemaName);
+        assertNotNull(schema);
+        assertEquals(expectedTables, schema.getTables().stream().map(table -> table.getName()).collect(java.util.stream.Collectors.toSet()));
+    }
+
+    private void assertBuilderColumns(DataManager dataManager, String schemaName, String tableName, Set<String> expectedColumns) {
+        SQLSchema schema = dataManager.getSQLBuilder().getSchema(schemaName);
+        assertNotNull(schema);
+        assertNotNull(schema.getTable(tableName));
+        assertEquals(expectedColumns, schema.getTable(tableName).getColumns().stream().map(column -> column.getName()).collect(java.util.stream.Collectors.toSet()));
+    }
+
+    @Data(schema = "schema_contract", table = "contract_profiles")
+    static class SchemaContractProfile extends UniqueData {
+        @IdColumn(name = "tenant_id")
+        public PersistentValue<Integer> tenantId;
+
+        @IdColumn(name = "profile_id")
+        public PersistentValue<UUID> profileId;
+
+        @Column(name = "bio", nullable = true)
+        public PersistentValue<String> bio;
+    }
+
+    @Data(schema = "schema_contract", table = "contract_children")
+    static class SchemaContractChild extends UniqueData {
+        @IdColumn(name = "child_id")
+        public PersistentValue<UUID> childId;
+
+        @Column(name = "owner_tenant_id", nullable = true)
+        public PersistentValue<Integer> ownerTenantId;
+
+        @Column(name = "owner_parent_id", nullable = true)
+        public PersistentValue<UUID> ownerParentId;
+
+        @Column(name = "payload")
+        public PersistentValue<String> payload;
+    }
+
+    @Data(schema = "schema_contract", table = "contract_tags")
+    static class SchemaContractTag extends UniqueData {
+        @IdColumn(name = "tenant_id")
+        public PersistentValue<Integer> tenantId;
+
+        @IdColumn(name = "tag_id")
+        public PersistentValue<UUID> tagId;
+
+        @Column(name = "name", unique = true)
+        public PersistentValue<String> name;
+    }
+
+    @Data(schema = "schema_contract", table = "contract_parents")
+    static class SchemaContractParent extends UniqueData {
+        @IdColumn(name = "tenant_id")
+        public PersistentValue<Integer> tenantId;
+
+        @IdColumn(name = "parent_id")
+        public PersistentValue<UUID> parentId;
+
+        @Column(name = "profile_tenant_id", nullable = true)
+        public PersistentValue<Integer> profileTenantId;
+
+        @Column(name = "profile_id", nullable = true)
+        public PersistentValue<UUID> profileId;
+
+        @DefaultValue("O'Reilly")
+        @Column(name = "label", index = true)
+        public PersistentValue<String> label;
+
+        @Column(name = "code", unique = true)
+        public PersistentValue<String> code;
+
+        @DefaultValue("true")
+        @Column(name = "active")
+        public PersistentValue<Boolean> active;
+
+        @Column(name = "long_value")
+        public PersistentValue<Long> longValue;
+
+        @Column(name = "real_value")
+        public PersistentValue<Float> realValue;
+
+        @Column(name = "double_value")
+        public PersistentValue<Double> doubleValue;
+
+        @Column(name = "created_at")
+        public PersistentValue<Timestamp> createdAt;
+
+        @Column(name = "optional_count", nullable = true)
+        public PersistentValue<Integer> optionalCount;
+
+        @Delete(DeleteStrategy.CASCADE)
+        @ForeignColumn(
+                schema = "schema_contract_external",
+                table = "parent_details",
+                name = "details",
+                link = "tenant_id=tenant_id, parent_id=parent_id",
+                nullable = true,
+                index = true
+        )
+        public PersistentValue<String> details;
+
+        @Delete(DeleteStrategy.CASCADE)
+        @OneToOne(link = "profile_tenant_id=tenant_id, profile_id=profile_id")
+        public Reference<SchemaContractProfile> profile;
+
+        @Delete(DeleteStrategy.SET_NULL)
+        @OneToMany(link = "tenant_id=owner_tenant_id, parent_id=owner_parent_id")
+        public PersistentCollection<SchemaContractChild> children;
+
+        @Delete(DeleteStrategy.SET_NULL)
+        @ManyToMany(
+                link = "tenant_id=tenant_id, parent_id=tag_id",
+                joinTableSchema = "schema_contract_links",
+                joinTable = "parent_tags"
+        )
+        public PersistentCollection<SchemaContractTag> tags;
+
+        @Delete(DeleteStrategy.CASCADE)
+        @OneToMany(
+                link = "tenant_id=owner_tenant_id, parent_id=owner_parent_id",
+                table = "contract_values",
+                column = "payload",
+                indexed = true,
+                nullable = false
+        )
+        public PersistentCollection<String> values;
+
+        @Identifier(value = "cached_score", index = true)
+        public CachedValue<Integer> cachedScore = CachedValue.of(this, Integer.class).withFallback(0);
+    }
 }

@@ -14,13 +14,18 @@ import redis.clients.jedis.exceptions.JedisConnectionException;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 
 public class RedisListener extends JedisPubSub {
     private static final Logger logger = LoggerFactory.getLogger(RedisListener.class);
     private final Set<String> listenedPartialKeys = ConcurrentHashMap.newKeySet();
     private final Map<Pattern, RedisEventHandler> handlers = new ConcurrentHashMap<>();
+    private final Map<String, Integer> ignoredLocalDeleteEvents = new ConcurrentHashMap<>();
+    private final CompletableFuture<Void> subscriptionReady = new CompletableFuture<>();
     private final TaskQueue taskQueue;
 
     public RedisListener(DataSourceConfig ds, TaskQueue taskQueue) {
@@ -32,10 +37,17 @@ public class RedisListener extends JedisPubSub {
                 if (ThreadUtils.isShuttingDown()) {
                     return;
                 }
+                subscriptionReady.completeExceptionally(e);
                 logger.error("Redis connection lost in listener thread", e);
             }
         });
         listenerThread.start();
+
+        try {
+            subscriptionReady.get(10, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            throw new IllegalStateException("Timed out waiting for the Redis event subscription", e);
+        }
 
         ThreadUtils.onShutdownRunSync(ShutdownStage.CLEANUP, () -> {
             this.punsubscribe();
@@ -58,6 +70,9 @@ public class RedisListener extends JedisPubSub {
         if (!key.startsWith("static-data:")) {
             return;
         }
+        if (event == RedisEvent.DEL && consumeLocalDeleteEvent(key)) {
+            return;
+        }
 
         for (Map.Entry<Pattern, RedisEventHandler> entry : handlers.entrySet()) {
             if (entry.getKey().matcher(key).matches()) {
@@ -74,5 +89,27 @@ public class RedisListener extends JedisPubSub {
                 return;
             }
         }
+    }
+
+    @Override
+    public void onPSubscribe(String pattern, int subscribedChannels) {
+        subscriptionReady.complete(null);
+    }
+
+    public void expectLocalDeleteEvent(String key) {
+        ignoredLocalDeleteEvents.merge(key, 1, Integer::sum);
+    }
+
+    public void cancelLocalDeleteEvent(String key) {
+        consumeLocalDeleteEvent(key);
+    }
+
+    private boolean consumeLocalDeleteEvent(String key) {
+        AtomicBoolean consumed = new AtomicBoolean(false);
+        ignoredLocalDeleteEvents.computeIfPresent(key, (ignoredKey, count) -> {
+            consumed.set(true);
+            return count == 1 ? null : count - 1;
+        });
+        return consumed.get();
     }
 }

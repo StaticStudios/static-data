@@ -319,7 +319,7 @@ public class PersistentManyToManyCollectionTest extends DataTest {
                 .insert(InsertMode.SYNC);
         List<MockUser> friends = createFriends(5);
         user.friends.addAll(friends);
-        waitForDataPropagation();
+        flushDataManagers();
         assertEquals(5, user.friendAdditions.get());
 
         List<MockUser> otherFriends = createFriends(5);
@@ -334,8 +334,12 @@ public class PersistentManyToManyCollectionTest extends DataTest {
                 preparedStatement.setObject(3, friend.id.get());
                 preparedStatement.executeUpdate();
             }
-            waitForDataPropagation();
-            assertEquals(5 + (++i), user.friendAdditions.get());
+            int expectedAdditions = 5 + (++i);
+            awaitCondition(
+                    () -> user.friendAdditions.get() == expectedAdditions,
+                    "the many-to-many update addition handler"
+            );
+            assertEquals(expectedAdditions, user.friendAdditions.get());
         }
     }
 
@@ -347,7 +351,7 @@ public class PersistentManyToManyCollectionTest extends DataTest {
                 .insert(InsertMode.SYNC);
         List<MockUser> friends = createFriends(5);
         user.friends.addAll(friends);
-        waitForDataPropagation();
+        flushDataManagers();
         assertEquals(5, user.friendAdditions.get());
 
         Connection pgConnection = getConnection();
@@ -359,8 +363,12 @@ public class PersistentManyToManyCollectionTest extends DataTest {
                 preparedStatement.setObject(2, friend.id.get());
                 preparedStatement.executeUpdate();
             }
-            waitForDataPropagation();
-            assertEquals(++i, user.friendRemovals.get());
+            int expectedRemovals = ++i;
+            awaitCondition(
+                    () -> user.friendRemovals.get() == expectedRemovals,
+                    "the many-to-many delete handler"
+            );
+            assertEquals(expectedRemovals, user.friendRemovals.get());
         }
     }
 

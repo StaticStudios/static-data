@@ -567,7 +567,15 @@ public class H2DataAccessor implements DataAccessor {
         Runnable runnable = () -> {
             if (value == null) {
                 taskQueue.submitTask((connection, jedis) -> {
-                    jedis.del(key);
+                    redisListener.expectLocalDeleteEvent(key);
+                    boolean deleted = false;
+                    try {
+                        deleted = jedis.del(key) > 0;
+                    } finally {
+                        if (!deleted) {
+                            redisListener.cancelLocalDeleteEvent(key);
+                        }
+                    }
                 });
             } else {
                 taskQueue.submitTask((connection, jedis) -> {

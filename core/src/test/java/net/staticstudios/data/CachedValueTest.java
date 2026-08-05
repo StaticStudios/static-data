@@ -11,6 +11,7 @@ import net.staticstudios.data.util.redis.RedisUtils;
 import org.junit.jupiter.api.Test;
 import redis.clients.jedis.Jedis;
 
+import java.util.Objects;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -52,7 +53,7 @@ public class CachedValueTest extends DataTest {
         assertEquals(false, user.onCooldown.get());
         assertEquals(0, user.cooldownUpdates.get());
 
-        waitForDataPropagation();
+        flushDataManagers();
 
         Jedis jedis = getJedis();
 
@@ -114,9 +115,13 @@ public class CachedValueTest extends DataTest {
 
         Jedis jedis = getJedis();
         String onCooldownKey = RedisUtils.buildRedisKey("public", "users", "on_cooldown", user.getIdColumns());
+        dataManager.flushTaskQueue();
         jedis.del(onCooldownKey);
 
-        waitForDataPropagation();
+        awaitCondition(
+                () -> Objects.equals(false, user.onCooldown.get()) && Objects.equals(6, user.cooldownUpdates.get()),
+                "the external Redis deletion to reach the cached value and its update handler"
+        );
 
         assertEquals(false, user.onCooldown.get());
         assertEquals(6, user.cooldownUpdates.get());
@@ -139,19 +144,19 @@ public class CachedValueTest extends DataTest {
 
         user.onCooldown.set(true);
         user.cooldownUpdates.set(1);
-        waitForDataPropagation();
+        dataManager.flushTaskQueue();
         assertEquals("true", gson.fromJson(jedis.get(onCooldownKey), RedisEncodedValue.class).value());
         assertEquals("1", gson.fromJson(jedis.get(cooldownUpdatesKey), RedisEncodedValue.class).value());
 
         user.onCooldown.set(null);
         user.cooldownUpdates.set(null);
-        waitForDataPropagation();
+        dataManager.flushTaskQueue();
         assertNull(jedis.get(onCooldownKey));
         assertNull(jedis.get(cooldownUpdatesKey));
 
         user.onCooldown.set(false); //fallback
         user.cooldownUpdates.set(0); //fallback
-        waitForDataPropagation();
+        dataManager.flushTaskQueue();
         assertNull(jedis.get(onCooldownKey));
         assertNull(jedis.get(cooldownUpdatesKey));
     }
@@ -175,7 +180,7 @@ public class CachedValueTest extends DataTest {
 
         jedis.set(cooldownUpdatesKey, gson.toJson(new RedisEncodedValue(null, "5")));
 
-        waitForDataPropagation();
+        awaitCondition(() -> Objects.equals(5, user1.cooldownUpdates.get()), "the external Redis value to reach H2");
 
         assertEquals(5, user1.cooldownUpdates.get());
 
@@ -204,15 +209,15 @@ public class CachedValueTest extends DataTest {
         assertEquals(2, user.counter.refresh());
         assertEquals(2, user.counter.get());
 
-        Thread.sleep(10_000); //wait for the cached value to expire
-
         String counterKey = RedisUtils.buildRedisKey("public", "users", "counter", user.getIdColumns());
 
         Jedis jedis = getJedis();
+        awaitCondition(() -> !jedis.exists(counterKey), "the cached counter to expire");
         assertFalse(jedis.exists(counterKey));
 
-        assertEquals(0, user.counter.get()); //trigger a refresh
-        waitForDataPropagation();
+        awaitCondition(() -> Objects.equals(0, user.counter.get()), "the expiration event to clear and refresh the H2 cached value");
+        assertEquals(0, user.counter.get());
+        dataManager.flushTaskQueue();
         assertEquals("0", gson.fromJson(jedis.get(counterKey), RedisEncodedValue.class).value());
     }
 
@@ -234,14 +239,17 @@ public class CachedValueTest extends DataTest {
         }
 
         assertEquals(4, user.throttledCounter.get());
-        waitForDataPropagation();
+        dataManager.flushTaskQueue();
 
         Jedis jedis = getJedis();
         String throttledCounterKey = RedisUtils.buildRedisKey("public", "users", "throttled_counter", user.getIdColumns());
 
         assertNull(jedis.get(throttledCounterKey));
 
-        Thread.sleep(6000);
+        awaitCondition(() -> {
+            RedisEncodedValue value = gson.fromJson(jedis.get(throttledCounterKey), RedisEncodedValue.class);
+            return value != null && Objects.equals("4", value.value());
+        }, "the throttled cached value to be written");
 
         RedisEncodedValue encoded = gson.fromJson(jedis.get(throttledCounterKey), RedisEncodedValue.class);
         assertNotNull(encoded);
