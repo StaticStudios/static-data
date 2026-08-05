@@ -14,12 +14,14 @@ import org.testcontainers.utility.DockerImageName;
 import redis.clients.jedis.Jedis;
 
 import java.io.IOException;
+import java.lang.ref.WeakReference;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.sql.*;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.BooleanSupplier;
 
 public class DataTest {
     public static int NUM_ENVIRONMENTS = 1;
@@ -137,11 +139,45 @@ public class DataTest {
     }
 
     public void waitForDataPropagation() {
+        flushDataManagers();
         try {
             Thread.sleep(getWaitForDataPropagationTime());
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public void flushDataManagers() {
+        for (MockEnvironment mockEnvironment : mockEnvironments) {
+            mockEnvironment.dataManager().flushTaskQueue();
+        }
+    }
+
+    public void awaitCondition(BooleanSupplier condition, String description) {
+        long timeoutMillis = Objects.equals(System.getenv("GITHUB_ACTIONS"), "true") ? 15_000 : 10_000;
+        long deadline = System.nanoTime() + timeoutMillis * 1_000_000;
+        while (System.nanoTime() < deadline) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError("Interrupted while waiting for " + description, e);
+            }
+        }
+        if (condition.getAsBoolean()) {
+            return;
+        }
+        throw new AssertionError("Timed out after " + timeoutMillis + "ms waiting for " + description);
+    }
+
+    public void awaitGarbageCollection(WeakReference<?> reference, String description) {
+        awaitCondition(() -> {
+            System.gc();
+            return reference.get() == null;
+        }, description);
     }
 
     public Connection getH2Connection(DataManager dataManager) {

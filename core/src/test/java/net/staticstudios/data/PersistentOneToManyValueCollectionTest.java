@@ -337,9 +337,12 @@ public class PersistentOneToManyValueCollectionTest extends DataTest {
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-            waitForDataPropagation();
-
-            assertEquals(++i, user.favoriteNumberAdditions.get());
+            int expectedAdditions = ++i;
+            awaitCondition(
+                    () -> user.favoriteNumberAdditions.get() == expectedAdditions,
+                    "the one-to-many value update addition handler"
+            );
+            assertEquals(expectedAdditions, user.favoriteNumberAdditions.get());
         }
     }
 
@@ -381,9 +384,12 @@ public class PersistentOneToManyValueCollectionTest extends DataTest {
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-            waitForDataPropagation();
-
-            assertEquals(++i, user.favoriteNumberRemovals.get());
+            int expectedRemovals = ++i;
+            awaitCondition(
+                    () -> user.favoriteNumberRemovals.get() == expectedRemovals,
+                    "the one-to-many value update removal handler"
+            );
+            assertEquals(expectedRemovals, user.favoriteNumberRemovals.get());
         }
     }
 

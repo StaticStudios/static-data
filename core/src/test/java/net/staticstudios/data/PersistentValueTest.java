@@ -14,6 +14,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -42,7 +43,7 @@ public class PersistentValueTest extends DataTest {
             assertNull(user.age.get());
         }
 
-        waitForDataPropagation();
+        flushDataManagers();
         MockEnvironment environment2 = createMockEnvironment();
         DataManager dataManager2 = environment2.dataManager();
         dataManager2.load(MockUser.class);
@@ -74,9 +75,7 @@ public class PersistentValueTest extends DataTest {
         mockUser = dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id));
         assertSame(mockUser, weakRef.get());
         mockUser = null; // remove strong reference
-        System.gc();
-
-        assertNull(weakRef.get());
+        awaitGarbageCollection(weakRef, "the weak unique-data cache entry to be collected");
 
         mockUser = dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id)); // should have a cache miss
     }
@@ -103,7 +102,7 @@ public class PersistentValueTest extends DataTest {
             assertEquals(0, rs.getObject("age"));
         }
 
-        waitForDataPropagation();
+        flushDataManagers();
 
         Connection pgConnection = getConnection();
         try (PreparedStatement preparedStatement = pgConnection.prepareStatement("SELECT \"age\" FROM \"public\".\"users\" WHERE \"id\" = ?")) {
@@ -122,7 +121,7 @@ public class PersistentValueTest extends DataTest {
             assertEquals(30, rs.getObject("age"));
         }
 
-        waitForDataPropagation();
+        flushDataManagers();
 
         try (PreparedStatement preparedStatement = pgConnection.prepareStatement("SELECT \"age\" FROM \"public\".\"users\" WHERE \"id\" = ?")) {
             preparedStatement.setObject(1, id);
@@ -199,8 +198,9 @@ public class PersistentValueTest extends DataTest {
         assertEquals("test user", mockUser.name.get());
         //first instance was created, handler should be registered
         assertEquals(1, dataManager.getUpdateHandlers("public", "users", "name", MockUser.class).size());
+        WeakReference<MockUser> weakRef = new WeakReference<>(mockUser);
         mockUser = null; // remove strong reference
-        System.gc();
+        awaitGarbageCollection(weakRef, "the update-handler test instance to be collected");
         mockUser = dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id)); // should have a cache miss
         //the handler for this pv should not have been registered again
         assertEquals(1, dataManager.getUpdateHandlers("public", "users", "name", MockUser.class).size());
@@ -240,7 +240,10 @@ public class PersistentValueTest extends DataTest {
             throw new RuntimeException(e);
         }
 
-        waitForDataPropagation();
+        awaitCondition(
+                () -> Objects.equals("updated from pg", mockUser.name.get()),
+                "the PostgreSQL update to reach the cached user"
+        );
 
         assertEquals("updated from pg", mockUser.name.get());
         assertEquals(1, mockUser.getNameUpdates());
@@ -269,7 +272,10 @@ public class PersistentValueTest extends DataTest {
             throw new RuntimeException(e);
         }
 
-        waitForDataPropagation();
+        awaitCondition(
+                () -> dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id)) != null,
+                "the PostgreSQL insert to reach the local cache"
+        );
 
         MockUser mockUser = dataManager.getInstance(MockUser.class, ColumnValuePair.of("id", id));
 
@@ -301,7 +307,7 @@ public class PersistentValueTest extends DataTest {
             throw new RuntimeException(e);
         }
 
-        waitForDataPropagation();
+        awaitCondition(mockUser::isDeleted, "the PostgreSQL delete to reach the cached user");
 
         assertTrue(mockUser.isDeleted());
 
@@ -409,7 +415,10 @@ public class PersistentValueTest extends DataTest {
             assertNull(rs.getObject("views"));
         }
 
-        Thread.sleep(6000);
+        awaitCondition(
+                () -> Objects.equals(4, readNullableInt(connection, "SELECT views FROM users WHERE id = ?", id)),
+                "the delayed persistent value update to reach PostgreSQL"
+        );
         try (PreparedStatement preparedStatement = connection.prepareStatement("SELECT views FROM users WHERE id = ?")) {
             preparedStatement.setObject(1, id);
             ResultSet rs = preparedStatement.executeQuery();
@@ -585,6 +594,20 @@ public class PersistentValueTest extends DataTest {
             ResultSet rs = preparedStatement.executeQuery();
             assertTrue(rs.next());
             assertEquals(10, rs.getInt("name_updates"));
+        }
+    }
+
+    private Integer readNullableInt(Connection connection, String sql, Object parameter) {
+        try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+            preparedStatement.setObject(1, parameter);
+            try (ResultSet resultSet = preparedStatement.executeQuery()) {
+                if (!resultSet.next()) {
+                    return null;
+                }
+                return resultSet.getObject(1, Integer.class);
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
         }
     }
 }
