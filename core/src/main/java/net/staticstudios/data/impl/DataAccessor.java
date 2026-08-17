@@ -27,6 +27,12 @@ public interface DataAccessor {
 
     void runDDL(DDLStatement ddl) throws SQLException;
 
+    default void runDDL(List<DDLStatement> ddl) throws SQLException {
+        for (DDLStatement statement : ddl) {
+            runDDL(statement);
+        }
+    }
+
     void postDDL() throws SQLException;
 
     @Nullable String getRedisValue(String holderSchema, String holderTable, String identifier, ColumnValuePairs idColumns);

@@ -9,6 +9,7 @@ import net.staticstudios.data.StaticDataStatistics;
 import net.staticstudios.data.impl.DataAccessor;
 import net.staticstudios.data.impl.h2.trigger.H2ReadCacheInvalidatorTrigger;
 import net.staticstudios.data.impl.h2.trigger.H2UpdateHandlerTrigger;
+import net.staticstudios.data.impl.pg.PostgresDDLExecutor;
 import net.staticstudios.data.impl.pg.PostgresListener;
 import net.staticstudios.data.impl.redis.RedisEncodedValue;
 import net.staticstudios.data.impl.redis.RedisEvent;
@@ -498,27 +499,36 @@ public class H2DataAccessor implements DataAccessor {
 
     @Override
     public void runDDL(DDLStatement ddl) {
+        runDDL(List.of(ddl));
+    }
+
+    @Override
+    public void runDDL(List<DDLStatement> ddlStatements) {
         taskQueue.submitTask(connection -> {
-            if (!ddl.postgresqlStatement().isEmpty()) {
-
-                logger.debug("[DB] {}", ddl.postgresqlStatement());
-                try {
-                    connection.createStatement().execute(ddl.postgresqlStatement());
-                } catch (Exception e) {
-                    logger.error("Error executing DDL on real database: {}", ddl.postgresqlStatement(), e);
-                    throw e;
+            PostgresDDLExecutor.execute(connection, ignored -> {
+                for (DDLStatement ddl : ddlStatements) {
+                    if (!ddl.postgresqlStatement().isEmpty()) {
+                        logger.debug("[DB] {}", ddl.postgresqlStatement());
+                        try (Statement statement = connection.createStatement()) {
+                            statement.execute(ddl.postgresqlStatement());
+                        } catch (SQLException e) {
+                            logger.error("Error executing DDL on real database: {}", ddl.postgresqlStatement(), e);
+                            throw e;
+                        }
+                    }
+                    if (ddl.h2Statement().isEmpty()) {
+                        continue;
+                    }
+                    try (Statement statement = getConnection().createStatement()) {
+                        logger.trace("[H2] {}", ddl.h2Statement());
+                        statement.execute(ddl.h2Statement());
+                    } catch (SQLException e) {
+                        logger.error("Error executing DDL on H2 database: {}", ddl.h2Statement(), e);
+                        throw e;
+                    }
                 }
-            }
-            if (ddl.h2Statement().isEmpty()) return;
-            try (Statement statement = getConnection().createStatement()) {
-                logger.trace("[H2] {}", ddl.h2Statement());
-                statement.execute(ddl.h2Statement());
-            } catch (SQLException e) {
-                logger.error("Error executing DDL on H2 database: {}", ddl.h2Statement(), e);
-                throw e;
-            }
+            });
         }).join();
-
     }
 
     @Override

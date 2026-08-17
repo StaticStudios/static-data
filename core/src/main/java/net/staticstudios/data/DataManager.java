@@ -881,15 +881,8 @@ public class DataManager {
             defs.addAll(sqlBuilder.parse(clazz));
         }
 
-        for (DDLStatement ddl : defs) {
-            try {
-                dataAccessor.runDDL(ddl);
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
-            }
-        }
-
         try {
+            dataAccessor.runDDL(defs);
             dataAccessor.postDDL();
         } catch (SQLException e) {
             throw new RuntimeException(e);

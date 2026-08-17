@@ -111,10 +111,12 @@ public class PostgresListener {
     private void setPgConnection(DataManager dataManager, DataSourceConfig ds) throws SQLException {
         this.pgConnection = DriverManager.getConnection("jdbc:pgsql://" + ds.databaseHost() + ":" + ds.databasePort() + "/" + ds.databaseName(), ds.databaseUsername(), ds.databasePassword()).unwrap(PGConnection.class);
 
-        try (Statement statement = pgConnection.createStatement()) {
-            logger.trace("Creating data_notify function");
-            statement.execute(CREATE_DATA_NOTIFY_FUNCTION);
-        }
+        PostgresDDLExecutor.execute(pgConnection, connection -> {
+            try (Statement statement = connection.createStatement()) {
+                logger.trace("Creating data_notify function");
+                statement.execute(CREATE_DATA_NOTIFY_FUNCTION);
+            }
+        });
 
         pgConnection.addNotificationListener("data_notification_v3", new PGNotificationListener() {
             @Override
@@ -182,8 +184,12 @@ public class PostgresListener {
         String sql = CREATE_TRIGGER.formatted(schemaTable, schemaTable);
         logger.debug("Adding propagate_data_update_trigger to referringTable: {}", schemaTable);
 
-        try (Statement statement = connection.createStatement()) {
-            statement.execute(sql);
+        try {
+            PostgresDDLExecutor.execute(connection, ignored -> {
+                try (Statement statement = connection.createStatement()) {
+                    statement.execute(sql);
+                }
+            });
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
