@@ -600,7 +600,7 @@ Schema, table, column, identifier, and relationship names may contain environmen
 - `core`: runtime ORM, H2 cache, PostgreSQL synchronization, and Redis integration
 - `processor`: Java annotation processor that creates builders and query builders
 - `intellij-plugin`: IntelliJ IDEA awareness for the generated API
-- `benchmark`: JMH benchmarks
+- `benchmark`: JMH microbenchmarks and container-backed Minecraft workloads; see [`benchmark/README.md`](benchmark/README.md)
 - `utils`: shared internal utilities
 
 The project is currently published as a snapshot. Expect API and behavior changes between snapshot versions.

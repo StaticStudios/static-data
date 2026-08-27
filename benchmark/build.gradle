@@ -22,6 +22,7 @@ dependencies {
     implementation 'net.staticstudios:static-utils:1.0.6-SNAPSHOT'
     implementation("org.testcontainers:postgresql:1.19.8")
     implementation("com.redis:testcontainers-redis:2.2.2")
+    implementation("com.impossibl.pgjdbc-ng:pgjdbc-ng:0.8.9")
     implementation("org.slf4j:slf4j-log4j12:2.0.16")
 }
 
@@ -33,9 +34,61 @@ tasks.named('jmh') {
     jvmArgs = [
             '-Xms1g',
             '-Xmx1g',
-            '-XX:+AlwaysPreTouch',
-            '-Djmh.ignoreLock=true'
+            '-XX:+AlwaysPreTouch'
     ]
+}
+
+jmh {
+    def configuredIncludes = project.findProperty('jmhIncludes')
+    if (configuredIncludes != null) {
+        includes = [configuredIncludes.toString()]
+    }
+
+    def configuredParams = project.findProperty('jmhParams')
+    if (configuredParams != null) {
+        benchmarkParameters = configuredParams.toString()
+                .split(';')
+                .collectEntries { entry ->
+                    def parts = entry.split('=', 2)
+                    if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) {
+                        throw new GradleException("Invalid jmhParams entry '${entry}'; expected name=value1,value2")
+                    }
+                    def values = project.objects.listProperty(String)
+                    values.set(parts[1].split(',').toList())
+                    [(parts[0]): values]
+                }
+    }
+
+    def configuredThreads = project.findProperty('jmhThreads')
+    if (configuredThreads != null) {
+        threads = Integer.parseInt(configuredThreads.toString())
+    }
+
+    def configuredIterations = project.findProperty('jmhIterations')
+    if (configuredIterations != null) {
+        iterations = Integer.parseInt(configuredIterations.toString())
+    }
+
+    def configuredWarmupIterations = project.findProperty('jmhWarmupIterations')
+    if (configuredWarmupIterations != null) {
+        warmupIterations = Integer.parseInt(configuredWarmupIterations.toString())
+    }
+
+    def configuredIterationTime = project.findProperty('jmhTime')
+    if (configuredIterationTime != null) {
+        timeOnIteration = configuredIterationTime.toString()
+    }
+
+    def configuredForks = project.findProperty('jmhForks')
+    if (configuredForks != null) {
+        fork = Integer.parseInt(configuredForks.toString())
+    }
+
+    failOnError = true
+    forceGC = true
+    resultFormat = 'JSON'
+    resultsFile = layout.buildDirectory.file('reports/jmh/results.json').get().asFile
+    humanOutputFile = layout.buildDirectory.file('reports/jmh/human.txt').get().asFile
 }
 
 java {

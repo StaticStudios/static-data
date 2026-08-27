@@ -5,10 +5,12 @@ import java.util.Objects;
 public final class ColumnValuePair {
     private final String column;
     private final Object value;
+    private final int hashCode;
 
     public ColumnValuePair(String column, Object value) {
         this.column = column;
         this.value = value;
+        this.hashCode = 31 * Objects.hashCode(column) + Objects.hashCode(value);
     }
 
     public static ColumnValuePair of(String column, Object value) {
@@ -34,7 +36,7 @@ public final class ColumnValuePair {
 
     @Override
     public int hashCode() {
-        return Objects.hash(column, value);
+        return hashCode;
     }
 
     @Override
