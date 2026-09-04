@@ -3,15 +3,7 @@ package net.staticstudios.data.benchmark;
 import net.staticstudios.data.benchmark.data.SkyblockPlayer;
 import net.staticstudios.data.benchmark.data.SkyblockPlayerSettings;
 import net.staticstudios.data.util.ColumnValuePair;
-import org.openjdk.jmh.annotations.Benchmark;
-import org.openjdk.jmh.annotations.BenchmarkMode;
-import org.openjdk.jmh.annotations.Fork;
-import org.openjdk.jmh.annotations.Group;
-import org.openjdk.jmh.annotations.GroupThreads;
-import org.openjdk.jmh.annotations.Measurement;
-import org.openjdk.jmh.annotations.Mode;
-import org.openjdk.jmh.annotations.OutputTimeUnit;
-import org.openjdk.jmh.annotations.Warmup;
+import org.openjdk.jmh.annotations.*;
 
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -20,8 +12,7 @@ import java.util.concurrent.TimeUnit;
  * End-to-end benchmarks backed by the same H2/PostgreSQL/Redis stack used in production.
  *
  * <p>The grouped benchmark models one Minecraft server thread scanning all online players
- * while four worker threads repeatedly resolve cached entities. This is the contention
- * pattern visible in the supplied spark profile.</p>
+ * while four worker threads repeatedly resolve cached entities.</p>
  */
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
