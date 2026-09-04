@@ -10,10 +10,12 @@ public final class ColumnValuePairs implements Iterable<ColumnValuePair> {
     public static final ColumnValuePairs EMPTY = new ColumnValuePairs();
 
     private final ColumnValuePair[] pairs;
+    private final int hashCode;
 
     public ColumnValuePairs(ColumnValuePair... pairs) {
         this.pairs = pairs.clone();
         Arrays.sort(this.pairs, Comparator.comparing(ColumnValuePair::column));
+        this.hashCode = Arrays.hashCode(this.pairs);
     }
 
     public static Object getValue(String column, ColumnValuePairs pairs) {
@@ -67,7 +69,7 @@ public final class ColumnValuePairs implements Iterable<ColumnValuePair> {
 
     @Override
     public int hashCode() {
-        return Arrays.hashCode(pairs);
+        return hashCode;
     }
 
     @Override

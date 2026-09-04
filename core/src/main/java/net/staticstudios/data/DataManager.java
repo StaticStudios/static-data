@@ -36,7 +36,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.StampedLock;
 import java.util.function.Consumer;
 
 @ApiStatus.Internal
@@ -1006,12 +1006,7 @@ public class DataManager {
             ColumnValuePairs key = new ColumnValuePairs(idColumns);
             UniqueData instance;
 
-            classCache.lock.lock();
-            try {
-                instance = classCache.map.remove(key);
-            } finally {
-                classCache.lock.unlock();
-            }
+            instance = classCache.remove(key);
 
             if (instance != null) {
                 instance.markDeleted();
@@ -1064,19 +1059,7 @@ public class DataManager {
 
             ColumnValuePairs newIdCols = new ColumnValuePairs(newIdColumns);
 
-            classCache.lock.lock();
-            try {
-                UniqueData instance = classCache.map.remove(oldIdCols);
-
-                if (instance == null) {
-                    return;
-                }
-
-                instance.setIdColumns(newIdCols);
-                classCache.map.put(newIdCols, instance);
-            } finally {
-                classCache.lock.unlock();
-            }
+            classCache.move(oldIdCols, newIdCols);
         });
     }
 
@@ -1124,6 +1107,19 @@ public class DataManager {
 
     @SuppressWarnings("unchecked")
     public <T extends UniqueData> T getInstance(Class<T> clazz, @NotNull ColumnValuePairs idColumns) {
+        InstanceCache classCache = uniqueDataInstanceCache.get(clazz.getName());
+        if (classCache != null) {
+            T cached = (T) classCache.getIfLive(idColumns);
+            if (cached != null) {
+                logger.trace(
+                        "Cache hit for UniqueData class {} with ID columnsInReferringTable {}",
+                        clazz.getName(),
+                        idColumns
+                );
+                return cached;
+            }
+        }
+
         UniqueDataMetadata metadata = getMetadata(clazz);
         Preconditions.checkNotNull(metadata, "UniqueData class %s has not been parsed yet", clazz.getName());
         boolean hasAllIdColumns = true;
@@ -1148,26 +1144,6 @@ public class DataManager {
         Preconditions.checkArgument(hasAllIdColumns, "Not all @IdColumn columnsInReferringTable were provided for UniqueData class %s. Required: %s, Provided: %s", clazz.getName(), metadata.idColumns(), idColumns);
 
         T instance;
-
-        InstanceCache classCache = uniqueDataInstanceCache.get(clazz.getName());
-
-        if (classCache != null) {
-            classCache.lock.lock();
-            try {
-                instance = (T) classCache.map.get(idColumns);
-
-                if (instance != null && !instance.isDeleted()) {
-                    logger.trace(
-                            "Cache hit for UniqueData class {} with ID columnsInReferringTable {}",
-                            clazz.getName(),
-                            idColumns
-                    );
-                    return instance;
-                }
-            } finally {
-                classCache.lock.unlock();
-            }
-        }
 
         try {
             Constructor<T> constructor = clazz.getDeclaredConstructor();
@@ -1237,30 +1213,19 @@ public class DataManager {
                 k -> new InstanceCache()
         );
 
-        cache.lock.lock();
-        try {
-            UniqueData existing = cache.map.get(idColumns);
+        UniqueData cached = cache.putIfAbsentLive(idColumns, instance);
 
-            if (existing != null && !existing.isDeleted()) {
-                return (T) existing;
-            }
-
-            if (existing != null) {
-                cache.map.remove(idColumns, existing);
-            }
-
-            cache.map.put(idColumns, instance);
-
-            logger.trace(
-                    "Cache miss for UniqueData class {} with ID columnsInReferringTable {}. Created new instance.",
-                    clazz.getName(),
-                    idColumns
-            );
-
-            return instance;
-        } finally {
-            cache.lock.unlock();
+        if (cached != instance) {
+            return (T) cached;
         }
+
+        logger.trace(
+                "Cache miss for UniqueData class {} with ID columnsInReferringTable {}. Created new instance.",
+                clazz.getName(),
+                idColumns
+        );
+
+        return instance;
     }
 
     /**
@@ -1833,7 +1798,72 @@ public class DataManager {
 
     private static final class InstanceCache {
         final ConcurrentMap<ColumnValuePairs, UniqueData> map = new MapMaker().weakValues().makeMap();
-        final ReentrantLock lock = new ReentrantLock();
+        final StampedLock lock = new StampedLock();
+
+        // Cache hits dominate this path. Optimistic reads avoid serializing readers while
+        // the fallback preserves atomicity when an ID move, delete, or insertion overlaps.
+        @Nullable
+        UniqueData getIfLive(ColumnValuePairs idColumns) {
+            long stamp = lock.tryOptimisticRead();
+            UniqueData instance = map.get(idColumns);
+            boolean live = instance != null && !instance.isDeleted();
+
+            if (lock.validate(stamp)) {
+                return live ? instance : null;
+            }
+
+            stamp = lock.readLock();
+            try {
+                instance = map.get(idColumns);
+                return instance != null && !instance.isDeleted() ? instance : null;
+            } finally {
+                lock.unlockRead(stamp);
+            }
+        }
+
+        @Nullable
+        UniqueData remove(ColumnValuePairs idColumns) {
+            long stamp = lock.writeLock();
+            try {
+                return map.remove(idColumns);
+            } finally {
+                lock.unlockWrite(stamp);
+            }
+        }
+
+        void move(ColumnValuePairs oldIdColumns, ColumnValuePairs newIdColumns) {
+            long stamp = lock.writeLock();
+            try {
+                UniqueData instance = map.remove(oldIdColumns);
+                if (instance == null) {
+                    return;
+                }
+
+                instance.setIdColumns(newIdColumns);
+                map.put(newIdColumns, instance);
+            } finally {
+                lock.unlockWrite(stamp);
+            }
+        }
+
+        UniqueData putIfAbsentLive(ColumnValuePairs idColumns, UniqueData candidate) {
+            long stamp = lock.writeLock();
+            try {
+                UniqueData existing = map.get(idColumns);
+                if (existing != null && !existing.isDeleted()) {
+                    return existing;
+                }
+
+                if (existing != null) {
+                    map.remove(idColumns, existing);
+                }
+
+                map.put(idColumns, candidate);
+                return candidate;
+            } finally {
+                lock.unlockWrite(stamp);
+            }
+        }
     }
 
 }
