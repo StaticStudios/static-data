@@ -10,10 +10,18 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class H2ManyToManyDeleteStrategyTrigger implements Trigger {
+    private static final String TRIGGER_PREFIX = "static_data_v3_m2m_";
+    private static final Map<String, Configuration> CONFIGURATIONS = new ConcurrentHashMap<>();
     private final Logger logger = LoggerFactory.getLogger(H2ManyToManyDeleteStrategyTrigger.class);
     private final List<String> holderColumnNames = new ArrayList<>();
     private String holderSchema;
@@ -28,24 +36,79 @@ public class H2ManyToManyDeleteStrategyTrigger implements Trigger {
 
     @Override
     public void init(Connection connection, String schemaName, String triggerName, String tableName, boolean before, int type) {
-        EncodedValues encodedValues = new EncodedValues(triggerName.split("static_data_v3_m2m_", 2)[1]);
-        holderSchema = encodedValues.readValue();
-        encodedValues.skip("_");
-        holderTable = encodedValues.readValue();
-        encodedValues.skip("_");
-        joinSchema = encodedValues.readValue();
-        encodedValues.skip("_");
-        joinTable = encodedValues.readValue();
-        encodedValues.skip("_");
-        targetSchema = encodedValues.readValue();
-        encodedValues.skip("_");
-        targetTable = encodedValues.readValue();
-        encodedValues.skip("__holder_links__");
-        joinTableToHolderLinks = encodedValues.readLinks();
-        encodedValues.skip("__target_links__");
-        joinTableToTargetLinks = encodedValues.readLinks();
-        encodedValues.skip("__strategy__");
-        deleteStrategy = DeleteStrategy.valueOf(encodedValues.readUntil("__delete_trigger"));
+        int prefixIndex = triggerName.lastIndexOf(TRIGGER_PREFIX);
+        if (prefixIndex < 0) {
+            throw new IllegalArgumentException("Invalid many-to-many delete trigger name: " + triggerName);
+        }
+        String registeredName = triggerName.substring(prefixIndex);
+        Configuration configuration = CONFIGURATIONS.get(registeredName);
+        if (configuration == null) {
+            throw new IllegalStateException("No H2 many-to-many trigger configuration registered for " + registeredName);
+        }
+        apply(configuration);
+    }
+
+    public static String configurationId(String signature) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(signature.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest, 0, 16);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is unavailable", e);
+        }
+    }
+
+    public static void registerConfiguration(
+            String triggerName,
+            String holderSchema,
+            String holderTable,
+            String joinSchema,
+            String joinTable,
+            String targetSchema,
+            String targetTable,
+            DeleteStrategy deleteStrategy,
+            List<Link> joinTableToHolderLinks,
+            List<Link> joinTableToTargetLinks
+    ) {
+        Configuration configuration = new Configuration(
+                holderSchema,
+                holderTable,
+                joinSchema,
+                joinTable,
+                targetSchema,
+                targetTable,
+                deleteStrategy,
+                List.copyOf(joinTableToHolderLinks),
+                List.copyOf(joinTableToTargetLinks)
+        );
+        Configuration existing = CONFIGURATIONS.putIfAbsent(triggerName, configuration);
+        if (existing != null && !existing.equals(configuration)) {
+            throw new IllegalStateException("Conflicting H2 many-to-many trigger configuration for " + triggerName);
+        }
+    }
+
+    private void apply(Configuration configuration) {
+        holderSchema = configuration.holderSchema();
+        holderTable = configuration.holderTable();
+        joinSchema = configuration.joinSchema();
+        joinTable = configuration.joinTable();
+        targetSchema = configuration.targetSchema();
+        targetTable = configuration.targetTable();
+        deleteStrategy = configuration.deleteStrategy();
+        joinTableToHolderLinks = configuration.joinTableToHolderLinks();
+        joinTableToTargetLinks = configuration.joinTableToTargetLinks();
+    }
+
+    private record Configuration(
+            String holderSchema,
+            String holderTable,
+            String joinSchema,
+            String joinTable,
+            String targetSchema,
+            String targetTable,
+            DeleteStrategy deleteStrategy,
+            List<Link> joinTableToHolderLinks,
+            List<Link> joinTableToTargetLinks
+    ) {
     }
 
     @Override
@@ -163,51 +226,4 @@ public class H2ManyToManyDeleteStrategyTrigger implements Trigger {
         holderColumnNames.addAll(columns);
     }
 
-    private static final class EncodedValues {
-        private String remaining;
-
-        private EncodedValues(String encoded) {
-            remaining = encoded;
-        }
-
-        private String readValue() {
-            String[] parts = remaining.split("_", 2);
-            int length = Integer.parseInt(parts[0]);
-            String value = parts[1].substring(0, length);
-            remaining = parts[1].substring(length);
-            return value;
-        }
-
-        private List<Link> readLinks() {
-            String[] parts = remaining.split("_", 2);
-            int valueCount = Integer.parseInt(parts[0]);
-            remaining = parts[1];
-            List<String> values = new ArrayList<>(valueCount);
-            while (values.size() < valueCount) {
-                values.add(readValue());
-            }
-            List<Link> links = new ArrayList<>(valueCount / 2);
-            for (int i = 0; i < values.size(); i += 2) {
-                links.add(new Link(values.get(i + 1), values.get(i)));
-            }
-            return links;
-        }
-
-        private String readUntil(String suffix) {
-            int suffixIndex = remaining.indexOf(suffix);
-            if (suffixIndex < 0) {
-                throw new IllegalArgumentException("Invalid encoded trigger name");
-            }
-            String value = remaining.substring(0, suffixIndex);
-            remaining = remaining.substring(suffixIndex + suffix.length());
-            return value;
-        }
-
-        private void skip(String prefix) {
-            if (!remaining.startsWith(prefix)) {
-                throw new IllegalArgumentException("Invalid encoded trigger name");
-            }
-            remaining = remaining.substring(prefix.length());
-        }
-    }
 }

@@ -13,6 +13,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -415,6 +416,55 @@ public class DeletionTest extends DataTest {
         assertTrue(noActionTrigger.getH2SQL().startsWith("DROP TRIGGER IF EXISTS"));
     }
 
+    @Test
+    public void testCompactH2ManyToManyTriggerSurvivesAddingColumns() throws SQLException {
+        DataManager dataManager = getMockEnvironments().getFirst().dataManager();
+        Connection h2Connection = getH2Connection(dataManager);
+        dataManager.load(H2TriggerInitialHolder.class);
+
+        assertCompactManyToManyTrigger(h2Connection);
+
+        dataManager.load(H2TriggerMigrationHolder.class);
+        dataManager.finishLoading();
+
+        try (Statement statement = h2Connection.createStatement();
+             ResultSet resultSet = statement.executeQuery(
+                     "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS "
+                             + "WHERE TABLE_SCHEMA = 'mig' AND TABLE_NAME = 'holders' AND COLUMN_NAME = 'new_flag'"
+             )) {
+            assertTrue(resultSet.next());
+            assertEquals(1, resultSet.getInt(1));
+        }
+
+        assertCompactManyToManyTrigger(h2Connection);
+
+        H2TriggerMigrationHolder holder = H2TriggerMigrationHolder.builder(dataManager)
+                .id(UUID.randomUUID())
+                .newFlag(true)
+                .insert(InsertMode.SYNC);
+        H2TriggerMigrationTarget child = H2TriggerMigrationTarget.builder(dataManager)
+                .id(UUID.randomUUID())
+                .insert(InsertMode.SYNC);
+        holder.targets.add(child);
+
+        holder.delete();
+
+        assertTrue(child.isDeleted());
+    }
+
+    private void assertCompactManyToManyTrigger(Connection h2Connection) throws SQLException {
+        try (Statement statement = h2Connection.createStatement();
+             ResultSet resultSet = statement.executeQuery(
+                     "SELECT TRIGGER_NAME FROM INFORMATION_SCHEMA.TRIGGERS "
+                             + "WHERE TRIGGER_SCHEMA = 'mig' AND EVENT_OBJECT_TABLE = 'holders' "
+                             + "AND TRIGGER_NAME LIKE 'static_data_v3_m2m_%'"
+             )) {
+            assertTrue(resultSet.next());
+            assertTrue(resultSet.getString(1).length() < 64);
+            assertFalse(resultSet.next());
+        }
+    }
+
     @SafeVarargs
     private DataManager load(Class<? extends UniqueData>... classes) {
         DataManager dataManager = getMockEnvironments().getFirst().dataManager();
@@ -636,5 +686,35 @@ public class DeletionTest extends DataTest {
         @ManyToMany(link = "id=id", joinTable = "m2m_no_fkey_no_action_join", fkey = false)
         @Delete(DeleteStrategy.NO_ACTION)
         public PersistentCollection<ManyToManyNoForeignKeyChild> children;
+    }
+
+    @Data(schema = "mig", table = "target_records_with_extended_name")
+    static class H2TriggerMigrationTarget extends UniqueData {
+        @IdColumn(name = "id")
+        public PersistentValue<UUID> id;
+    }
+
+    @Data(schema = "mig", table = "holders")
+    static class H2TriggerInitialHolder extends UniqueData {
+        @IdColumn(name = "id")
+        public PersistentValue<UUID> id;
+
+        @ManyToMany(link = "id=id", joinTable = "relationship_entries")
+        @Delete(DeleteStrategy.CASCADE)
+        public PersistentCollection<H2TriggerMigrationTarget> targets;
+    }
+
+    @Data(schema = "mig", table = "holders")
+    static class H2TriggerMigrationHolder extends UniqueData {
+        @IdColumn(name = "id")
+        public PersistentValue<UUID> id;
+
+        @DefaultValue("true")
+        @Column(name = "new_flag")
+        public PersistentValue<Boolean> newFlag;
+
+        @ManyToMany(link = "id=id", joinTable = "relationship_entries")
+        @Delete(DeleteStrategy.CASCADE)
+        public PersistentCollection<H2TriggerMigrationTarget> targets;
     }
 }

@@ -98,14 +98,16 @@ public class SQLManyToManyDeleteStrategyTrigger implements SQLTrigger {
 
     @Override
     public String getH2SQL() {
-        String cascadeTriggerName = h2TriggerName(DeleteStrategy.CASCADE);
-        String setNullTriggerName = h2TriggerName(DeleteStrategy.SET_NULL);
+        String cascadeTriggerName = compactH2TriggerName(DeleteStrategy.CASCADE);
+        String setNullTriggerName = compactH2TriggerName(DeleteStrategy.SET_NULL);
         if (deleteStrategy == DeleteStrategy.NO_ACTION) {
-            return "DROP TRIGGER IF EXISTS \"" + cascadeTriggerName + "\"; DROP TRIGGER IF EXISTS \"" + setNullTriggerName + "\"";
+            return "DROP TRIGGER IF EXISTS \"" + holderSchema + "\".\"" + cascadeTriggerName + "\";"
+                    + " DROP TRIGGER IF EXISTS \"" + holderSchema + "\".\"" + setNullTriggerName + "\";";
         }
-        String triggerName = h2TriggerName(deleteStrategy);
-        String obsoleteTriggerName = h2TriggerName(deleteStrategy == DeleteStrategy.CASCADE ? DeleteStrategy.SET_NULL : DeleteStrategy.CASCADE);
-        return "DROP TRIGGER IF EXISTS \"" + obsoleteTriggerName + "\"; CREATE TRIGGER IF NOT EXISTS \"" + triggerName
+        String triggerName = compactH2TriggerName(deleteStrategy);
+        String obsoleteTriggerName = compactH2TriggerName(deleteStrategy == DeleteStrategy.CASCADE ? DeleteStrategy.SET_NULL : DeleteStrategy.CASCADE);
+        return "DROP TRIGGER IF EXISTS \"" + holderSchema + "\".\"" + obsoleteTriggerName + "\";"
+                + " CREATE TRIGGER IF NOT EXISTS \"" + holderSchema + "\".\"" + triggerName
                 + "\" BEFORE DELETE ON \"" + holderSchema + "\".\"" + holderTable + "\" FOR EACH ROW CALL \""
                 + H2ManyToManyDeleteStrategyTrigger.class.getName() + "\"";
     }
@@ -115,26 +117,35 @@ private String postgresTriggerName() {
     return "static_data_v3_m2m_" + Integer.toUnsignedString(signature.hashCode(), 16) + "_delete_trigger";
 }
 
-    private String h2TriggerName(DeleteStrategy strategy) {
-        String encodedHolderLinks = encodeLinks(joinTableToHolderLinks);
-        String encodedTargetLinks = encodeLinks(joinTableToTargetLinks);
-        return "static_data_v3_m2m_"
-                + prefixString(holderSchema) + "_" + prefixString(holderTable) + "_"
-                + prefixString(joinSchema) + "_" + prefixString(joinTable) + "_"
-                + prefixString(targetSchema) + "_" + prefixString(targetTable)
-                + "__holder_links__" + (joinTableToHolderLinks.size() * 2) + "_" + encodedHolderLinks
-                + "__target_links__" + (joinTableToTargetLinks.size() * 2) + "_" + encodedTargetLinks
-                + "__strategy__" + strategy.name()
-                + "__delete_trigger";
+    private String compactH2TriggerName(DeleteStrategy strategy) {
+        String signature = h2ConfigurationSignature(strategy);
+        String triggerName = "static_data_v3_m2m_" + H2ManyToManyDeleteStrategyTrigger.configurationId(signature);
+        H2ManyToManyDeleteStrategyTrigger.registerConfiguration(
+                triggerName,
+                holderSchema,
+                holderTable,
+                joinSchema,
+                joinTable,
+                targetSchema,
+                targetTable,
+                strategy,
+                joinTableToHolderLinks,
+                joinTableToTargetLinks
+        );
+        return triggerName;
     }
 
-    private String encodeLinks(List<Link> links) {
-        return String.join("", links.stream()
-                .map(link -> prefixString(link.columnInReferringTable()) + prefixString(link.columnInReferencedTable()))
-                .toList());
-    }
-
-    private String prefixString(String value) {
-        return value.length() + "_" + value;
+    private String h2ConfigurationSignature(DeleteStrategy strategy) {
+        return String.join("\0", List.of(
+                holderSchema,
+                holderTable,
+                joinSchema,
+                joinTable,
+                targetSchema,
+                targetTable,
+                strategy.name(),
+                joinTableToHolderLinks.toString(),
+                joinTableToTargetLinks.toString()
+        ));
     }
 }
